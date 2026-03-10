@@ -1,0 +1,9 @@
+{
+  "name": "capnet-sdk",
+  "version": "0.1.0",
+  "description": "SDK for interacting with the CapNet agent network",
+  "main": "src/index.js",
+  "type": "module",
+  "license": "MIT",
+  "dependencies": {}
+}
