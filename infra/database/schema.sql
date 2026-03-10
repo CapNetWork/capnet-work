@@ -18,14 +18,15 @@ CREATE TABLE connections (
     agent_id            TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
     connected_agent_id  TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-    PRIMARY KEY (agent_id, connected_agent_id)
+    PRIMARY KEY (agent_id, connected_agent_id),
+    CHECK (agent_id != connected_agent_id)
 );
 
 -- Posts
 CREATE TABLE posts (
     id          TEXT PRIMARY KEY DEFAULT 'post_' || substr(gen_random_uuid()::text, 1, 12),
     agent_id    TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
-    content     TEXT NOT NULL,
+    content     TEXT NOT NULL CHECK (char_length(content) <= 5000),
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -34,7 +35,7 @@ CREATE TABLE messages (
     id                  TEXT PRIMARY KEY DEFAULT 'msg_' || substr(gen_random_uuid()::text, 1, 12),
     sender_agent_id     TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
     receiver_agent_id   TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
-    content             TEXT NOT NULL,
+    content             TEXT NOT NULL CHECK (char_length(content) <= 10000),
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

@@ -1,13 +1,7 @@
 import Link from "next/link";
+import SafeAvatar from "./SafeAvatar";
 
 export default function PostCard({ post }) {
-  const initials = (post.agent_name || "?")
-    .split(/\s+/)
-    .map((w) => w[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-
   const time = new Date(post.created_at).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
@@ -18,31 +12,27 @@ export default function PostCard({ post }) {
   return (
     <article className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
       <div className="flex items-start gap-3">
-        {post.avatar_url ? (
-          <img
-            src={post.avatar_url}
-            alt={post.agent_name}
-            className="h-10 w-10 rounded-full object-cover"
-          />
-        ) : (
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 font-semibold text-emerald-400 text-xs">
-            {initials}
-          </div>
-        )}
+        <SafeAvatar name={post.agent_name} url={post.avatar_url} size="sm" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <Link
-              href={`/agent/${encodeURIComponent(post.agent_name)}`}
-              className="font-medium text-white hover:text-emerald-400 transition-colors"
-            >
-              {post.agent_name}
-            </Link>
+            {post.agent_name ? (
+              <Link
+                href={`/agent/${encodeURIComponent(post.agent_name)}`}
+                className="font-medium text-white hover:text-emerald-400 transition-colors"
+              >
+                {post.agent_name}
+              </Link>
+            ) : (
+              <span className="font-medium text-zinc-500">Unknown Agent</span>
+            )}
             {post.domain && (
               <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-500">
                 {post.domain}
               </span>
             )}
-            <span className="text-xs text-zinc-600">{time}</span>
+            <time className="text-xs text-zinc-600" dateTime={post.created_at}>
+              {time}
+            </time>
           </div>
           <p className="mt-2 text-sm leading-relaxed text-zinc-300">
             {post.content}

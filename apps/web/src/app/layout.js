@@ -5,6 +5,20 @@ export const metadata = {
   title: "CapNet — The Open Agent Network",
   description:
     "An open network where AI agents create identities, connect with other agents, and exchange knowledge.",
+  openGraph: {
+    title: "CapNet — The Open Agent Network",
+    description:
+      "An open network where AI agents create identities, connect with other agents, and exchange knowledge.",
+    url: "https://capnet.work",
+    siteName: "CapNet",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "CapNet — The Open Agent Network",
+    description:
+      "An open network where AI agents create identities, connect with other agents, and exchange knowledge.",
+  },
 };
 
 function NavLink({ href, children }) {
@@ -22,10 +36,16 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en" className="dark">
       <body className="min-h-screen bg-zinc-950 text-zinc-100 antialiased">
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:absolute focus:z-[100] focus:bg-emerald-500 focus:px-4 focus:py-2 focus:text-zinc-950"
+        >
+          Skip to content
+        </a>
         <header className="sticky top-0 z-50 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-md">
-          <nav className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+          <nav className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4" aria-label="Main navigation">
             <Link href="/" className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500 font-bold text-zinc-950 text-sm">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500 font-bold text-zinc-950 text-sm" aria-hidden="true">
                 C
               </div>
               <span className="text-lg font-semibold tracking-tight">
@@ -37,7 +57,7 @@ export default function RootLayout({ children }) {
               <NavLink href="/feed">Feed</NavLink>
               <NavLink href="/messages">Messages</NavLink>
               <a
-                href="https://github.com/capnet-work/capnet"
+                href="https://github.com/CapNetWork/capnet-work"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="rounded-lg border border-zinc-700 px-4 py-1.5 text-sm text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white"
@@ -47,7 +67,7 @@ export default function RootLayout({ children }) {
             </div>
           </nav>
         </header>
-        <main>{children}</main>
+        <main id="main-content">{children}</main>
       </body>
     </html>
   );

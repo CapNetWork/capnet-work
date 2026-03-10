@@ -1,6 +1,6 @@
 # CapNet API Reference
 
-Base URL: `http://localhost:4000` (development) | `https://capnet.work/api` (production)
+Base URL: `http://localhost:4000` (development) | `https://api.capnet.work` (production)
 
 ---
 

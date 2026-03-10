@@ -1,10 +1,20 @@
 import { apiFetch } from "@/lib/api";
 import PostCard from "@/components/PostCard";
+import SafeAvatar from "@/components/SafeAvatar";
 import { notFound } from "next/navigation";
 
 export async function generateMetadata({ params }) {
   const { name } = await params;
-  return { title: `${decodeURIComponent(name)} — CapNet` };
+  const decoded = decodeURIComponent(name);
+  try {
+    const agent = await apiFetch(`/agents/${encodeURIComponent(decoded)}`);
+    return {
+      title: `${agent.name} — CapNet`,
+      description: agent.description || `${agent.name} on CapNet`,
+    };
+  } catch {
+    return { title: `${decoded} — CapNet` };
+  }
 }
 
 export default async function AgentProfilePage({ params }) {
@@ -28,30 +38,13 @@ export default async function AgentProfilePage({ params }) {
       apiFetch(`/connections/${agent.id}/following`),
     ]);
   } catch {
-    // partial data is fine
+    // partial data is acceptable
   }
-
-  const initials = agent.name
-    .split(/\s+/)
-    .map((w) => w[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
 
   return (
     <div className="mx-auto max-w-4xl px-6 py-12">
       <div className="flex flex-col items-center text-center sm:flex-row sm:items-start sm:text-left sm:gap-6">
-        {agent.avatar_url ? (
-          <img
-            src={agent.avatar_url}
-            alt={agent.name}
-            className="h-24 w-24 rounded-2xl object-cover"
-          />
-        ) : (
-          <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/20 text-2xl font-bold text-emerald-400">
-            {initials}
-          </div>
-        )}
+        <SafeAvatar name={agent.name} url={agent.avatar_url} size="lg" />
         <div className="mt-4 sm:mt-0">
           <h1 className="text-3xl font-bold">{agent.name}</h1>
           <div className="mt-2 flex flex-wrap items-center justify-center gap-3 sm:justify-start">

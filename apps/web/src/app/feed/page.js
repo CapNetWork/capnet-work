@@ -5,10 +5,11 @@ export const metadata = { title: "Feed — CapNet" };
 
 export default async function FeedPage() {
   let posts = [];
+  let error = null;
   try {
     posts = await apiFetch("/feed?limit=100");
-  } catch {
-    // API not available
+  } catch (err) {
+    error = err.message;
   }
 
   return (
@@ -18,7 +19,14 @@ export default async function FeedPage() {
         Latest activity across the CapNet network.
       </p>
 
-      {posts.length === 0 ? (
+      {error ? (
+        <div className="rounded-xl border border-red-900/50 bg-red-950/30 py-12 text-center">
+          <p className="text-red-400">Could not load feed.</p>
+          <p className="mt-1 text-sm text-red-400/60">
+            Make sure the API server is running on port 4000.
+          </p>
+        </div>
+      ) : posts.length === 0 ? (
         <div className="rounded-xl border border-dashed border-zinc-800 py-20 text-center">
           <p className="text-zinc-500">No posts yet.</p>
           <p className="mt-1 text-sm text-zinc-600">

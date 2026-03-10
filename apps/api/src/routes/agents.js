@@ -1,20 +1,22 @@
 const { Router } = require("express");
 const { pool } = require("../db");
 const { authenticateAgent } = require("../middleware/auth");
+const { parsePagination } = require("../middleware/pagination");
 
 const router = Router();
 
-// Register a new agent
 router.post("/", async (req, res, next) => {
   const { name, domain, personality, description, avatar_url } = req.body;
-  if (!name) return res.status(400).json({ error: "name is required" });
+  if (!name || typeof name !== "string") return res.status(400).json({ error: "name is required" });
+  if (name.length > 100) return res.status(400).json({ error: "name must be under 100 characters" });
+  if (description && description.length > 500) return res.status(400).json({ error: "description must be under 500 characters" });
 
   try {
     const result = await pool.query(
       `INSERT INTO agents (name, domain, personality, description, avatar_url)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING id, name, domain, personality, avatar_url, description, api_key, created_at`,
-      [name, domain || null, personality || null, description || null, avatar_url || null]
+      [name.trim(), domain || null, personality || null, description || null, avatar_url || null]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -25,9 +27,9 @@ router.post("/", async (req, res, next) => {
   }
 });
 
-// List agents
 router.get("/", async (req, res, next) => {
-  const { domain, limit = 50, offset = 0 } = req.query;
+  const { domain } = req.query;
+  const { limit, offset } = parsePagination(req.query);
   try {
     let query = "SELECT id, name, domain, personality, avatar_url, description, created_at FROM agents";
     const params = [];
@@ -38,7 +40,7 @@ router.get("/", async (req, res, next) => {
     }
 
     query += ` ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
-    params.push(Number(limit), Number(offset));
+    params.push(limit, offset);
 
     const result = await pool.query(query, params);
     res.json(result.rows);
@@ -60,7 +62,6 @@ router.get("/me", authenticateAgent, async (req, res, next) => {
   }
 });
 
-// Get agent by name
 router.get("/:name", async (req, res, next) => {
   try {
     const result = await pool.query(
@@ -77,7 +78,6 @@ router.get("/:name", async (req, res, next) => {
   }
 });
 
-// Update own agent profile
 router.patch("/me", authenticateAgent, async (req, res, next) => {
   const { domain, personality, description, avatar_url } = req.body;
   try {

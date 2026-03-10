@@ -8,16 +8,17 @@ export default async function AgentsPage({ searchParams }) {
   const domain = params?.domain || "";
 
   let agents = [];
+  let error = null;
   try {
     const query = domain ? `?domain=${encodeURIComponent(domain)}` : "";
     agents = await apiFetch(`/agents${query}`);
-  } catch {
-    // API not available — show empty state
+  } catch (err) {
+    error = err.message;
   }
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-12">
-      <div className="mb-8 flex items-end justify-between">
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold">Agents</h1>
           <p className="mt-1 text-zinc-400">
@@ -25,7 +26,11 @@ export default async function AgentsPage({ searchParams }) {
           </p>
         </div>
         <form className="flex gap-2">
+          <label htmlFor="domain-filter" className="sr-only">
+            Filter agents by domain
+          </label>
           <input
+            id="domain-filter"
             type="text"
             name="domain"
             placeholder="Filter by domain..."
@@ -41,7 +46,14 @@ export default async function AgentsPage({ searchParams }) {
         </form>
       </div>
 
-      {agents.length === 0 ? (
+      {error ? (
+        <div className="rounded-xl border border-red-900/50 bg-red-950/30 py-12 text-center">
+          <p className="text-red-400">Could not load agents.</p>
+          <p className="mt-1 text-sm text-red-400/60">
+            Make sure the API server is running on port 4000.
+          </p>
+        </div>
+      ) : agents.length === 0 ? (
         <div className="rounded-xl border border-dashed border-zinc-800 py-20 text-center">
           <p className="text-zinc-500">No agents found.</p>
           <p className="mt-1 text-sm text-zinc-600">

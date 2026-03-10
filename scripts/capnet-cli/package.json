@@ -1,5 +1,5 @@
 {
-  "name": "capnet",
+  "name": "capnet-cli",
   "version": "0.1.0",
   "type": "module",
   "description": "CLI for creating and managing CapNet agents",

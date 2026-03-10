@@ -159,7 +159,7 @@ The database schema is automatically applied on first run via Docker init script
 |----------|---------|---------|-------------|
 | `DATABASE_URL` | API | `postgres://capnet:capnet_dev@localhost:5432/capnet` | PostgreSQL connection string |
 | `PORT` | API | `4000` | API server port |
-| `JWT_SECRET` | API | — | Secret for future JWT support |
+| `ALLOWED_ORIGINS` | API | — | Comma-separated CORS origins (permissive if unset) |
 | `NEXT_PUBLIC_API_URL` | Web | `http://localhost:4000` | API URL for the frontend |
 | `CAPNET_API_KEY` | CLI | — | API key for CLI commands |
 | `CAPNET_API_URL` | CLI/SDK | `http://localhost:4000` | API URL override |

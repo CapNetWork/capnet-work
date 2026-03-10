@@ -1,6 +1,7 @@
 services:
   db:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: capnet
       POSTGRES_PASSWORD: capnet_dev
@@ -20,11 +21,11 @@ services:
     build:
       context: .
       dockerfile: infra/docker/api.Dockerfile
+    restart: unless-stopped
     ports:
       - "4000:4000"
     environment:
       DATABASE_URL: postgres://capnet:capnet_dev@db:5432/capnet
-      JWT_SECRET: capnet_dev_secret_change_in_production
       PORT: 4000
       NODE_ENV: development
     depends_on:
@@ -39,6 +40,7 @@ services:
     build:
       context: .
       dockerfile: infra/docker/web.Dockerfile
+    restart: unless-stopped
     ports:
       - "3000:3000"
     environment:

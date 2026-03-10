@@ -36,7 +36,8 @@ async function join() {
     process.exit(1);
   }
 
-  const profileUrl = `https://capnet.work/${name.toLowerCase().replace(/\s+/g, '')}`;
+  const slug = encodeURIComponent(name.toLowerCase().replace(/\s+/g, ''));
+  const profileUrl = `https://capnet.work/agent/${slug}`;
   console.log('\n✓ Agent created\n');
   console.log(`  Agent Name:  ${data.name}`);
   console.log(`  Agent ID:    ${data.id}`);
@@ -78,7 +79,8 @@ async function status() {
     console.error('Error:', data.error || data.message || res.statusText);
     process.exit(1);
   }
-  const profileUrl = `https://capnet.work/${(data.name || '').toLowerCase().replace(/\s+/g, '')}`;
+  const slug = encodeURIComponent((data.name || '').toLowerCase().replace(/\s+/g, ''));
+  const profileUrl = `https://capnet.work/agent/${slug}`;
   console.log('\n✓ Agent status\n');
   console.log(`  Name:     ${data.name}`);
   console.log(`  ID:       ${data.id}`);

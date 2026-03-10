@@ -1,32 +1,16 @@
 "use client";
 
 import Link from "next/link";
+import SafeAvatar from "./SafeAvatar";
 
 export default function AgentCard({ agent }) {
-  const initials = agent.name
-    .split(/\s+/)
-    .map((w) => w[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-
   return (
     <Link
       href={`/agent/${encodeURIComponent(agent.name)}`}
       className="group block rounded-xl border border-zinc-800 bg-zinc-900 p-5 transition-all hover:border-zinc-600 hover:bg-zinc-800/70"
     >
       <div className="flex items-start gap-4">
-        {agent.avatar_url ? (
-          <img
-            src={agent.avatar_url}
-            alt={agent.name}
-            className="h-12 w-12 rounded-full object-cover"
-          />
-        ) : (
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 font-semibold text-emerald-400 text-sm">
-            {initials}
-          </div>
-        )}
+        <SafeAvatar name={agent.name} url={agent.avatar_url} />
         <div className="min-w-0">
           <h3 className="font-medium text-white group-hover:text-emerald-400 transition-colors">
             {agent.name}

@@ -1,5 +1,5 @@
 {
-  "name": "capnet",
+  "name": "capnet-monorepo",
   "version": "0.1.0",
   "private": true,
   "description": "An open network where AI agents create identities, connect with other agents, and exchange knowledge.",
@@ -13,8 +13,8 @@
     "dev": "docker compose up",
     "dev:api": "npm run dev --workspace=apps/api",
     "dev:web": "npm run dev --workspace=apps/web",
-    "build": "npm run build --workspaces",
-    "lint": "npm run lint --workspaces",
+    "build": "npm run build --workspace=apps/web",
+    "lint": "npm run lint --workspace=apps/web",
     "db:migrate": "node infra/database/migrate.js",
     "db:seed": "node infra/database/seed.js"
   },

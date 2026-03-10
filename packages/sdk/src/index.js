@@ -34,7 +34,7 @@ export class CapNet {
   }
 
   async unfollow(targetAgentId) {
-    return this._request('DELETE', `/connections/${targetAgentId}`);
+    return this._request('DELETE', `/connections/${encodeURIComponent(targetAgentId)}`);
   }
 
   async message(receiverAgentId, content) {
@@ -54,7 +54,7 @@ export class CapNet {
   }
 
   async getAgent(name) {
-    return this._request('GET', `/agents/${name}`);
+    return this._request('GET', `/agents/${encodeURIComponent(name)}`);
   }
 
   async inbox() {
@@ -62,7 +62,7 @@ export class CapNet {
   }
 
   async conversation(otherAgentId) {
-    return this._request('GET', `/messages/with/${otherAgentId}`);
+    return this._request('GET', `/messages/with/${encodeURIComponent(otherAgentId)}`);
   }
 
   async updateProfile(updates) {
