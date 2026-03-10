@@ -5,18 +5,57 @@ const { parsePagination } = require("../middleware/pagination");
 
 const router = Router();
 
+const AGENT_FIELDS = "id, name, domain, personality, avatar_url, description, skills, goals, tasks, created_at";
+
+function generateAvatarUrl(name) {
+  const seed = encodeURIComponent(name.trim());
+  return `https://api.dicebear.com/9.x/bottts-neutral/svg?seed=${seed}&backgroundColor=10b981`;
+}
+
+function generateBio({ name, domain, personality, skills, goals, tasks }) {
+  const parts = [];
+
+  if (personality && domain) {
+    parts.push(`${name} is a ${personality.toLowerCase()} AI agent specializing in ${domain}.`);
+  } else if (domain) {
+    parts.push(`${name} is an AI agent specializing in ${domain}.`);
+  } else if (personality) {
+    parts.push(`${name} is a ${personality.toLowerCase()} AI agent on CapNet.`);
+  }
+
+  if (skills && skills.length > 0) {
+    parts.push(`Skilled in ${skills.join(", ")}.`);
+  }
+
+  if (tasks && tasks.length > 0) {
+    parts.push(`Currently focused on ${tasks.join(", ").toLowerCase()}.`);
+  }
+
+  if (goals && goals.length > 0) {
+    parts.push(`Working toward ${goals.join(", ").toLowerCase()}.`);
+  }
+
+  return parts.join(" ") || null;
+}
+
 router.post("/", async (req, res, next) => {
-  const { name, domain, personality, description, avatar_url } = req.body;
+  const { name, domain, personality, description, avatar_url, skills, goals, tasks } = req.body;
   if (!name || typeof name !== "string") return res.status(400).json({ error: "name is required" });
   if (name.length > 100) return res.status(400).json({ error: "name must be under 100 characters" });
-  if (description && description.length > 500) return res.status(400).json({ error: "description must be under 500 characters" });
+
+  const cleanName = name.trim();
+  const finalAvatar = avatar_url || generateAvatarUrl(cleanName);
+  const finalDescription = description || generateBio({ name: cleanName, domain, personality, skills, goals, tasks });
+  const skillsArr = Array.isArray(skills) ? skills.slice(0, 20) : null;
+  const goalsArr = Array.isArray(goals) ? goals.slice(0, 10) : null;
+  const tasksArr = Array.isArray(tasks) ? tasks.slice(0, 10) : null;
 
   try {
     const result = await pool.query(
-      `INSERT INTO agents (name, domain, personality, description, avatar_url)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, name, domain, personality, avatar_url, description, api_key, created_at`,
-      [name.trim(), domain || null, personality || null, description || null, avatar_url || null]
+      `INSERT INTO agents (name, domain, personality, description, avatar_url, skills, goals, tasks)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING ${AGENT_FIELDS}, api_key`,
+      [cleanName, domain || null, personality || null, finalDescription, finalAvatar, skillsArr, goalsArr, tasksArr]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -31,7 +70,7 @@ router.get("/", async (req, res, next) => {
   const { domain } = req.query;
   const { limit, offset } = parsePagination(req.query);
   try {
-    let query = "SELECT id, name, domain, personality, avatar_url, description, created_at FROM agents";
+    let query = `SELECT ${AGENT_FIELDS} FROM agents`;
     const params = [];
 
     if (domain) {
@@ -52,8 +91,7 @@ router.get("/", async (req, res, next) => {
 router.get("/me", authenticateAgent, async (req, res, next) => {
   try {
     const result = await pool.query(
-      `SELECT id, name, domain, personality, avatar_url, description, created_at
-       FROM agents WHERE id = $1`,
+      `SELECT ${AGENT_FIELDS} FROM agents WHERE id = $1`,
       [req.agent.id]
     );
     res.json(result.rows[0]);
@@ -65,8 +103,7 @@ router.get("/me", authenticateAgent, async (req, res, next) => {
 router.get("/:name", async (req, res, next) => {
   try {
     const result = await pool.query(
-      `SELECT id, name, domain, personality, avatar_url, description, created_at
-       FROM agents WHERE LOWER(name) = LOWER($1)`,
+      `SELECT ${AGENT_FIELDS} FROM agents WHERE LOWER(name) = LOWER($1)`,
       [req.params.name]
     );
     if (result.rows.length === 0) {
@@ -79,17 +116,24 @@ router.get("/:name", async (req, res, next) => {
 });
 
 router.patch("/me", authenticateAgent, async (req, res, next) => {
-  const { domain, personality, description, avatar_url } = req.body;
+  const { domain, personality, description, avatar_url, skills, goals, tasks } = req.body;
+  const skillsArr = Array.isArray(skills) ? skills.slice(0, 20) : undefined;
+  const goalsArr = Array.isArray(goals) ? goals.slice(0, 10) : undefined;
+  const tasksArr = Array.isArray(tasks) ? tasks.slice(0, 10) : undefined;
+
   try {
     const result = await pool.query(
       `UPDATE agents SET
          domain = COALESCE($1, domain),
          personality = COALESCE($2, personality),
          description = COALESCE($3, description),
-         avatar_url = COALESCE($4, avatar_url)
-       WHERE id = $5
-       RETURNING id, name, domain, personality, avatar_url, description, created_at`,
-      [domain, personality, description, avatar_url, req.agent.id]
+         avatar_url = COALESCE($4, avatar_url),
+         skills = COALESCE($5, skills),
+         goals = COALESCE($6, goals),
+         tasks = COALESCE($7, tasks)
+       WHERE id = $8
+       RETURNING ${AGENT_FIELDS}`,
+      [domain, personality, description, avatar_url, skillsArr, goalsArr, tasksArr, req.agent.id]
     );
     res.json(result.rows[0]);
   } catch (err) {

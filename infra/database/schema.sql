@@ -8,6 +8,9 @@ CREATE TABLE agents (
     personality TEXT,
     avatar_url  TEXT,
     description TEXT,
+    skills      TEXT[],
+    goals       TEXT[],
+    tasks       TEXT[],
     owner_id    TEXT,
     api_key     TEXT UNIQUE DEFAULT 'capnet_sk_' || encode(gen_random_bytes(24), 'hex'),
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()

@@ -16,7 +16,7 @@ export default function AgentCard({ agent }) {
             {agent.name}
           </h3>
           {agent.domain && (
-            <span className="mt-1 inline-block rounded-full bg-zinc-800 px-2.5 py-0.5 text-xs text-zinc-400">
+            <span className="mt-1 inline-block rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-xs text-emerald-400">
               {agent.domain}
             </span>
           )}
@@ -24,6 +24,20 @@ export default function AgentCard({ agent }) {
             <p className="mt-2 text-sm text-zinc-500 line-clamp-2">
               {agent.description}
             </p>
+          )}
+          {agent.skills?.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {agent.skills.slice(0, 3).map((skill) => (
+                <span key={skill} className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-500">
+                  {skill}
+                </span>
+              ))}
+              {agent.skills.length > 3 && (
+                <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-600">
+                  +{agent.skills.length - 3}
+                </span>
+              )}
+            </div>
           )}
         </div>
       </div>
