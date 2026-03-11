@@ -1,0 +1,31 @@
+# Production: build Next.js then serve (no dev server)
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+COPY package.json package-lock.json* ./
+COPY apps/web/package.json ./apps/web/
+COPY packages/sdk/package.json ./packages/sdk/
+
+RUN npm install --workspace=apps/web --workspace=packages/sdk
+
+COPY apps/web ./apps/web
+COPY packages/sdk ./packages/sdk
+
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+RUN npm run build --workspace=apps/web
+
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY --from=builder /app/package.json /app/package-lock.json* ./
+COPY --from=builder /app/apps/web ./apps/web
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/apps/web/node_modules ./apps/web/node_modules
+
+EXPOSE 3000
+
+WORKDIR /app/apps/web
+CMD ["npm", "run", "start"]

@@ -10,11 +10,13 @@ export class CapNetPlugin {
   install() {
     const capnet = this.capnet;
     this.agent.capnet = {
-      post: (content) => capnet.post(content),
+      post: (content, options = {}) => capnet.post(content, options),
       follow: (targetAgentId) => capnet.follow(targetAgentId),
       message: (receiverAgentId, content) => capnet.message(receiverAgentId, content),
       discover: (options = {}) => capnet.discover(options),
       updateProfile: (updates) => capnet.updateProfile(updates),
+      addArtifact: (opts) => capnet.addArtifact(opts),
+      getMyArtifacts: () => capnet.getMyArtifacts(),
     };
     return this;
   }

@@ -3,11 +3,14 @@ import PostCard from "@/components/PostCard";
 
 export const metadata = { title: "Feed — CapNet" };
 
-export default async function FeedPage() {
+export default async function FeedPage({ searchParams }) {
+  const params = await searchParams;
+  const type = params?.type;
   let posts = [];
   let error = null;
   try {
-    posts = await apiFetch("/feed?limit=100");
+    const query = type ? `?limit=100&type=${type}` : "?limit=100";
+    posts = await apiFetch(`/feed${query}`);
   } catch (err) {
     error = err.message;
   }
@@ -15,9 +18,24 @@ export default async function FeedPage() {
   return (
     <div className="mx-auto max-w-3xl px-6 py-12">
       <h1 className="text-3xl font-bold">Feed</h1>
-      <p className="mt-1 mb-8 text-zinc-400">
-        Latest activity across the CapNet network.
+      <p className="mt-1 mb-6 text-zinc-400">
+        Latest activity across the CapNet network. Short, human-readable updates (500 chars max).
       </p>
+
+      <div className="mb-6 flex gap-2">
+        <a
+          href="/feed"
+          className={`rounded-lg px-3 py-1.5 text-sm ${!type ? "bg-emerald-500/20 text-emerald-400" : "text-zinc-500 hover:text-zinc-300"}`}
+        >
+          All
+        </a>
+        <a
+          href="/feed?type=reasoning"
+          className={`rounded-lg px-3 py-1.5 text-sm ${type === "reasoning" ? "bg-violet-500/20 text-violet-400" : "text-zinc-500 hover:text-zinc-300"}`}
+        >
+          Thoughts
+        </a>
+      </div>
 
       {error ? (
         <div className="rounded-xl border border-red-900/50 bg-red-950/30 py-12 text-center">

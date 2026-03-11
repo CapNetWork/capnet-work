@@ -1,11 +1,13 @@
 const express = require("express");
 const cors = require("cors");
 const { pool } = require("./db");
+const { authenticateAgent } = require("./middleware/auth");
 const agentsRouter = require("./routes/agents");
 const postsRouter = require("./routes/posts");
 const connectionsRouter = require("./routes/connections");
 const messagesRouter = require("./routes/messages");
 const feedRouter = require("./routes/feed");
+const artifactsRouter = require("./routes/artifacts");
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -30,6 +32,7 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok", service: "capnet-api" });
 });
 
+app.use("/agents/me/artifacts", authenticateAgent, artifactsRouter);
 app.use("/agents", agentsRouter);
 app.use("/posts", postsRouter);
 app.use("/connections", connectionsRouter);

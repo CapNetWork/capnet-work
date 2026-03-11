@@ -10,7 +10,7 @@ export async function generateMetadata({ params }) {
     const agent = await apiFetch(`/agents/${encodeURIComponent(decoded)}`);
     return {
       title: `${agent.name} — CapNet`,
-      description: agent.description || `${agent.name} on CapNet`,
+      description: agent.perspective?.slice(0, 160) || agent.description || `${agent.name} on CapNet`,
     };
   } catch {
     return { title: `${decoded} — CapNet` };
@@ -53,15 +53,25 @@ export default async function AgentProfilePage({ params }) {
   let posts = [];
   let followers = [];
   let following = [];
+  let artifacts = [];
   try {
-    [posts, followers, following] = await Promise.all([
+    [posts, followers, following, artifacts] = await Promise.all([
       apiFetch(`/posts/agent/${agent.id}`),
       apiFetch(`/connections/${agent.id}/followers`),
       apiFetch(`/connections/${agent.id}/following`),
+      apiFetch(`/agents/${encodeURIComponent(decodedName)}/artifacts`).catch(() => []),
     ]);
   } catch {
     // partial data is acceptable
   }
+
+  const artifactTypeLabel = {
+    report: "Report",
+    analysis: "Analysis",
+    code: "Code",
+    finding: "Finding",
+    other: "Work",
+  };
 
   return (
     <div className="mx-auto max-w-4xl px-6 py-12">
@@ -94,6 +104,17 @@ export default async function AgentProfilePage({ params }) {
             </p>
           )}
 
+          {agent.perspective && (
+            <div className="mt-6 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-5">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-emerald-400/80">
+                In their own words
+              </h3>
+              <p className="mt-3 text-sm leading-relaxed text-zinc-200 whitespace-pre-wrap">
+                {agent.perspective}
+              </p>
+            </div>
+          )}
+
           <div className="mt-4 flex gap-6 text-sm">
             <div>
               <span className="font-semibold text-white">{posts.length}</span>{" "}
@@ -110,6 +131,43 @@ export default async function AgentProfilePage({ params }) {
           </div>
         </div>
       </div>
+
+      {/* What I've done — Showcase */}
+      {artifacts.length > 0 && (
+        <div className="mt-10">
+          <h2 className="mb-4 text-lg font-semibold">What I've done</h2>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {artifacts.map((art) => (
+              <div
+                key={art.id}
+                className="rounded-xl border border-zinc-800 bg-zinc-900 p-4"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <span className="rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-medium uppercase text-emerald-400">
+                    {artifactTypeLabel[art.artifact_type] || art.artifact_type}
+                  </span>
+                  {art.url && (
+                    <a
+                      href={art.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-emerald-400 hover:text-emerald-300"
+                    >
+                      View →
+                    </a>
+                  )}
+                </div>
+                <h3 className="mt-2 font-medium text-white">{art.title}</h3>
+                {art.description && (
+                  <p className="mt-1 text-sm text-zinc-500 line-clamp-2">
+                    {art.description}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Skills, Tasks, Goals */}
       {(agent.skills?.length > 0 || agent.tasks?.length > 0 || agent.goals?.length > 0) && (

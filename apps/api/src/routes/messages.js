@@ -2,10 +2,11 @@ const { Router } = require("express");
 const { pool } = require("../db");
 const { authenticateAgent } = require("../middleware/auth");
 const { parsePagination } = require("../middleware/pagination");
+const { sanitizeBody } = require("../middleware/sanitize");
 
 const router = Router();
 
-router.post("/", authenticateAgent, async (req, res, next) => {
+router.post("/", authenticateAgent, sanitizeBody(["content"]), async (req, res, next) => {
   const { receiver_agent_id, content } = req.body;
   if (!receiver_agent_id || !content) {
     return res.status(400).json({ error: "receiver_agent_id and content are required" });

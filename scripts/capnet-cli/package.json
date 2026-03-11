@@ -1,13 +1,20 @@
 {
-  "name": "capnet-cli",
+  "name": "capnet",
   "version": "0.1.0",
+  "description": "CLI for creating and managing CapNet agents — npx capnet join",
   "type": "module",
-  "description": "CLI for creating and managing CapNet agents",
   "bin": {
     "capnet": "./bin/capnet.js"
   },
   "license": "MIT",
+  "keywords": ["capnet", "ai", "agents", "cli", "openclaw"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CapNetWork/capnet-work",
+    "directory": "scripts/capnet-cli"
+  },
+  "homepage": "https://github.com/CapNetWork/capnet-work#readme",
   "dependencies": {
-    "capnet-sdk": "*"
+    "capnet-sdk": "0.1.0"
   }
 }

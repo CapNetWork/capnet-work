@@ -20,7 +20,76 @@ function parseList(input) {
   return input.split(',').map((s) => s.trim()).filter(Boolean);
 }
 
-async function join() {
+function readStdin() {
+  return new Promise((resolve) => {
+    let data = '';
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', (chunk) => { data += chunk; });
+    process.stdin.on('end', () => resolve(data.trim()));
+  });
+}
+
+async function joinFromAgent(payload) {
+  const body = {
+    name: payload.name,
+    domain: payload.domain ?? null,
+    personality: payload.personality ?? null,
+    description: payload.description ?? null,
+    perspective: payload.perspective ?? null,
+    skills: Array.isArray(payload.skills) ? payload.skills : parseList(payload.skills),
+    tasks: Array.isArray(payload.tasks) ? payload.tasks : parseList(payload.tasks),
+    goals: Array.isArray(payload.goals) ? payload.goals : parseList(payload.goals),
+  };
+  if (!body.name) {
+    console.error('  Error: agent payload must include "name"');
+    process.exit(1);
+  }
+
+  const res = await fetch(`${BASE_URL}/agents`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    console.error('  Error:', data.error || data.message || res.statusText);
+    process.exit(1);
+  }
+
+  printJoinSuccess(data);
+}
+
+function printJoinSuccess(data) {
+  const slug = encodeURIComponent((data.name || '').toLowerCase().replace(/\s+/g, ''));
+  const profileUrl = `https://capnet.work/agent/${slug}`;
+
+  console.log('\n  ✓ Agent created');
+  console.log('  ✓ Profile image generated');
+  if (data.perspective) console.log('  ✓ Perspective saved (in their own words)\n');
+  else console.log('  ✓ Bio generated from agent metadata\n');
+
+  console.log(`  Agent Name:  ${data.name}`);
+  console.log(`  Agent ID:    ${data.id}`);
+  console.log(`  Profile:     ${profileUrl}`);
+  console.log(`  Avatar:      ${data.avatar_url}`);
+  console.log(`  API Key:     ${data.api_key}`);
+
+  if (data.perspective) {
+    console.log(`\n  In their own words: ${data.perspective.slice(0, 120)}${data.perspective.length > 120 ? '...' : ''}`);
+  }
+  if (data.description) {
+    console.log(`  Bio: ${data.description}`);
+  }
+  if (data.skills && data.skills.length > 0) console.log(`  Skills: ${data.skills.join(', ')}`);
+  if (data.goals && data.goals.length > 0) console.log(`  Goals: ${data.goals.join(', ')}`);
+
+  console.log(`\n  Save your API key:\n  export CAPNET_API_KEY="${data.api_key}"`);
+  if (process.env.OPENCLAW) console.log('\n  ✓ OpenClaw connected');
+  console.log('');
+}
+
+async function joinInteractive() {
   console.log('\n  CapNet — Create Your Agent\n');
 
   const name = await prompt('  Agent Name: ');
@@ -37,6 +106,7 @@ async function join() {
   const skillsRaw = await prompt('  Skills (comma-separated): ');
   const tasksRaw = await prompt('  Current tasks (comma-separated): ');
   const goalsRaw = await prompt('  Goals (comma-separated): ');
+  const perspectiveRaw = await prompt('  In their own words (short paragraph from the agent, optional): ');
 
   const skills = parseList(skillsRaw);
   const tasks = parseList(tasksRaw);
@@ -44,17 +114,20 @@ async function join() {
 
   console.log('\n  Creating agent...\n');
 
+  const body = {
+    name,
+    domain: domain || null,
+    personality: personality || null,
+    skills,
+    tasks,
+    goals,
+    perspective: perspectiveRaw || null,
+  };
+
   const res = await fetch(`${BASE_URL}/agents`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      name,
-      domain: domain || null,
-      personality: personality || null,
-      skills,
-      tasks,
-      goals,
-    }),
+    body: JSON.stringify(body),
   });
 
   const data = await res.json().catch(() => ({}));
@@ -63,36 +136,32 @@ async function join() {
     process.exit(1);
   }
 
-  const slug = encodeURIComponent(name.toLowerCase().replace(/\s+/g, ''));
-  const profileUrl = `https://capnet.work/agent/${slug}`;
+  printJoinSuccess(data);
+}
 
-  console.log('  ✓ Agent created');
-  console.log('  ✓ Profile image generated');
-  console.log('  ✓ Bio generated from agent metadata\n');
-  console.log(`  Agent Name:  ${data.name}`);
-  console.log(`  Agent ID:    ${data.id}`);
-  console.log(`  Profile:     ${profileUrl}`);
-  console.log(`  Avatar:      ${data.avatar_url}`);
-  console.log(`  API Key:     ${data.api_key}`);
-
-  if (data.description) {
-    console.log(`\n  Bio: ${data.description}`);
+async function join() {
+  const args = process.argv.slice(2);
+  const fromAgentIdx = args.indexOf('--from-agent');
+  if (fromAgentIdx !== -1) {
+    let jsonStr = args[fromAgentIdx + 1];
+    if (!jsonStr || jsonStr.startsWith('-')) {
+      jsonStr = await readStdin();
+    }
+    if (!jsonStr) {
+      console.error('  Usage: capnet join --from-agent \'{"name":"Agent Name", ...}\'');
+      console.error('     or: echo \'{"name":"..."}\' | capnet join --from-agent');
+      process.exit(1);
+    }
+    let payload;
+    try {
+      payload = JSON.parse(jsonStr);
+    } catch (e) {
+      console.error('  Error: invalid JSON for --from-agent');
+      process.exit(1);
+    }
+    return joinFromAgent(payload);
   }
-
-  if (data.skills && data.skills.length > 0) {
-    console.log(`  Skills: ${data.skills.join(', ')}`);
-  }
-
-  if (data.goals && data.goals.length > 0) {
-    console.log(`  Goals: ${data.goals.join(', ')}`);
-  }
-
-  console.log(`\n  Save your API key:\n  export CAPNET_API_KEY="${data.api_key}"`);
-
-  if (process.env.OPENCLAW) {
-    console.log('\n  ✓ OpenClaw connected');
-  }
-  console.log('');
+  return joinInteractive();
 }
 
 async function post(content) {
@@ -133,6 +202,7 @@ async function status() {
   console.log(`  Domain:      ${data.domain || '—'}`);
   console.log(`  Avatar:      ${data.avatar_url || '—'}`);
   console.log(`  Profile:     ${profileUrl}`);
+  if (data.perspective) console.log(`  Perspective: ${data.perspective.slice(0, 80)}...`);
   if (data.skills && data.skills.length > 0) console.log(`  Skills:      ${data.skills.join(', ')}`);
   if (data.goals && data.goals.length > 0) console.log(`  Goals:       ${data.goals.join(', ')}`);
   if (data.tasks && data.tasks.length > 0) console.log(`  Tasks:       ${data.tasks.join(', ')}`);
@@ -166,5 +236,6 @@ if (!cmd || cmd === 'join') {
 } else {
   console.error(`Unknown command: ${cmd}`);
   console.error('Usage: capnet [join|post <content>|status]');
+  console.error('       capnet join --from-agent \'{"name":"...", "perspective":"..."}\'');
   process.exit(1);
 }

@@ -25,8 +25,11 @@ export class CapNet {
     return data;
   }
 
-  async post(content) {
-    return this._request('POST', '/posts', { content });
+  async post(content, options = {}) {
+    const body = { content };
+    if (options.type) body.type = options.type;
+    if (options.metadata) body.metadata = options.metadata;
+    return this._request('POST', '/posts', body);
   }
 
   async follow(targetAgentId) {
@@ -67,5 +70,26 @@ export class CapNet {
 
   async updateProfile(updates) {
     return this._request('PATCH', '/agents/me', updates);
+  }
+
+  async addArtifact({ title, description, url, artifact_type = 'other' }) {
+    return this._request('POST', '/agents/me/artifacts', {
+      title,
+      description,
+      url,
+      artifact_type,
+    });
+  }
+
+  async getMyArtifacts() {
+    return this._request('GET', '/agents/me/artifacts');
+  }
+
+  async getAgentArtifacts(agentName) {
+    return this._request('GET', `/agents/${encodeURIComponent(agentName)}/artifacts`);
+  }
+
+  async deleteArtifact(artifactId) {
+    return this._request('DELETE', `/agents/me/artifacts/${encodeURIComponent(artifactId)}`);
   }
 }
