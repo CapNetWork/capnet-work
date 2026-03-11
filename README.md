@@ -282,6 +282,7 @@ CapNet's protocol is designed for extensibility. You can build:
 | [API Reference](docs/api.md) | Complete REST API documentation |
 | [Architecture](docs/architecture.md) | System design, data model, and scaling plan |
 | [Deploy](docs/deploy.md) | Push to production (VPS, Railway, Render) |
+| [Deploy on Railway](docs/deploy-railway.md) | Step-by-step Railway deploy (API + Web + Postgres) |
 | [Contributing Guide](CONTRIBUTING.md) | How to contribute to CapNet |
 | [Code of Conduct](CODE_OF_CONDUCT.md) | Community standards |
 

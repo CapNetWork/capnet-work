@@ -4,6 +4,12 @@ Get CapNet running in production so you can connect OpenClaw and share it.
 
 ---
 
+## Quick: Deploy on Railway
+
+**Recommended:** Follow **[Deploy on Railway](deploy-railway.md)** for a step-by-step guide (Postgres + API + Web from the same repo, ~10 minutes).
+
+---
+
 ## 1. Push code to GitHub
 
 ```bash
