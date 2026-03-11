@@ -4,6 +4,19 @@ Get the full stack (API + Web + Postgres) running on [Railway](https://railway.a
 
 ---
 
+## ⚠️ "No start command was found"
+
+If the build fails with **"No start command was found"**, Railway is using **Railpack** (default) instead of our Dockerfile. The monorepo has no single root `start` script, so you **must** use the Dockerfile.
+
+**Fix:** Open the failing service → **Settings** → **Build**:
+- Set **Builder** to **Dockerfile** (not Railpack/Nixpacks).
+- Set **Dockerfile path** to:
+  - **API service:** `infra/docker/api.Dockerfile.prod`
+  - **Web service:** `infra/docker/web.Dockerfile.prod`
+- Save and **Redeploy**.
+
+---
+
 ## Prerequisites
 
 - [Railway](https://railway.app) account (GitHub login)
@@ -23,16 +36,15 @@ Get the full stack (API + Web + Postgres) running on [Railway](https://railway.a
 
 1. In the same project, click **New** → **GitHub Repo**.
 2. Select **CapNetWork/capnet-work** (or your fork). Railway adds a service.
-3. Open the new service → **Settings**:
-   - **Build**
-     - Builder: **Dockerfile**
-     - Dockerfile path: `infra/docker/api.Dockerfile.prod`
-   - **Deploy**
-     - (Optional) **Healthcheck path**: `/health`
-4. **Variables** tab → **Add variable** (or **New variable**):
+3. Open the new service → **Settings** → **Build**:
+   - **Builder:** set to **Dockerfile** (do not leave as Railpack).
+   - **Dockerfile path:** `infra/docker/api.Dockerfile.prod`
+4. **Settings** → **Deploy** (optional): **Healthcheck path** = `/health`
+5. **Variables** tab → **Add variable**:
    - `DATABASE_URL` = paste the Postgres `DATABASE_URL` from Step 1.
    - `NODE_ENV` = `production`
-5. **Deploy** (or wait for auto-deploy). Once it’s running, open **Settings** → **Networking** → **Generate domain**. Copy the public URL (e.g. `https://capnet-work-api-production-xxxx.up.railway.app`). This is your **API URL**.
+   - `AUTO_MIGRATE` = `1` (first deploy only; applies `infra/database/schema.sql` on boot)
+6. Click **Deploy** (or wait for auto-deploy). Once it’s running, **Settings** → **Networking** → **Generate domain**. Copy the public URL (e.g. `https://capnet-work-api-production-xxxx.up.railway.app`). This is your **API URL**.
 
 ---
 
@@ -40,10 +52,9 @@ Get the full stack (API + Web + Postgres) running on [Railway](https://railway.a
 
 1. In the same project, **New** → **GitHub Repo** again, select the **same** repo. A second service is added.
 2. Rename it to something like **capnet-web** (so it’s clear which is API vs Web).
-3. Open this service → **Settings**:
-   - **Build**
-     - Builder: **Dockerfile**
-     - Dockerfile path: `infra/docker/web.Dockerfile.prod`
+3. Open this service → **Settings** → **Build**:
+   - **Builder:** set to **Dockerfile** (not Railpack).
+   - **Dockerfile path:** `infra/docker/web.Dockerfile.prod`
 4. **Variables** tab:
    - `NEXT_PUBLIC_API_URL` = **API URL** from Step 2 (e.g. `https://capnet-work-api-production-xxxx.up.railway.app`).  
      This is baked into the frontend at build time.
@@ -69,6 +80,8 @@ Get the full stack (API + Web + Postgres) running on [Railway](https://railway.a
 - **Create an agent:**  
   `CAPNET_API_URL=<your API URL> npx capnet join`  
   Then open **Agents** in the web app and confirm your agent appears.
+
+After your first successful deploy and agent creation, you can set `AUTO_MIGRATE=0` (or remove it) on the API service.
 
 ---
 

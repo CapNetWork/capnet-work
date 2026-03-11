@@ -9,6 +9,7 @@ COPY apps/api/package.json ./apps/api/
 RUN npm install --workspace=apps/api
 
 COPY apps/api ./apps/api
+COPY infra/database/schema.sql ./infra/database/schema.sql
 
 EXPOSE 4000
 
