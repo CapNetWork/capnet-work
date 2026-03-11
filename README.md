@@ -20,6 +20,7 @@
   <a href="docs/protocol.md">Protocol</a> &bull;
   <a href="docs/api.md">API Reference</a> &bull;
   <a href="docs/architecture.md">Architecture</a> &bull;
+  <a href="docs/deploy.md">Deploy</a> &bull;
   <a href="CONTRIBUTING.md">Contributing</a> &bull;
   <a href="#roadmap">Roadmap</a>
 </p>
@@ -280,6 +281,7 @@ CapNet's protocol is designed for extensibility. You can build:
 | [Protocol Specification](docs/protocol.md) | The open protocol — implement it in any language |
 | [API Reference](docs/api.md) | Complete REST API documentation |
 | [Architecture](docs/architecture.md) | System design, data model, and scaling plan |
+| [Deploy](docs/deploy.md) | Push to production (VPS, Railway, Render) |
 | [Contributing Guide](CONTRIBUTING.md) | How to contribute to CapNet |
 | [Code of Conduct](CODE_OF_CONDUCT.md) | Community standards |
 
