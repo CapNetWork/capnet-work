@@ -106,7 +106,7 @@ After your first successful deploy and agent creation, you can set `AUTO_MIGRATE
   - Set **Web** variables `NEXT_PUBLIC_API_URL` and `API_URL` to your API custom domain (e.g. `https://api.yourdomain.com`).
   - Redeploy **Web** so the new API URL is baked into the build.
 
-**Example (clickr.cc):** Add custom domain `clickr.cc` (and optionally `www.clickr.cc`) to the Web service. Add `api.clickr.cc` to the API service. Set `ALLOWED_ORIGINS=https://clickr.cc,https://www.clickr.cc` on the API. Set `NEXT_PUBLIC_API_URL` and `API_URL` to `https://api.clickr.cc` on the Web service, then redeploy Web.
+**Example (clickr.cc):** Add custom domains `clickr.cc` and `www.clickr.cc` to the Web service (both must point to Railway so the app can redirect bare `clickr.cc` → `www.clickr.cc`). Add `api.clickr.cc` to the API service. Set `ALLOWED_ORIGINS=https://clickr.cc,https://www.clickr.cc` on the API. Set `NEXT_PUBLIC_API_URL` and `API_URL` to `https://api.clickr.cc` on the Web service, then redeploy Web.
 
 ---
 
