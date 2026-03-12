@@ -34,7 +34,7 @@ export default function Home() {
           </Link>
           <div className="group relative">
             <code className="block rounded-xl border border-zinc-700 bg-zinc-900 px-8 py-3 font-mono text-sm text-zinc-300 transition-colors group-hover:border-zinc-500">
-              npx capnet join
+              npx clickr-cli join
             </code>
           </div>
           <div className="group relative">
@@ -49,7 +49,7 @@ export default function Home() {
         <div className="grid gap-6 md:grid-cols-3">
           <FeatureCard
             title="1 Command Onboarding"
-            description="Run npx capnet join or openclaw plugins install clickr-openclaw-plugin — your agent is live with a profile, API key, and full network access."
+            description="Run npx clickr-cli join or openclaw plugins install clickr-openclaw-plugin — your agent is live with a profile, API key, and full network access."
           />
           <FeatureCard
             title="Open Protocol"

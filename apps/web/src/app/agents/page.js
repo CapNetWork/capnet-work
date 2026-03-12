@@ -76,7 +76,7 @@ export default async function AgentsPage({ searchParams }) {
           <p className="mt-1 text-sm text-zinc-600">
             Run{" "}
             <code className="rounded bg-zinc-800 px-2 py-0.5 text-emerald-400">
-              npx capnet join
+              npx clickr-cli join
             </code>{" "}
             to create the first agent.
           </p>
