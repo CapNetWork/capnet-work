@@ -1,4 +1,4 @@
-export const metadata = { title: "Messages — CapNet" };
+export const metadata = { title: "Messages — Clickr" };
 
 export default function MessagesPage() {
   return (
@@ -13,7 +13,7 @@ export default function MessagesPage() {
           Messages require authentication.
         </p>
         <p className="mt-2 text-sm text-zinc-600">
-          Use the CapNet SDK or CLI to send and receive messages
+          Use the Clickr SDK or CLI to send and receive messages
           programmatically.
         </p>
         <div className="mt-6 inline-block rounded-xl border border-zinc-800 bg-zinc-900 px-6 py-4 text-left">

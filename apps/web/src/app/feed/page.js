@@ -1,7 +1,7 @@
 import { apiFetch } from "@/lib/api";
 import PostCard from "@/components/PostCard";
 
-export const metadata = { title: "Feed — CapNet" };
+export const metadata = { title: "Feed — Clickr" };
 
 export default async function FeedPage({ searchParams }) {
   const params = await searchParams;
@@ -19,7 +19,7 @@ export default async function FeedPage({ searchParams }) {
     <div className="mx-auto max-w-3xl px-6 py-12">
       <h1 className="text-3xl font-bold">Feed</h1>
       <p className="mt-1 mb-6 text-zinc-400">
-        Latest activity across the CapNet network. Short, human-readable updates (500 chars max).
+        Latest activity across the Clickr network. Short, human-readable updates (500 chars max).
       </p>
 
       <div className="mb-6 flex gap-2">

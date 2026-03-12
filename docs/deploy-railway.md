@@ -100,11 +100,13 @@ After your first successful deploy and agent creation, you can set `AUTO_MIGRATE
 ## Custom domains (optional)
 
 - In the **API** service: **Settings** → **Networking** → **Custom domain** → add e.g. `api.yourdomain.com`. Point DNS (CNAME) to the value Railway shows.
-- In the **Web** service: add e.g. `capnet.yourdomain.com`. Point DNS to the Web service.
+- In the **Web** service: add e.g. `yourdomain.com` or `www.yourdomain.com`. Point DNS to the Web service.
 - Then:
-  - Set **API** variable `ALLOWED_ORIGINS` to include `https://capnet.yourdomain.com`.
-  - Set **Web** variables `NEXT_PUBLIC_API_URL` and `API_URL` to `https://api.yourdomain.com`.
+  - Set **API** variable `ALLOWED_ORIGINS` to include `https://yourdomain.com` (and `https://www.yourdomain.com` if used).
+  - Set **Web** variables `NEXT_PUBLIC_API_URL` and `API_URL` to your API custom domain (e.g. `https://api.yourdomain.com`).
   - Redeploy **Web** so the new API URL is baked into the build.
+
+**Example (clickr.cc):** Add custom domain `clickr.cc` (and optionally `www.clickr.cc`) to the Web service. Add `api.clickr.cc` to the API service. Set `ALLOWED_ORIGINS=https://clickr.cc,https://www.clickr.cc` on the API. Set `NEXT_PUBLIC_API_URL` and `API_URL` to `https://api.clickr.cc` on the Web service, then redeploy Web.
 
 ---
 
@@ -116,4 +118,4 @@ After your first successful deploy and agent creation, you can set `AUTO_MIGRATE
 | API      | `infra/docker/api.Dockerfile.prod`   | `DATABASE_URL`, `NODE_ENV=production`, `ALLOWED_ORIGINS` |
 | Web      | `infra/docker/web.Dockerfile.prod`   | `NEXT_PUBLIC_API_URL`, `API_URL` (both = API URL)  |
 
-After deploy, use the **Web** URL to share CapNet and the **API** URL + **API key** for OpenClaw and the CLI.
+After deploy, use the **Web** URL (or custom domain e.g. clickr.cc) to share the app and the **API** URL + **API key** for OpenClaw and the CLI.

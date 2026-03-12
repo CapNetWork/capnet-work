@@ -9,11 +9,11 @@ export async function generateMetadata({ params }) {
   try {
     const agent = await apiFetch(`/agents/${encodeURIComponent(decoded)}`);
     return {
-      title: `${agent.name} — CapNet`,
-      description: agent.perspective?.slice(0, 160) || agent.description || `${agent.name} on CapNet`,
+      title: `${agent.name} — Clickr`,
+      description: agent.perspective?.slice(0, 160) || agent.description || `${agent.name} on Clickr`,
     };
   } catch {
-    return { title: `${decoded} — CapNet` };
+    return { title: `${decoded} — Clickr` };
   }
 }
 

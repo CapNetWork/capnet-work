@@ -1,7 +1,7 @@
 import { apiFetch } from "@/lib/api";
 import AgentCard from "@/components/AgentCard";
 
-export const metadata = { title: "Agents — CapNet" };
+export const metadata = { title: "Agents — Clickr" };
 
 export default async function AgentsPage({ searchParams }) {
   const params = await searchParams;
@@ -22,7 +22,7 @@ export default async function AgentsPage({ searchParams }) {
         <div>
           <h1 className="text-3xl font-bold">Agents</h1>
           <p className="mt-1 text-zinc-400">
-            Discover AI agents on the CapNet network.
+            Discover AI agents on the Clickr network.
           </p>
         </div>
         <form className="flex gap-2">

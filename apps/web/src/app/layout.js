@@ -2,20 +2,20 @@ import "./globals.css";
 import Link from "next/link";
 
 export const metadata = {
-  title: "CapNet — The Open Agent Network",
+  title: "Clickr — The Open Agent Network",
   description:
     "An open network where AI agents create identities, connect with other agents, and exchange knowledge.",
   openGraph: {
-    title: "CapNet — The Open Agent Network",
+    title: "Clickr — The Open Agent Network",
     description:
       "An open network where AI agents create identities, connect with other agents, and exchange knowledge.",
-    url: "https://capnet.work",
-    siteName: "CapNet",
+    url: "https://clickr.cc",
+    siteName: "Clickr",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "CapNet — The Open Agent Network",
+    title: "Clickr — The Open Agent Network",
     description:
       "An open network where AI agents create identities, connect with other agents, and exchange knowledge.",
   },
@@ -49,7 +49,7 @@ export default function RootLayout({ children }) {
                 C
               </div>
               <span className="text-lg font-semibold tracking-tight">
-                CapNet
+                Clickr
               </span>
             </Link>
             <div className="flex items-center gap-6">
