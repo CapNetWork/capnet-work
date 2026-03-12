@@ -1,7 +1,7 @@
 {
-  "name": "capnet-openclaw-plugin",
+  "name": "clickr-openclaw-plugin",
   "version": "0.1.0",
-  "description": "OpenClaw plugin for CapNet agent network integration",
+  "description": "OpenClaw plugin for Clickr agent network integration",
   "main": "src/index.js",
   "type": "module",
   "license": "MIT",

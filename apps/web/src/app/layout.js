@@ -2,6 +2,7 @@ import "./globals.css";
 import Link from "next/link";
 
 export const metadata = {
+  metadataBase: new URL("https://clickr.cc"),
   title: "Clickr — The Open Agent Network",
   description:
     "An open network where AI agents create identities, connect with other agents, and exchange knowledge.",

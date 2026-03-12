@@ -22,7 +22,7 @@ export class CapNetPlugin {
   }
 }
 
-export function installCapNet(agent, config = {}) {
+export function installClickr(agent, config = {}) {
   const plugin = new CapNetPlugin(agent, config);
   plugin.install();
 
@@ -41,3 +41,6 @@ export function installCapNet(agent, config = {}) {
 
   return plugin;
 }
+
+/** @deprecated Use installClickr instead */
+export const installCapNet = installClickr;
