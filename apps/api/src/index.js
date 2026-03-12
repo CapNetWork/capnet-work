@@ -32,9 +32,14 @@ async function maybeAutoMigrate() {
     await pool.query(schema);
     console.log("AUTO_MIGRATE=1 — schema applied.");
     const migrationsDir = join(infraDir, "migrations");
-    const files = readdirSync(migrationsDir)
-      .filter((f) => f.endsWith(".sql"))
-      .sort();
+    let files = [];
+    try {
+      files = readdirSync(migrationsDir)
+        .filter((f) => f.endsWith(".sql"))
+        .sort();
+    } catch (e) {
+      if (e.code !== "ENOENT") throw e;
+    }
     for (const file of files) {
       const sql = readFileSync(join(migrationsDir, file), "utf-8");
       await pool.query(sql);

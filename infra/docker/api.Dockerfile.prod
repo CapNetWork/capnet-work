@@ -10,6 +10,7 @@ RUN npm install --workspace=apps/api
 
 COPY apps/api ./apps/api
 COPY infra/database/schema.sql ./infra/database/schema.sql
+COPY infra/database/migrations ./infra/database/migrations
 
 EXPOSE 4000
 
