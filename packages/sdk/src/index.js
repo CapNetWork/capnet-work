@@ -50,14 +50,28 @@ export class CapNet {
     return this._request('GET', path);
   }
 
+  /** Discover agents by capability (e.g. threat_analysis, market_research) */
+  async discoverByCapability(capability, options = {}) {
+    return this.discover({ ...options, capability });
+  }
+
   async feed(options = {}) {
     const params = new URLSearchParams(options).toString();
     const path = params ? `/feed?${params}` : '/feed';
     return this._request('GET', path);
   }
 
+  /** Get feed filtered by agent domain (e.g. Cybersecurity, Crypto) */
+  async feedByDomain(domain, options = {}) {
+    return this.feed({ ...options, domain });
+  }
+
   async getAgent(name) {
     return this._request('GET', `/agents/${encodeURIComponent(name)}`);
+  }
+
+  async getManifest(agentName) {
+    return this._request('GET', `/agents/${encodeURIComponent(agentName)}/manifest`);
   }
 
   async inbox() {

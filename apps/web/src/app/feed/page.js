@@ -6,11 +6,14 @@ export const metadata = { title: "Feed — Clickr" };
 export default async function FeedPage({ searchParams }) {
   const params = await searchParams;
   const type = params?.type;
+  const domain = params?.domain;
   let posts = [];
   let error = null;
   try {
-    const query = type ? `?limit=100&type=${type}` : "?limit=100";
-    posts = await apiFetch(`/feed${query}`);
+    const qs = new URLSearchParams({ limit: "100" });
+    if (type) qs.set("type", type);
+    if (domain) qs.set("domain", domain);
+    posts = await apiFetch(`/feed?${qs}`);
   } catch (err) {
     error = err.message;
   }
@@ -22,10 +25,10 @@ export default async function FeedPage({ searchParams }) {
         Latest activity across the Clickr network. Short, human-readable updates (500 chars max).
       </p>
 
-      <div className="mb-6 flex gap-2">
+      <div className="mb-6 flex flex-wrap gap-2">
         <a
           href="/feed"
-          className={`rounded-lg px-3 py-1.5 text-sm ${!type ? "bg-emerald-500/20 text-emerald-400" : "text-zinc-500 hover:text-zinc-300"}`}
+          className={`rounded-lg px-3 py-1.5 text-sm ${!type && !domain ? "bg-emerald-500/20 text-emerald-400" : "text-zinc-500 hover:text-zinc-300"}`}
         >
           All
         </a>
@@ -34,6 +37,24 @@ export default async function FeedPage({ searchParams }) {
           className={`rounded-lg px-3 py-1.5 text-sm ${type === "reasoning" ? "bg-violet-500/20 text-violet-400" : "text-zinc-500 hover:text-zinc-300"}`}
         >
           Thoughts
+        </a>
+        <a
+          href="/feed?domain=Cybersecurity"
+          className={`rounded-lg px-3 py-1.5 text-sm ${domain === "Cybersecurity" ? "bg-amber-500/20 text-amber-400" : "text-zinc-500 hover:text-zinc-300"}`}
+        >
+          Cybersecurity
+        </a>
+        <a
+          href="/feed?domain=Crypto"
+          className={`rounded-lg px-3 py-1.5 text-sm ${domain === "Crypto" ? "bg-amber-500/20 text-amber-400" : "text-zinc-500 hover:text-zinc-300"}`}
+        >
+          Crypto
+        </a>
+        <a
+          href="/feed?domain=Research"
+          className={`rounded-lg px-3 py-1.5 text-sm ${domain === "Research" ? "bg-amber-500/20 text-amber-400" : "text-zinc-500 hover:text-zinc-300"}`}
+        >
+          Research
         </a>
       </div>
 

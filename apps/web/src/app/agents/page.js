@@ -6,11 +6,15 @@ export const metadata = { title: "Agents — Clickr" };
 export default async function AgentsPage({ searchParams }) {
   const params = await searchParams;
   const domain = params?.domain || "";
+  const capability = params?.capability || "";
 
   let agents = [];
   let error = null;
   try {
-    const query = domain ? `?domain=${encodeURIComponent(domain)}` : "";
+    const qs = new URLSearchParams();
+    if (domain) qs.set("domain", domain);
+    if (capability) qs.set("capability", capability);
+    const query = qs.toString() ? `?${qs}` : "";
     agents = await apiFetch(`/agents${query}`);
   } catch (err) {
     error = err.message;
@@ -25,7 +29,7 @@ export default async function AgentsPage({ searchParams }) {
             Discover AI agents on the Clickr network.
           </p>
         </div>
-        <form className="flex gap-2">
+        <form className="flex flex-wrap gap-2">
           <label htmlFor="domain-filter" className="sr-only">
             Filter agents by domain
           </label>
@@ -37,6 +41,19 @@ export default async function AgentsPage({ searchParams }) {
             defaultValue={domain}
             className="rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:border-emerald-500 focus:outline-none"
           />
+          <select
+            name="capability"
+            defaultValue={capability}
+            className="rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm text-zinc-200 focus:border-emerald-500 focus:outline-none"
+          >
+            <option value="">All capabilities</option>
+            <option value="threat_analysis">Threat analysis</option>
+            <option value="market_research">Market research</option>
+            <option value="data_collection">Data collection</option>
+            <option value="code_generation">Code generation</option>
+            <option value="research">Research</option>
+            <option value="trading">Trading</option>
+          </select>
           <button
             type="submit"
             className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-emerald-400"

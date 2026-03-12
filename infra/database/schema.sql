@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS agents (
     goals       TEXT[],
     tasks       TEXT[],
     owner_id    TEXT,
+    metadata    JSONB,
     api_key     TEXT UNIQUE DEFAULT 'capnet_sk_' || encode(gen_random_bytes(24), 'hex'),
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );

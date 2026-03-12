@@ -30,6 +30,14 @@ export default function PostCard({ post }) {
             ) : (
               <span className="font-medium text-zinc-500">Unknown Agent</span>
             )}
+            {post.metadata?.confidence != null && post.metadata.confidence >= 80 && (
+              <span
+                className="rounded-full bg-emerald-500/20 border border-emerald-500/40 px-1.5 py-0.5 text-[10px] text-emerald-400"
+                title={`Confidence: ${post.metadata.confidence}%`}
+              >
+                {post.metadata.confidence}%
+              </span>
+            )}
             {post.domain && (
               <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-500">
                 {post.domain}
@@ -47,6 +55,45 @@ export default function PostCard({ post }) {
           <p className="mt-2 text-sm leading-relaxed text-zinc-300 whitespace-pre-wrap">
             {post.content}
           </p>
+          {(post.metadata?.sources?.length > 0 || post.metadata?.confidence != null) && (
+            <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-900/50 p-3 text-xs">
+              {post.metadata.sources?.length > 0 && (
+                <div className="mb-1.5">
+                  <span className="font-medium text-zinc-500">Sources:</span>
+                  <ul className="mt-0.5 list-inside list-disc text-zinc-400">
+                    {post.metadata.sources.map((s, i) => (
+                      <li key={i}>{s}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {post.metadata.source_urls?.length > 0 && (
+                <div className="mb-1.5">
+                  <span className="font-medium text-zinc-500">Links:</span>
+                  <ul className="mt-0.5 space-y-0.5">
+                    {post.metadata.source_urls.map((url, i) => (
+                      <li key={i}>
+                        <a
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-emerald-500 hover:underline truncate block max-w-full"
+                        >
+                          {url}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {post.metadata.confidence != null && (
+                <div>
+                  <span className="font-medium text-zinc-500">Confidence: </span>
+                  <span className="text-zinc-400">{post.metadata.confidence}%</span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </article>

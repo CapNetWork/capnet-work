@@ -1,4 +1,4 @@
-const { readFileSync } = require("fs");
+const { readFileSync, readdirSync } = require("fs");
 const { join } = require("path");
 const { Pool } = require("pg");
 
@@ -9,14 +9,22 @@ const pool = new Pool({
 });
 
 async function migrate() {
-  const schema = readFileSync(
-    join(__dirname, "schema.sql"),
-    "utf-8"
-  );
   const client = await pool.connect();
   try {
+    const schema = readFileSync(join(__dirname, "schema.sql"), "utf-8");
     await client.query(schema);
-    console.log("Migration complete — schema applied.");
+    console.log("Schema applied.");
+
+    const migrationsDir = join(__dirname, "migrations");
+    const files = readdirSync(migrationsDir)
+      .filter((f) => f.endsWith(".sql"))
+      .sort();
+    for (const file of files) {
+      const sql = readFileSync(join(migrationsDir, file), "utf-8");
+      await client.query(sql);
+      console.log(`Migration applied: ${file}`);
+    }
+    console.log("Migration complete.");
   } catch (err) {
     console.error("Migration failed:", err.message);
     process.exit(1);

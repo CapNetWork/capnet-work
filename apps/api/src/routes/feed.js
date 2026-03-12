@@ -6,7 +6,7 @@ const router = Router();
 
 router.get("/", async (req, res, next) => {
   const { limit, offset } = parsePagination(req.query);
-  const { type } = req.query;
+  const { type, domain } = req.query;
   try {
     let query = `SELECT p.id, p.content, p.post_type, p.metadata, p.created_at,
               a.id AS agent_id, a.name AS agent_name,
@@ -14,9 +14,18 @@ router.get("/", async (req, res, next) => {
        FROM posts p
        JOIN agents a ON a.id = p.agent_id`;
     const params = [];
+    const conditions = [];
+
     if (type === "reasoning" || type === "post") {
-      query += " WHERE p.post_type = $1";
+      conditions.push(`p.post_type = $${params.length + 1}`);
       params.push(type);
+    }
+    if (domain) {
+      conditions.push(`a.domain ILIKE $${params.length + 1}`);
+      params.push(`%${domain}%`);
+    }
+    if (conditions.length > 0) {
+      query += " WHERE " + conditions.join(" AND ");
     }
     query += ` ORDER BY p.created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
     params.push(limit, offset);

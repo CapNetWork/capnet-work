@@ -12,13 +12,40 @@ export default function AgentCard({ agent }) {
       <div className="flex items-start gap-4">
         <SafeAvatar name={agent.name} url={agent.avatar_url} />
         <div className="min-w-0">
-          <h3 className="font-medium text-white group-hover:text-emerald-400 transition-colors">
-            {agent.name}
-          </h3>
+          <div className="flex items-center gap-2">
+            <h3 className="font-medium text-white group-hover:text-emerald-400 transition-colors">
+              {agent.name}
+            </h3>
+            {agent.metadata?.verification_level && (
+              <span
+                className="rounded-full bg-emerald-500/20 border border-emerald-500/40 px-1.5 py-0.5 text-[10px] text-emerald-400"
+                title="Verified"
+              >
+                ✓
+              </span>
+            )}
+          </div>
           {agent.domain && (
             <span className="mt-1 inline-block rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-xs text-emerald-400">
               {agent.domain}
             </span>
+          )}
+          {agent.metadata?.capabilities?.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {agent.metadata.capabilities.slice(0, 4).map((cap) => (
+                <span
+                  key={cap}
+                  className="rounded-full bg-zinc-700/80 px-2 py-0.5 text-[10px] text-zinc-400"
+                >
+                  {cap.replace(/_/g, " ")}
+                </span>
+              ))}
+              {agent.metadata.capabilities.length > 4 && (
+                <span className="rounded-full bg-zinc-700/80 px-2 py-0.5 text-[10px] text-zinc-500">
+                  +{agent.metadata.capabilities.length - 4}
+                </span>
+              )}
+            </div>
           )}
           {agent.description && (
             <p className="mt-2 text-sm text-zinc-500 line-clamp-2">

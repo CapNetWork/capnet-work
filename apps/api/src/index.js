@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const rateLimit = require("express-rate-limit");
 const { pool } = require("./db");
 const { readFileSync } = require("fs");
 const { join } = require("path");
@@ -14,13 +15,31 @@ const artifactsRouter = require("./routes/artifacts");
 const app = express();
 const PORT = process.env.PORT || 4000;
 
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: parseInt(process.env.RATE_LIMIT_MAX, 10) || 200,
+  message: { error: "Too many requests, please try again later." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 async function maybeAutoMigrate() {
   if (process.env.AUTO_MIGRATE !== "1") return;
+  const { readdirSync } = require("fs");
+  const infraDir = join(__dirname, "..", "..", "..", "infra", "database");
   try {
-    const schemaPath = join(__dirname, "..", "..", "..", "infra", "database", "schema.sql");
-    const schema = readFileSync(schemaPath, "utf-8");
+    const schema = readFileSync(join(infraDir, "schema.sql"), "utf-8");
     await pool.query(schema);
     console.log("AUTO_MIGRATE=1 — schema applied.");
+    const migrationsDir = join(infraDir, "migrations");
+    const files = readdirSync(migrationsDir)
+      .filter((f) => f.endsWith(".sql"))
+      .sort();
+    for (const file of files) {
+      const sql = readFileSync(join(migrationsDir, file), "utf-8");
+      await pool.query(sql);
+      console.log(`AUTO_MIGRATE=1 — migration applied: ${file}`);
+    }
   } catch (err) {
     console.error("AUTO_MIGRATE failed:", err.message);
     throw err;
@@ -42,6 +61,8 @@ app.use(
 app.use(express.json({ limit: "100kb" }));
 
 app.disable("x-powered-by");
+
+app.use(generalLimiter);
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", service: "capnet-api" });

@@ -83,6 +83,14 @@ export default async function AgentProfilePage({ params }) {
         <div className="mt-4 sm:mt-0 flex-1">
           <h1 className="text-3xl font-bold">{agent.name}</h1>
           <div className="mt-2 flex flex-wrap items-center justify-center gap-3 sm:justify-start">
+            {agent.metadata?.verification_level && (
+              <span
+                className="rounded-full bg-emerald-500/20 border border-emerald-500/40 px-2 py-0.5 text-xs text-emerald-400"
+                title="Verified"
+              >
+                ✓ Verified
+              </span>
+            )}
             {agent.domain && (
               <span className="rounded-full bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 text-xs text-emerald-400">
                 {agent.domain}
@@ -166,6 +174,32 @@ export default async function AgentProfilePage({ params }) {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Capabilities (from metadata) */}
+      {agent.metadata?.capabilities?.length > 0 && (
+        <div className="mt-8 rounded-xl border border-zinc-800 bg-zinc-900 p-6">
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+            Capabilities
+          </h3>
+          <TagList items={agent.metadata.capabilities.map((c) => c.replace(/_/g, " "))} color="emerald" />
+          {(agent.metadata.input_types?.length > 0 || agent.metadata.output_types?.length > 0) && (
+            <div className="mt-4 flex flex-wrap gap-4 text-sm">
+              {agent.metadata.input_types?.length > 0 && (
+                <div>
+                  <span className="text-zinc-500">Inputs: </span>
+                  <span className="text-zinc-300">{agent.metadata.input_types.join(", ")}</span>
+                </div>
+              )}
+              {agent.metadata.output_types?.length > 0 && (
+                <div>
+                  <span className="text-zinc-500">Outputs: </span>
+                  <span className="text-zinc-300">{agent.metadata.output_types.join(", ")}</span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
