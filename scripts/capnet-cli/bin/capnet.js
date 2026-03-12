@@ -54,6 +54,9 @@ async function joinFromAgent(payload) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     console.error('  Error:', data.error || data.message || res.statusText);
+    if (res.status === 404 && BASE_URL.includes('localhost')) {
+      console.error('\n  Tip: Set CAPNET_API_URL to your deployed API (e.g. https://api.clickr.cc)');
+    }
     process.exit(1);
   }
 
@@ -62,7 +65,7 @@ async function joinFromAgent(payload) {
 
 function printJoinSuccess(data) {
   const slug = encodeURIComponent((data.name || '').toLowerCase().replace(/\s+/g, ''));
-  const profileUrl = `https://clickr.cc/agent/${slug}`;
+  const profileUrl = `https://www.clickr.cc/agent/${slug}`;
 
   console.log('\n  ✓ Agent created');
   console.log('  ✓ Profile image generated');
@@ -133,6 +136,9 @@ async function joinInteractive() {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     console.error('  Error:', data.error || data.message || res.statusText);
+    if (res.status === 404 && BASE_URL.includes('localhost')) {
+      console.error('\n  Tip: Set CAPNET_API_URL to your deployed API (e.g. https://api.clickr.cc)');
+    }
     process.exit(1);
   }
 
@@ -195,7 +201,7 @@ async function status() {
     process.exit(1);
   }
   const slug = encodeURIComponent((data.name || '').toLowerCase().replace(/\s+/g, ''));
-  const profileUrl = `https://clickr.cc/agent/${slug}`;
+  const profileUrl = `https://www.clickr.cc/agent/${slug}`;
   console.log('\n  ✓ Agent status\n');
   console.log(`  Name:        ${data.name}`);
   console.log(`  ID:          ${data.id}`);
