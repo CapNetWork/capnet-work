@@ -24,8 +24,8 @@ export default async function AgentsPage({ searchParams }) {
     <div className="mx-auto max-w-6xl px-6 py-12">
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Agents</h1>
-          <p className="mt-1 text-zinc-400">
+          <h1 className="text-3xl font-bold text-white">Agents</h1>
+          <p className="mt-1 text-red-100/80">
             Discover AI agents on the Clickr network.
           </p>
         </div>
@@ -39,12 +39,12 @@ export default async function AgentsPage({ searchParams }) {
             name="domain"
             placeholder="Filter by domain..."
             defaultValue={domain}
-            className="rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:border-emerald-500 focus:outline-none"
+            className="rounded-lg border border-red-900/60 bg-red-950/50 px-4 py-2 text-sm text-red-50 placeholder:text-red-300/50 focus:border-red-400 focus:outline-none"
           />
           <select
             name="capability"
             defaultValue={capability}
-            className="rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm text-zinc-200 focus:border-emerald-500 focus:outline-none"
+            className="rounded-lg border border-red-900/60 bg-red-950/50 px-4 py-2 text-sm text-red-50 focus:border-red-400 focus:outline-none"
           >
             <option value="">All capabilities</option>
             <option value="threat_analysis">Threat analysis</option>
@@ -56,7 +56,7 @@ export default async function AgentsPage({ searchParams }) {
           </select>
           <button
             type="submit"
-            className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-emerald-400"
+            className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-[#6B1515] hover:bg-red-50"
           >
             Search
           </button>
@@ -64,18 +64,18 @@ export default async function AgentsPage({ searchParams }) {
       </div>
 
       {error ? (
-        <div className="rounded-xl border border-red-900/50 bg-red-950/30 py-12 text-center">
-          <p className="text-red-400">Could not load agents.</p>
-          <p className="mt-1 text-sm text-red-400/60">
+        <div className="rounded-xl border border-red-900/50 bg-red-950/50 py-12 text-center">
+          <p className="text-red-200">Could not load agents.</p>
+          <p className="mt-1 text-sm text-red-200/70">
             Make sure the API server is running on port 4000.
           </p>
         </div>
       ) : agents.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-zinc-800 py-20 text-center">
-          <p className="text-zinc-500">No agents found.</p>
-          <p className="mt-1 text-sm text-zinc-600">
+        <div className="rounded-xl border border-dashed border-red-900/50 py-20 text-center">
+          <p className="text-red-200/80">No agents found.</p>
+          <p className="mt-1 text-sm text-red-200/60">
             Run{" "}
-            <code className="rounded bg-zinc-800 px-2 py-0.5 text-emerald-400">
+            <code className="rounded bg-red-950/60 px-2 py-0.5 text-red-200">
               npx clickr-cli join
             </code>{" "}
             to create the first agent.

@@ -15,7 +15,7 @@ export default function Image() {
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          background: "#09090b",
+          background: "#6B1515",
           fontFamily: "system-ui, sans-serif",
         }}
       >
@@ -32,11 +32,11 @@ export default function Image() {
               width: 64,
               height: 64,
               borderRadius: 12,
-              background: "#10b981",
+              background: "rgba(255,255,255,0.9)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: "#09090b",
+              color: "#6B1515",
               fontSize: 32,
               fontWeight: 700,
             }}
@@ -57,7 +57,7 @@ export default function Image() {
         <p
           style={{
             fontSize: 28,
-            color: "#a1a1aa",
+            color: "#fecaca",
             margin: 0,
             maxWidth: 700,
             textAlign: "center",
@@ -68,7 +68,7 @@ export default function Image() {
         <p
           style={{
             fontSize: 20,
-            color: "#52525b",
+            color: "#fca5a5",
             marginTop: 16,
             maxWidth: 600,
             textAlign: "center",

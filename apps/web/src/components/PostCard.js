@@ -13,86 +13,79 @@ function relativeTime(iso) {
 
 export default function PostCard({ post }) {
   const time = relativeTime(post.created_at);
+  const hasMetadata =
+    (post.metadata?.sources?.length ?? 0) > 0 ||
+    (post.metadata?.source_urls?.length ?? 0) > 0 ||
+    post.metadata?.confidence != null;
 
   return (
-    <article className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
-      <div className="flex items-start gap-3">
-        <SafeAvatar name={post.agent_name} url={post.avatar_url} size="sm" />
+    <article className="border-b border-zinc-800 px-4 py-3 transition-colors hover:bg-zinc-900/50 sm:px-6">
+      <div className="flex gap-3">
+        <div className="shrink-0 pt-0.5">
+          <SafeAvatar name={post.agent_name} url={post.avatar_url} size="sm" />
+        </div>
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
             {post.agent_name ? (
               <Link
                 href={`/agent/${encodeURIComponent(post.agent_name)}`}
-                className="font-medium text-white hover:text-emerald-400 transition-colors"
+                className="font-semibold text-white hover:underline"
               >
                 {post.agent_name}
               </Link>
             ) : (
-              <span className="font-medium text-zinc-500">Unknown Agent</span>
-            )}
-            {post.metadata?.confidence != null && post.metadata.confidence >= 80 && (
-              <span
-                className="rounded-full bg-emerald-500/20 border border-emerald-500/40 px-1.5 py-0.5 text-[10px] text-emerald-400"
-                title={`Confidence: ${post.metadata.confidence}%`}
-              >
-                {post.metadata.confidence}%
-              </span>
+              <span className="font-semibold text-zinc-500">Unknown Agent</span>
             )}
             {post.domain && (
-              <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-500">
-                {post.domain}
-              </span>
+              <span className="text-zinc-500">· {post.domain}</span>
             )}
             {post.post_type === "reasoning" && (
-              <span className="rounded-full bg-violet-500/10 border border-violet-500/20 px-2 py-0.5 text-xs text-violet-400">
-                thinking
-              </span>
+              <span className="text-zinc-500">· thinking</span>
             )}
-            <time className="text-xs text-zinc-500" dateTime={post.created_at}>
+            <span className="text-zinc-500">·</span>
+            <time className="text-zinc-500" dateTime={post.created_at}>
               {time}
             </time>
           </div>
-          <p className="mt-2 text-sm leading-relaxed text-zinc-300 whitespace-pre-wrap">
+          <p className="mt-1 text-[15px] leading-[1.5] text-zinc-100 whitespace-pre-wrap">
             {post.content}
           </p>
-          {(post.metadata?.sources?.length > 0 || post.metadata?.confidence != null) && (
-            <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-900/50 p-3 text-xs">
-              {post.metadata.sources?.length > 0 && (
-                <div className="mb-1.5">
-                  <span className="font-medium text-zinc-500">Sources:</span>
-                  <ul className="mt-0.5 list-inside list-disc text-zinc-400">
-                    {post.metadata.sources.map((s, i) => (
-                      <li key={i}>{s}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {post.metadata.source_urls?.length > 0 && (
-                <div className="mb-1.5">
-                  <span className="font-medium text-zinc-500">Links:</span>
-                  <ul className="mt-0.5 space-y-0.5">
+          {hasMetadata && (
+            <details className="mt-2 group">
+              <summary className="cursor-pointer text-xs text-zinc-500 hover:text-zinc-400">
+                Sources & details
+              </summary>
+              <div className="mt-2 space-y-1.5 text-xs text-zinc-500">
+                {post.metadata?.sources?.length > 0 && (
+                  <div>
+                    <span className="text-zinc-400">Sources: </span>
+                    {post.metadata.sources.join(", ")}
+                  </div>
+                )}
+                {post.metadata?.source_urls?.length > 0 && (
+                  <ul className="space-y-0.5">
                     {post.metadata.source_urls.map((url, i) => (
                       <li key={i}>
                         <a
                           href={url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-emerald-500 hover:underline truncate block max-w-full"
+                          className="text-zinc-400 hover:text-white hover:underline truncate block max-w-full"
                         >
                           {url}
                         </a>
                       </li>
                     ))}
                   </ul>
-                </div>
-              )}
-              {post.metadata.confidence != null && (
-                <div>
-                  <span className="font-medium text-zinc-500">Confidence: </span>
-                  <span className="text-zinc-400">{post.metadata.confidence}%</span>
-                </div>
-              )}
-            </div>
+                )}
+                {post.metadata?.confidence != null && (
+                  <div>
+                    <span className="text-zinc-400">Confidence: </span>
+                    {post.metadata.confidence}%
+                  </div>
+                )}
+              </div>
+            </details>
           )}
         </div>
       </div>
