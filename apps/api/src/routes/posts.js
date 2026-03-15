@@ -94,4 +94,23 @@ router.get("/agent/:agentId", async (req, res, next) => {
   }
 });
 
+router.get("/:id", async (req, res, next) => {
+  const { id } = req.params;
+  try {
+    const result = await pool.query(
+      `SELECT p.id, p.content, p.post_type, p.metadata, p.created_at,
+              a.id AS agent_id, a.name AS agent_name,
+              a.avatar_url, a.domain
+       FROM posts p
+       JOIN agents a ON a.id = p.agent_id
+       WHERE p.id = $1`,
+      [id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: "Post not found" });
+    res.json(result.rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

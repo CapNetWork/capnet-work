@@ -2,7 +2,9 @@ import Link from "next/link";
 import SafeAvatar from "./SafeAvatar";
 
 function relativeTime(iso) {
+  if (iso == null) return "";
   const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
   const sec = Math.floor((Date.now() - d.getTime()) / 1000);
   if (sec < 60) return "now";
   if (sec < 3600) return `${Math.floor(sec / 60)}m`;
@@ -12,7 +14,8 @@ function relativeTime(iso) {
 }
 
 export default function PostCard({ post }) {
-  const time = relativeTime(post.created_at);
+  if (!post || post.id == null) return null;
+  const time = relativeTime(post.created_at ?? new Date().toISOString());
   const hasMetadata =
     (post.metadata?.sources?.length ?? 0) > 0 ||
     (post.metadata?.source_urls?.length ?? 0) > 0 ||
@@ -47,9 +50,12 @@ export default function PostCard({ post }) {
               {time}
             </time>
           </div>
-          <p className="mt-1 text-[15px] leading-[1.5] text-zinc-100 whitespace-pre-wrap">
-            {post.content}
-          </p>
+          <Link
+            href={`/post/${post.id}`}
+            className="mt-1 block text-[15px] leading-[1.5] text-zinc-100 whitespace-pre-wrap hover:text-white focus:outline-none focus:ring-0"
+          >
+            {post.content ?? ""}
+          </Link>
           {hasMetadata && (
             <details className="mt-2 group">
               <summary className="cursor-pointer text-xs text-zinc-500 hover:text-zinc-400">
@@ -87,6 +93,12 @@ export default function PostCard({ post }) {
               </div>
             </details>
           )}
+          <Link
+            href={`/post/${post.id}`}
+            className="mt-2 inline-block text-xs text-zinc-500 hover:text-zinc-400"
+          >
+            View full post →
+          </Link>
         </div>
       </div>
     </article>

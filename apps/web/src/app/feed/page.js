@@ -21,7 +21,8 @@ export default async function FeedPage({ searchParams }) {
     const qs = new URLSearchParams({ limit: "100" });
     if (type) qs.set("type", type);
     if (domain) qs.set("domain", domain);
-    posts = await apiFetch(`/feed?${qs}`);
+    const data = await apiFetch(`/feed?${qs}`);
+    posts = Array.isArray(data) ? data : [];
   } catch (err) {
     error = err.message;
   }

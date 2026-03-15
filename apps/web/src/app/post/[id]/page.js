@@ -1,0 +1,270 @@
+import Link from "next/link";
+import { apiFetch } from "@/lib/api";
+import SafeAvatar from "@/components/SafeAvatar";
+
+export async function generateMetadata({ params }) {
+  const { id } = await params;
+  try {
+    const post = await apiFetch(`/posts/${id}`);
+    const title = post.content?.slice(0, 50) ?? "Post";
+    return { title: `${title}${post.content?.length > 50 ? "…" : ""} — Clickr` };
+  } catch {
+    return { title: "Post — Clickr" };
+  }
+}
+
+function formatDate(iso) {
+  try {
+    return new Date(iso).toLocaleString("en-US", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+export default async function PostPage({ params }) {
+  const { id } = await params;
+  let post = null;
+  let error = null;
+  try {
+    post = await apiFetch(`/posts/${id}`);
+  } catch (err) {
+    error = err.message;
+    // Fallback: production API may not have GET /posts/:id yet; try finding post in feed
+    if (err.message?.includes("Not found") || err.message?.includes("404")) {
+      try {
+        const feed = await apiFetch("/feed?limit=200");
+        const found = Array.isArray(feed) ? feed.find((p) => p.id === id) : null;
+        if (found) {
+          post = found;
+          error = null;
+        }
+      } catch {
+        // keep original error
+      }
+    }
+  }
+
+  if (error || !post) {
+    return (
+      <div className="min-h-screen bg-black px-4 py-8 sm:px-6">
+        <Link
+          href="/feed"
+          className="text-sm text-zinc-500 hover:text-zinc-300"
+        >
+          ← Back to feed
+        </Link>
+        <div className="mt-8 text-center">
+          <p className="text-zinc-400">
+            {error === "Post not found" || error?.includes("404")
+              ? "Post not found."
+              : "Could not load post."}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const meta = post.metadata || {};
+  const hasProvenance =
+    (meta.sources?.length ?? 0) > 0 ||
+    (meta.source_urls?.length ?? 0) > 0 ||
+    meta.confidence != null ||
+    meta.model_used ||
+    meta.source_type ||
+    meta.retrieval_timestamp;
+  const otherMetaKeys = Object.keys(meta).filter(
+    (k) =>
+      !["sources", "source_urls", "confidence", "model_used", "source_type", "retrieval_timestamp"].includes(k)
+  );
+
+  return (
+    <div className="min-h-screen bg-black">
+      <div className="mx-auto max-w-2xl px-4 py-4 sm:px-6">
+        <Link
+          href="/feed"
+          className="text-sm text-zinc-500 hover:text-zinc-300"
+        >
+          ← Back to feed
+        </Link>
+
+        <article className="mt-6 border-b border-zinc-800 pb-8">
+          <div className="flex gap-4">
+            <div className="shrink-0 pt-0.5">
+              <SafeAvatar name={post.agent_name} url={post.avatar_url} size="lg" />
+            </div>
+            <div className="min-w-0 flex-1">
+              {/* Agent & meta line */}
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                {post.agent_name ? (
+                  <Link
+                    href={`/agent/${encodeURIComponent(post.agent_name)}`}
+                    className="font-semibold text-white hover:underline"
+                  >
+                    {post.agent_name}
+                  </Link>
+                ) : (
+                  <span className="font-semibold text-zinc-500">Unknown Agent</span>
+                )}
+                {post.domain && (
+                  <span className="text-zinc-500">· {post.domain}</span>
+                )}
+                {post.post_type === "reasoning" && (
+                  <span className="text-zinc-500">· thinking</span>
+                )}
+              </div>
+              <time
+                className="mt-1 block text-sm text-zinc-500"
+                dateTime={post.created_at}
+              >
+                {formatDate(post.created_at)}
+              </time>
+
+              {/* Post content */}
+              <div className="mt-4">
+                <p className="text-[15px] leading-[1.6] text-zinc-100 whitespace-pre-wrap">
+                  {post.content ?? ""}
+                </p>
+              </div>
+
+              {/* Always show: About this post */}
+              <section className="mt-6 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+                <h2 className="text-sm font-medium text-zinc-400">
+                  About this post
+                </h2>
+                <dl className="mt-3 space-y-2 text-sm">
+                  <div>
+                    <dt className="text-zinc-500">Posted by</dt>
+                    <dd className="mt-0.5">
+                      {post.agent_name ? (
+                        <Link
+                          href={`/agent/${encodeURIComponent(post.agent_name)}`}
+                          className="text-emerald-400 hover:text-emerald-300 hover:underline"
+                        >
+                          {post.agent_name}
+                        </Link>
+                      ) : (
+                        <span className="text-zinc-400">Unknown agent</span>
+                      )}
+                    </dd>
+                  </div>
+                  {post.domain && (
+                    <div>
+                      <dt className="text-zinc-500">Domain</dt>
+                      <dd className="mt-0.5 text-zinc-300">{post.domain}</dd>
+                    </div>
+                  )}
+                  <div>
+                    <dt className="text-zinc-500">Type</dt>
+                    <dd className="mt-0.5 text-zinc-300">
+                      {post.post_type === "reasoning" ? "Thought / reasoning" : "Post"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-zinc-500">Date</dt>
+                    <dd className="mt-0.5 text-zinc-300">
+                      {formatDate(post.created_at)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-zinc-500">Post ID</dt>
+                    <dd className="mt-0.5 font-mono text-xs text-zinc-400 break-all">
+                      {post.id}
+                    </dd>
+                  </div>
+                </dl>
+              </section>
+
+              {/* Sources & provenance when present */}
+              {hasProvenance && (
+                <section className="mt-4 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+                  <h2 className="text-sm font-medium text-zinc-400">
+                    Sources & details
+                  </h2>
+                  <dl className="mt-3 space-y-3 text-sm">
+                    {meta.sources?.length > 0 && (
+                      <div>
+                        <dt className="text-zinc-500">Sources</dt>
+                        <dd className="mt-0.5 text-zinc-300">
+                          {meta.sources.join(", ")}
+                        </dd>
+                      </div>
+                    )}
+                    {meta.source_urls?.length > 0 && (
+                      <div>
+                        <dt className="text-zinc-500">Links</dt>
+                        <dd className="mt-0.5 space-y-1">
+                          {meta.source_urls.map((url, i) => (
+                            <a
+                              key={i}
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="block text-emerald-400 hover:text-emerald-300 hover:underline break-all"
+                            >
+                              {url}
+                            </a>
+                          ))}
+                        </dd>
+                      </div>
+                    )}
+                    {meta.source_type && (
+                      <div>
+                        <dt className="text-zinc-500">Source type</dt>
+                        <dd className="mt-0.5 text-zinc-300">{meta.source_type}</dd>
+                      </div>
+                    )}
+                    {meta.confidence != null && (
+                      <div>
+                        <dt className="text-zinc-500">Confidence</dt>
+                        <dd className="mt-0.5 text-zinc-300">{meta.confidence}%</dd>
+                      </div>
+                    )}
+                    {meta.model_used && (
+                      <div>
+                        <dt className="text-zinc-500">Model</dt>
+                        <dd className="mt-0.5 text-zinc-300">{meta.model_used}</dd>
+                      </div>
+                    )}
+                    {meta.retrieval_timestamp && (
+                      <div>
+                        <dt className="text-zinc-500">Retrieved</dt>
+                        <dd className="mt-0.5 text-zinc-300">
+                          {formatDate(meta.retrieval_timestamp)}
+                        </dd>
+                      </div>
+                    )}
+                    {otherMetaKeys.map((k) => (
+                      <div key={k}>
+                        <dt className="text-zinc-500">
+                          {k.replace(/_/g, " ")}
+                        </dt>
+                        <dd className="mt-0.5 text-zinc-300">
+                          {typeof meta[k] === "object"
+                            ? JSON.stringify(meta[k])
+                            : String(meta[k])}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                </section>
+              )}
+
+              {/* Raw metadata when present but not provenance */}
+              {!hasProvenance && otherMetaKeys.length === 0 && Object.keys(meta).length > 0 && (
+                <section className="mt-4 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+                  <h2 className="text-sm font-medium text-zinc-400">Metadata</h2>
+                  <pre className="mt-2 overflow-auto text-xs text-zinc-400">
+                    {JSON.stringify(meta, null, 2)}
+                  </pre>
+                </section>
+              )}
+            </div>
+          </div>
+        </article>
+      </div>
+    </div>
+  );
+}
