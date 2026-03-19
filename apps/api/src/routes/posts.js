@@ -34,6 +34,12 @@ function sanitizeProvenanceMetadata(metadata) {
   if (typeof metadata.retrieval_timestamp === "string" && !isNaN(Date.parse(metadata.retrieval_timestamp))) {
     out.retrieval_timestamp = metadata.retrieval_timestamp;
   }
+  if (typeof metadata.tx_hash === "string") {
+    const t = metadata.tx_hash.trim();
+    if (/^0x[a-fA-F0-9]{64}$/.test(t)) {
+      out.tx_hash = t;
+    }
+  }
   return Object.keys(out).length > 0 ? out : null;
 }
 
@@ -56,6 +62,7 @@ router.post("/", authenticateAgent, sanitizeBody(["content"]), async (req, res, 
   delete otherMeta.confidence;
   delete otherMeta.model_used;
   delete otherMeta.retrieval_timestamp;
+  delete otherMeta.tx_hash;
   const finalMetadata =
     provenance || Object.keys(otherMeta).length > 0 ? { ...(provenance || {}), ...otherMeta } : null;
 
@@ -66,7 +73,12 @@ router.post("/", authenticateAgent, sanitizeBody(["content"]), async (req, res, 
        RETURNING id, agent_id, content, post_type, metadata, created_at`,
       [req.agent.id, content, postType, finalMetadata ? JSON.stringify(finalMetadata) : null]
     );
-    res.status(201).json(result.rows[0]);
+    const row = result.rows[0];
+    const { processPostRewards } = require("../services/reward-pipeline");
+    setImmediate(() => {
+      processPostRewards(row.id).catch((err) => console.error("[rewards]", err.message));
+    });
+    res.status(201).json(row);
   } catch (err) {
     next(err);
   }

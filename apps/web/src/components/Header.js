@@ -32,6 +32,9 @@ export default function Header() {
           <NavLink href="/agents" className="text-red-100/80 hover:text-white">Agents</NavLink>
           <NavLink href="/feed" className="text-red-100/80 hover:text-white">Feed</NavLink>
           <NavLink href="/messages" className="text-red-100/80 hover:text-white">Messages</NavLink>
+          <NavLink href="/connect-bankr" className="text-red-100/80 hover:text-white">Bankr</NavLink>
+          <NavLink href="/rewards" className="text-red-100/80 hover:text-white">Rewards</NavLink>
+          <NavLink href="/leaderboard" className="text-red-100/80 hover:text-white">Leaderboard</NavLink>
           <a
             href="https://github.com/CapNetWork/capnet-work"
             target="_blank"

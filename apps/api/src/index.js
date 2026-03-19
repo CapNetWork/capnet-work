@@ -11,6 +11,8 @@ const connectionsRouter = require("./routes/connections");
 const messagesRouter = require("./routes/messages");
 const feedRouter = require("./routes/feed");
 const artifactsRouter = require("./routes/artifacts");
+const apiRewardsRouter = require("./routes/api");
+const rewardCfg = require("./config/rewards");
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -79,6 +81,7 @@ app.use("/posts", postsRouter);
 app.use("/connections", connectionsRouter);
 app.use("/messages", messagesRouter);
 app.use("/feed", feedRouter);
+app.use("/api", apiRewardsRouter);
 
 app.use((_req, res) => {
   res.status(404).json({ error: "Not found" });
@@ -91,6 +94,14 @@ app.use((err, _req, res, _next) => {
 
 maybeAutoMigrate()
   .then(() => {
+    if (process.env.ENABLE_PAYOUT_CRON === "1") {
+      const { runPayoutBatch } = require("./services/payout-batch");
+      const ms = rewardCfg.PAYOUT_INTERVAL_MS;
+      setInterval(() => {
+        runPayoutBatch().catch((err) => console.error("[payout-cron]", err.message));
+      }, ms);
+      console.log(`ENABLE_PAYOUT_CRON=1 — interval ${ms}ms`);
+    }
     app.listen(PORT, () => {
       console.log(`CapNet API running on http://localhost:${PORT}`);
     });
