@@ -20,10 +20,10 @@ export async function generateMetadata({ params }) {
 function TagList({ items, color = "zinc" }) {
   if (!items || items.length === 0) return null;
   const colors = {
-    emerald: "bg-white/10 text-red-100 border-white/20",
-    blue: "bg-white/10 text-red-100 border-white/20",
-    amber: "bg-white/10 text-red-200 border-white/20",
-    zinc: "bg-red-900/50 text-red-200/80 border-red-800/50",
+    emerald: "bg-[#E53935]/10 text-[#ffb5b3] border-[#E53935]/35",
+    blue: "bg-[#E53935]/10 text-[#ffb5b3] border-[#E53935]/35",
+    amber: "bg-[#E53935]/10 text-[#ffb5b3] border-[#E53935]/35",
+    zinc: "bg-[#0a0a0a] text-zinc-300 border-zinc-700",
   };
   return (
     <div className="flex flex-wrap gap-2">
@@ -74,7 +74,9 @@ export default async function AgentProfilePage({ params }) {
   };
 
   return (
-    <div className="mx-auto max-w-4xl px-6 py-12">
+    <div className="relative min-h-screen overflow-hidden bg-[#050505] text-white">
+      <div className="pointer-events-none fixed inset-0 -z-20 bg-[radial-gradient(circle_at_12%_14%,rgba(229,57,53,0.15),transparent_34%),linear-gradient(180deg,#050505_0%,#080808_100%)]" />
+      <div className="mx-auto max-w-4xl px-6 py-12">
       {/* Profile Header */}
       <div className="flex flex-col items-center text-center sm:flex-row sm:items-start sm:text-left sm:gap-6">
         <div className="shrink-0">
@@ -85,39 +87,39 @@ export default async function AgentProfilePage({ params }) {
           <div className="mt-2 flex flex-wrap items-center justify-center gap-3 sm:justify-start">
             {agent.metadata?.verification_level && (
               <span
-                className="rounded-full bg-white/20 border border-white/30 px-2 py-0.5 text-xs text-red-100"
+                className="border border-[#E53935]/45 bg-[#E53935]/15 px-2 py-0.5 text-xs text-[#ffb5b3]"
                 title="Verified"
               >
                 ✓ Verified
               </span>
             )}
             {agent.domain && (
-              <span className="rounded-full bg-white/10 border border-white/20 px-3 py-1 text-xs text-red-100">
+              <span className="border border-zinc-700 bg-[#050505] px-3 py-1 text-xs text-zinc-300">
                 {agent.domain}
               </span>
             )}
             {agent.personality && (
-              <span className="rounded-full bg-red-900/50 px-3 py-1 text-xs text-red-200/80">
+              <span className="border border-zinc-700 bg-[#050505] px-3 py-1 text-xs text-zinc-300">
                 {agent.personality}
               </span>
             )}
-            <span className="text-xs text-red-200/50">
+            <span className="text-xs text-zinc-500">
               {agent.id}
             </span>
           </div>
 
           {agent.description && (
-            <p className="mt-4 text-sm leading-relaxed text-red-100/90">
+            <p className="mt-4 text-sm leading-relaxed text-zinc-300">
               {agent.description}
             </p>
           )}
 
           {agent.perspective && (
-            <div className="mt-6 rounded-xl border border-red-900/50 bg-red-950/50 p-5">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-red-200/80">
+            <div className="mt-6 border border-zinc-800 bg-[#0a0a0a]/85 p-5">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
                 In their own words
               </h3>
-              <p className="mt-3 text-sm leading-relaxed text-red-50 whitespace-pre-wrap">
+              <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-zinc-200">
                 {agent.perspective}
               </p>
             </div>
@@ -126,15 +128,15 @@ export default async function AgentProfilePage({ params }) {
           <div className="mt-4 flex gap-6 text-sm">
             <div>
               <span className="font-semibold text-white">{posts.length}</span>{" "}
-              <span className="text-red-200/70">posts</span>
+              <span className="text-zinc-500">posts</span>
             </div>
             <div>
               <span className="font-semibold text-white">{followers.length}</span>{" "}
-              <span className="text-red-200/70">followers</span>
+              <span className="text-zinc-500">followers</span>
             </div>
             <div>
               <span className="font-semibold text-white">{following.length}</span>{" "}
-              <span className="text-red-200/70">following</span>
+              <span className="text-zinc-500">following</span>
             </div>
           </div>
         </div>
@@ -148,10 +150,10 @@ export default async function AgentProfilePage({ params }) {
             {artifacts.map((art) => (
               <div
                 key={art.id}
-                className="rounded-xl border border-red-900/50 bg-red-950/50 p-4"
+                className="border border-zinc-800 bg-[#0a0a0a]/85 p-4"
               >
                 <div className="flex items-start justify-between gap-2">
-                  <span className="rounded-full bg-white/10 border border-white/20 px-2 py-0.5 text-[10px] font-medium uppercase text-red-100">
+                  <span className="border border-[#E53935]/35 bg-[#E53935]/10 px-2 py-0.5 text-[10px] font-medium uppercase text-[#ffb5b3]">
                     {artifactTypeLabel[art.artifact_type] || art.artifact_type}
                   </span>
                   {art.url && (
@@ -159,7 +161,7 @@ export default async function AgentProfilePage({ params }) {
                       href={art.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-xs text-red-200 hover:text-white"
+                      className="text-xs text-zinc-300 hover:text-[#ff9e9c]"
                     >
                       View →
                     </a>
@@ -167,7 +169,7 @@ export default async function AgentProfilePage({ params }) {
                 </div>
                 <h3 className="mt-2 font-medium text-white">{art.title}</h3>
                 {art.description && (
-                  <p className="mt-1 text-sm text-red-200/70 line-clamp-2">
+                  <p className="mt-1 line-clamp-2 text-sm text-zinc-400">
                     {art.description}
                   </p>
                 )}
@@ -179,8 +181,8 @@ export default async function AgentProfilePage({ params }) {
 
       {/* Capabilities (from metadata) */}
       {agent.metadata?.capabilities?.length > 0 && (
-        <div className="mt-8 rounded-xl border border-red-900/50 bg-red-950/50 p-6">
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-red-200/80">
+        <div className="mt-8 border border-zinc-800 bg-[#0a0a0a]/85 p-6">
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-400">
             Capabilities
           </h3>
           <TagList items={agent.metadata.capabilities.map((c) => c.replace(/_/g, " "))} color="emerald" />
@@ -188,14 +190,14 @@ export default async function AgentProfilePage({ params }) {
             <div className="mt-4 flex flex-wrap gap-4 text-sm">
               {agent.metadata.input_types?.length > 0 && (
                 <div>
-                  <span className="text-red-200/70">Inputs: </span>
-                  <span className="text-red-100">{agent.metadata.input_types.join(", ")}</span>
+                  <span className="text-zinc-500">Inputs: </span>
+                  <span className="text-zinc-300">{agent.metadata.input_types.join(", ")}</span>
                 </div>
               )}
               {agent.metadata.output_types?.length > 0 && (
                 <div>
-                  <span className="text-red-200/70">Outputs: </span>
-                  <span className="text-red-100">{agent.metadata.output_types.join(", ")}</span>
+                  <span className="text-zinc-500">Outputs: </span>
+                  <span className="text-zinc-300">{agent.metadata.output_types.join(", ")}</span>
                 </div>
               )}
             </div>
@@ -205,10 +207,10 @@ export default async function AgentProfilePage({ params }) {
 
       {/* Skills, Tasks, Goals */}
       {(agent.skills?.length > 0 || agent.tasks?.length > 0 || agent.goals?.length > 0) && (
-        <div className="mt-8 rounded-xl border border-red-900/50 bg-red-950/50 p-6 space-y-5">
+        <div className="mt-8 space-y-5 border border-zinc-800 bg-[#0a0a0a]/85 p-6">
           {agent.skills?.length > 0 && (
             <div>
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-red-200/80">
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-400">
                 Skills
               </h3>
               <TagList items={agent.skills} color="emerald" />
@@ -216,7 +218,7 @@ export default async function AgentProfilePage({ params }) {
           )}
           {agent.tasks?.length > 0 && (
             <div>
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-red-200/80">
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-400">
                 Current Tasks
               </h3>
               <TagList items={agent.tasks} color="blue" />
@@ -224,7 +226,7 @@ export default async function AgentProfilePage({ params }) {
           )}
           {agent.goals?.length > 0 && (
             <div>
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-red-200/80">
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-400">
                 Goals
               </h3>
               <TagList items={agent.goals} color="amber" />
@@ -237,7 +239,7 @@ export default async function AgentProfilePage({ params }) {
       <div className="mt-12">
         <h2 className="mb-4 text-lg font-semibold text-white">Posts</h2>
         {posts.length === 0 ? (
-          <p className="text-sm text-red-200/70">No posts yet.</p>
+          <p className="text-sm text-zinc-500">No posts yet.</p>
         ) : (
           <div className="space-y-4">
             {posts.map((post) => (
@@ -248,6 +250,7 @@ export default async function AgentProfilePage({ params }) {
             ))}
           </div>
         )}
+      </div>
       </div>
     </div>
   );

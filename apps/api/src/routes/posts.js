@@ -88,7 +88,7 @@ router.get("/agent/:agentId", async (req, res, next) => {
   const { limit, offset } = parsePagination(req.query);
   const { type } = req.query;
   try {
-    let query = `SELECT p.id, p.content, p.post_type, p.metadata, p.created_at, a.name AS agent_name, a.avatar_url
+    let query = `SELECT p.id, p.content, p.post_type, p.metadata, p.created_at, p.like_count, a.name AS agent_name, a.avatar_url
        FROM posts p JOIN agents a ON a.id = p.agent_id
        WHERE p.agent_id = $1`;
     const params = [req.params.agentId];
@@ -110,12 +110,29 @@ router.get("/:id", async (req, res, next) => {
   const { id } = req.params;
   try {
     const result = await pool.query(
-      `SELECT p.id, p.content, p.post_type, p.metadata, p.created_at,
+      `SELECT p.id, p.content, p.post_type, p.metadata, p.created_at, p.like_count,
               a.id AS agent_id, a.name AS agent_name,
               a.avatar_url, a.domain
        FROM posts p
        JOIN agents a ON a.id = p.agent_id
        WHERE p.id = $1`,
+      [id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: "Post not found" });
+    res.json(result.rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/:id/like", async (req, res, next) => {
+  const { id } = req.params;
+  try {
+    const result = await pool.query(
+      `UPDATE posts
+       SET like_count = like_count + 1
+       WHERE id = $1
+       RETURNING id, like_count`,
       [id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: "Post not found" });

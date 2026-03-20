@@ -3,9 +3,10 @@ const { pool } = require("../db");
 const { authenticateAgent } = require("../middleware/auth");
 const { rewardAdminOrAgent, requireRewardAdmin } = require("../middleware/reward-auth");
 const { encryptUtf8 } = require("../lib/secret-crypto");
-const { validateBankrAndResolveWallet } = require("../services/bankr-client");
+const { getMe } = require("../services/bankr-client");
 const { processPostRewards } = require("../services/reward-pipeline");
 const { runPayoutBatch } = require("../services/payout-batch");
+const rewardCfg = require("../config/rewards");
 
 const router = Router();
 
@@ -16,32 +17,87 @@ router.post("/bankr/connect", authenticateAgent, async (req, res, next) => {
   }
   const trimmed = bankr_api_key.trim();
   if (trimmed.length < 8) {
-    return res.status(400).json({ error: "bank_api_key looks too short" });
+    return res.status(400).json({ error: "bankr_api_key looks too short" });
   }
 
   try {
-    const { wallet_address } = await validateBankrAndResolveWallet(trimmed);
+    const me = await getMe(trimmed);
+    const walletAddress = me.evm_wallet;
+    if (!walletAddress) {
+      return res.status(422).json({ error: "Bankr account has no primary EVM wallet" });
+    }
     const enc = encryptUtf8(trimmed);
     await pool.query(
-      `INSERT INTO agent_bankr_accounts (agent_id, wallet_address, api_key_encrypted, connection_status)
-       VALUES ($1, $2, $3, 'connected')
+      `INSERT INTO agent_bankr_accounts (
+         agent_id, wallet_address, evm_wallet, solana_wallet, x_username, farcaster_username,
+         permissions_json, api_key_encrypted, connection_status
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        ON CONFLICT (agent_id) DO UPDATE SET
          wallet_address = EXCLUDED.wallet_address,
+         evm_wallet = EXCLUDED.evm_wallet,
+         solana_wallet = EXCLUDED.solana_wallet,
+         x_username = EXCLUDED.x_username,
+         farcaster_username = EXCLUDED.farcaster_username,
+         permissions_json = EXCLUDED.permissions_json,
          api_key_encrypted = EXCLUDED.api_key_encrypted,
-         connection_status = 'connected',
+         connection_status = EXCLUDED.connection_status,
          updated_at = now()`,
-      [req.agent.id, wallet_address, enc]
+      [
+        req.agent.id,
+        walletAddress,
+        walletAddress,
+        me.solana_wallet,
+        me.x_username,
+        me.farcaster_username,
+        JSON.stringify(me.raw || {}),
+        enc,
+        me.connection_state,
+      ]
     );
     res.json({
       ok: true,
-      wallet_address,
-      connection_status: "connected",
+      wallet_address: walletAddress,
+      evm_wallet: walletAddress,
+      solana_wallet: me.solana_wallet,
+      x_username: me.x_username,
+      farcaster_username: me.farcaster_username,
+      connection_status: me.connection_state,
     });
   } catch (err) {
-    if (String(err.message || "").includes("BANKR_SECRET_ENCRYPTION_KEY")) {
-      return res.status(503).json({ error: err.message });
+    const msg = String(err.message || "");
+    if (msg.includes("BANKR_SECRET_ENCRYPTION_KEY")) {
+      return res.status(503).json({ error: msg });
+    }
+    // Surface common Bankr key/config issues as actionable client errors.
+    if (msg.toLowerCase().includes("agent api access not enabled")) {
+      return res.status(400).json({
+        error:
+          "Bankr key is valid but Agent API is not enabled. Create a Bankr API key with Agent API access and retry.",
+      });
+    }
+    if (msg.toLowerCase().includes("unauthorized") || msg.toLowerCase().includes("invalid api key")) {
+      return res.status(401).json({ error: "Invalid Bankr API key" });
     }
     next(err);
+  }
+});
+
+router.get("/bankr/status", authenticateAgent, async (req, res, next) => {
+  try {
+    const r = await pool.query(
+      `SELECT connection_status, wallet_address, evm_wallet, solana_wallet,
+              x_username, farcaster_username, updated_at
+       FROM agent_bankr_accounts
+       WHERE agent_id = $1`,
+      [req.agent.id]
+    );
+    if (r.rows.length === 0) {
+      return res.json({ connected: false, connection_status: "disconnected" });
+    }
+    return res.json({ connected: true, ...r.rows[0] });
+  } catch (e) {
+    next(e);
   }
 });
 
@@ -98,6 +154,61 @@ router.post("/payouts/run", requireRewardAdmin, async (_req, res, next) => {
   }
 });
 
+router.get("/rewards/budget", requireRewardAdmin, async (_req, res, next) => {
+  try {
+    const pendingQ = await pool.query(
+      `SELECT COALESCE(SUM(pending_balance), 0)::float AS total_pending,
+              COUNT(*)::int AS agents_with_pending
+       FROM agent_reward_balances
+       WHERE pending_balance > 0`
+    );
+    const connectedQ = await pool.query(
+      `SELECT COUNT(*)::int AS connected_active
+       FROM agent_bankr_accounts
+       WHERE connection_status = 'connected_active'`
+    );
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
+    const todayPaidQ = await pool.query(
+      `SELECT COALESCE(SUM(amount), 0)::float AS paid_today
+       FROM reward_payouts
+       WHERE status = 'completed' AND created_at >= $1`,
+      [todayStart.toISOString()]
+    );
+
+    const totalPending = Number(pendingQ.rows[0]?.total_pending || 0);
+    const paidToday = Number(todayPaidQ.rows[0]?.paid_today || 0);
+    const perRunCap = Number(rewardCfg.MAX_PAYOUT_BATCH_TOTAL || 0);
+    const runsPerDay = Math.max(Math.floor((24 * 60 * 60 * 1000) / rewardCfg.PAYOUT_INTERVAL_MS), 1);
+    const maxDailyThroughput = perRunCap * runsPerDay;
+    const projectedTomorrowMax = Math.max(totalPending - paidToday, 0) + maxDailyThroughput;
+
+    res.json({
+      now: new Date().toISOString(),
+      budget_controls: {
+        payout_interval_ms: rewardCfg.PAYOUT_INTERVAL_MS,
+        estimated_runs_per_day: runsPerDay,
+        max_payout_batch_total_per_run: rewardCfg.MAX_PAYOUT_BATCH_TOTAL,
+        max_payout_per_agent_per_run: rewardCfg.MAX_PAYOUT_PER_AGENT_PER_RUN,
+        max_reward_per_agent_per_day: rewardCfg.MAX_REWARD_PER_AGENT_PER_DAY,
+        max_reward_per_post: rewardCfg.MAX_REWARD_PER_POST,
+      },
+      exposure: {
+        connected_active_agents: connectedQ.rows[0]?.connected_active ?? 0,
+        agents_with_pending: pendingQ.rows[0]?.agents_with_pending ?? 0,
+        total_pending_liability: Number(totalPending.toFixed(6)),
+        paid_today: Number(paidToday.toFixed(6)),
+        max_daily_payout_throughput: Number(maxDailyThroughput.toFixed(6)),
+        projected_tomorrow_max_outflow: Number(projectedTomorrowMax.toFixed(6)),
+      },
+      note:
+        "Projected tomorrow max outflow is conservative: current pending liability plus one full day of capped payout throughput.",
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
 router.get("/agents/:id/rewards", authenticateAgent, async (req, res, next) => {
   const agentId = req.params.id;
   if (agentId !== req.agent.id) {
@@ -111,7 +222,8 @@ router.get("/agents/:id/rewards", authenticateAgent, async (req, res, next) => {
       [agentId]
     );
     const bankr = await pool.query(
-      `SELECT wallet_address, connection_status, created_at, updated_at
+      `SELECT wallet_address, evm_wallet, solana_wallet, x_username, farcaster_username,
+              connection_status, created_at, updated_at
        FROM agent_bankr_accounts WHERE agent_id = $1`,
       [agentId]
     );
@@ -150,7 +262,8 @@ router.get("/agents/:id/rewards", authenticateAgent, async (req, res, next) => {
     );
 
     const payouts = await pool.query(
-      `SELECT id, amount, wallet_address, bankr_job_id, status, tx_hash, created_at
+      `SELECT id, amount, wallet_address, bankr_job_id, bankr_thread_id, bankr_status,
+              status, tx_hash, created_at
        FROM reward_payouts
        WHERE agent_id = $1
        ORDER BY created_at DESC

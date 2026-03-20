@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import SafeAvatar from "@/components/SafeAvatar";
+import LikeButton from "@/components/LikeButton";
 
 export async function generateMetadata({ params }) {
   const { id } = await params;
@@ -49,15 +50,15 @@ export default async function PostPage({ params }) {
 
   if (error || !post) {
     return (
-      <div className="min-h-screen bg-black px-4 py-8 sm:px-6">
+      <div className="min-h-screen bg-[#050505] px-4 py-8 text-white sm:px-6">
         <Link
           href="/feed"
-          className="text-sm text-zinc-500 hover:text-zinc-300"
+          className="text-sm text-zinc-500 hover:text-[#ff9e9c]"
         >
           ← Back to feed
         </Link>
         <div className="mt-8 text-center">
-          <p className="text-zinc-400">
+          <p className="text-zinc-300">
             {error === "Post not found" || error?.includes("404")
               ? "Post not found."
               : "Could not load post."}
@@ -81,16 +82,17 @@ export default async function PostPage({ params }) {
   );
 
   return (
-    <div className="min-h-screen bg-black">
+    <div className="relative min-h-screen overflow-hidden bg-[#050505] text-white">
+      <div className="pointer-events-none fixed inset-0 -z-20 bg-[radial-gradient(circle_at_12%_14%,rgba(229,57,53,0.14),transparent_34%),linear-gradient(180deg,#050505_0%,#080808_100%)]" />
       <div className="mx-auto max-w-2xl px-4 py-4 sm:px-6">
         <Link
           href="/feed"
-          className="text-sm text-zinc-500 hover:text-zinc-300"
+          className="text-sm text-zinc-500 hover:text-[#ff9e9c]"
         >
           ← Back to feed
         </Link>
 
-        <article className="mt-6 border-b border-zinc-800 pb-8">
+        <article className="mt-6 border-b border-zinc-800 bg-[#0a0a0a]/70 p-5 pb-8">
           <div className="flex gap-4">
             <div className="shrink-0 pt-0.5">
               <SafeAvatar name={post.agent_name} url={post.avatar_url} size="lg" />
@@ -101,7 +103,7 @@ export default async function PostPage({ params }) {
                 {post.agent_name ? (
                   <Link
                     href={`/agent/${encodeURIComponent(post.agent_name)}`}
-                    className="font-semibold text-white hover:underline"
+                    className="font-semibold uppercase tracking-tight text-[#E53935] hover:underline"
                   >
                     {post.agent_name}
                   </Link>
@@ -109,14 +111,16 @@ export default async function PostPage({ params }) {
                   <span className="font-semibold text-zinc-500">Unknown Agent</span>
                 )}
                 {post.domain && (
-                  <span className="text-zinc-500">· {post.domain}</span>
+                  <span className="border border-[#E53935]/40 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#ffb5b3]">
+                    {post.domain}
+                  </span>
                 )}
                 {post.post_type === "reasoning" && (
                   <span className="text-zinc-500">· thinking</span>
                 )}
               </div>
               <time
-                className="mt-1 block text-sm text-zinc-500"
+                className="mt-1 block text-[11px] uppercase tracking-wider text-zinc-500"
                 dateTime={post.created_at}
               >
                 {formatDate(post.created_at)}
@@ -124,13 +128,14 @@ export default async function PostPage({ params }) {
 
               {/* Post content */}
               <div className="mt-4">
-                <p className="text-[15px] leading-[1.6] text-zinc-100 whitespace-pre-wrap">
+                <p className="whitespace-pre-wrap text-[15px] leading-[1.6] text-zinc-300">
                   {post.content ?? ""}
                 </p>
+                <LikeButton postId={post.id} initialLikeCount={post.like_count} />
               </div>
 
               {/* Always show: About this post */}
-              <section className="mt-6 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+              <section className="mt-6 border border-zinc-800 bg-[#0a0a0a]/85 p-4">
                 <h2 className="text-sm font-medium text-zinc-400">
                   About this post
                 </h2>
@@ -141,7 +146,7 @@ export default async function PostPage({ params }) {
                       {post.agent_name ? (
                         <Link
                           href={`/agent/${encodeURIComponent(post.agent_name)}`}
-                          className="text-emerald-400 hover:text-emerald-300 hover:underline"
+                          className="text-[#ff9e9c] hover:text-[#ffb5b3] hover:underline"
                         >
                           {post.agent_name}
                         </Link>
@@ -179,7 +184,7 @@ export default async function PostPage({ params }) {
 
               {/* Sources & provenance when present */}
               {hasProvenance && (
-                <section className="mt-4 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+                <section className="mt-4 border border-zinc-800 bg-[#0a0a0a]/85 p-4">
                   <h2 className="text-sm font-medium text-zinc-400">
                     Sources & details
                   </h2>
@@ -202,7 +207,7 @@ export default async function PostPage({ params }) {
                               href={url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="block text-emerald-400 hover:text-emerald-300 hover:underline break-all"
+                              className="block break-all text-[#ff9e9c] hover:text-[#ffb5b3] hover:underline"
                             >
                               {url}
                             </a>
@@ -254,7 +259,7 @@ export default async function PostPage({ params }) {
 
               {/* Raw metadata when present but not provenance */}
               {!hasProvenance && otherMetaKeys.length === 0 && Object.keys(meta).length > 0 && (
-                <section className="mt-4 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+                <section className="mt-4 border border-zinc-800 bg-[#0a0a0a]/85 p-4">
                   <h2 className="text-sm font-medium text-zinc-400">Metadata</h2>
                   <pre className="mt-2 overflow-auto text-xs text-zinc-400">
                     {JSON.stringify(meta, null, 2)}

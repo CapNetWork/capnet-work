@@ -1,6 +1,10 @@
 /**
- * Bankr HTTP integration — validate keys, resolve payout wallet, submit prompt-based payouts.
- * Configure BANKR_API_BASE_URL, or set BANKR_DEV_SKIP_VALIDATE=1 for local integration tests.
+ * Bankr HTTP integration on first-party Agent API primitives:
+ * - GET /agent/me
+ * - POST /agent/prompt
+ * - GET /agent/job/:jobId
+ * - POST /agent/sign
+ * - POST /agent/submit
  */
 
 async function parseJsonSafe(res) {
@@ -13,89 +17,187 @@ async function parseJsonSafe(res) {
 }
 
 function baseUrl() {
-  const b = process.env.BANKR_API_BASE_URL;
-  if (!b) return null;
-  return String(b).replace(/\/$/, "");
+  return String(process.env.BANKR_API_BASE_URL || "https://api.bankr.bot").replace(/\/$/, "");
 }
 
-/**
- * Validate Bankr API key and return payout wallet address.
- * Expects JSON: { wallet_address } | { wallet } | { address } from Bankr when BANKR_VALIDATE_PATH is used.
- */
-async function validateBankrAndResolveWallet(bankrApiKey) {
+function headers(apiKey, withJson = false) {
+  const h = {
+    Accept: "application/json",
+    "X-API-Key": apiKey,
+  };
+  if (withJson) h["Content-Type"] = "application/json";
+  return h;
+}
+
+function isEvmAddress(v) {
+  return typeof v === "string" && /^0x[a-fA-F0-9]{40}$/.test(v.trim());
+}
+
+function firstString(values) {
+  for (const v of values) {
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return null;
+}
+
+function pickWalletFromArray(arr, chainMatcher) {
+  if (!Array.isArray(arr)) return null;
+  for (const item of arr) {
+    if (!item || typeof item !== "object") continue;
+    const chain = String(item.chain || item.network || item.type || "").toLowerCase();
+    if (chainMatcher(chain)) {
+      const addr = firstString([item.address, item.wallet, item.walletAddress, item.publicKey]);
+      if (addr) return addr;
+    }
+    const fallbackAddr = firstString([item.address, item.wallet, item.walletAddress, item.publicKey]);
+    if (fallbackAddr && chainMatcher("")) return fallbackAddr;
+  }
+  return null;
+}
+
+function normalizeWallets(me) {
+  const data = me?.data || {};
+  const wallets = me?.wallets || data.wallets || {};
+  const walletList = me?.wallets_list || data.wallets_list || me?.addresses || data.addresses || [];
+
+  const evmDirect = firstString([
+    wallets.evm,
+    wallets.ethereum,
+    wallets.base,
+    me?.wallet_address,
+    me?.walletAddress,
+    me?.evm_wallet,
+    data?.wallet_address,
+    data?.evm_wallet,
+  ]);
+  const evmFromList =
+    pickWalletFromArray(walletList, (chain) => chain.includes("evm") || chain.includes("eth") || chain.includes("base")) ||
+    pickWalletFromArray(Array.isArray(wallets) ? wallets : null, (chain) => chain.includes("evm") || chain.includes("eth") || chain.includes("base"));
+  const evmHeuristic = [me?.address, me?.wallet, data?.address, data?.wallet].find((v) => isEvmAddress(v)) || null;
+
+  const solDirect = firstString([wallets.solana, wallets.sol, me?.solana_wallet, me?.solanaWallet, data?.solana_wallet]);
+  const solFromList =
+    pickWalletFromArray(walletList, (chain) => chain.includes("sol")) ||
+    pickWalletFromArray(Array.isArray(wallets) ? wallets : null, (chain) => chain.includes("sol"));
+
+  const evm = evmDirect || evmFromList || evmHeuristic || null;
+  const solana = solDirect || solFromList || null;
+  return {
+    evm_wallet: typeof evm === "string" ? evm.trim() : null,
+    solana_wallet: typeof solana === "string" ? solana.trim() : null,
+  };
+}
+
+function normalizeSocials(me) {
+  const src = me?.socials || me?.profiles || me?.accounts || {};
+  return {
+    x_username: typeof src.x === "string" ? src.x : typeof src.twitter === "string" ? src.twitter : null,
+    farcaster_username:
+      typeof src.farcaster === "string" ? src.farcaster : typeof src.warpcast === "string" ? src.warpcast : null,
+  };
+}
+
+function inferConnectionState(me) {
+  const perms = me?.permissions || me?.apiKey || {};
+  const readOnly = Boolean(perms.readOnly || perms.read_only);
+  const agentEnabled = perms.agentApiEnabled ?? perms.agent_api_enabled;
+  if (agentEnabled === false) return "connected_readonly";
+  return readOnly ? "connected_readonly" : "connected_active";
+}
+
+async function getMe(apiKey) {
   if (process.env.BANKR_DEV_SKIP_VALIDATE === "1") {
-    const mock = process.env.BANKR_DEV_MOCK_WALLET || "0x0000000000000000000000000000000000000000";
-    return { wallet_address: mock };
+    return {
+      evm_wallet: process.env.BANKR_DEV_MOCK_WALLET || "0x0000000000000000000000000000000000000000",
+      solana_wallet: process.env.BANKR_DEV_MOCK_SOLANA_WALLET || null,
+      x_username: "dev_mode",
+      farcaster_username: null,
+      connection_state: "connected_active",
+      raw: { dev: true },
+    };
   }
 
-  const base = baseUrl();
-  if (!base) {
-    throw new Error("BANKR_API_BASE_URL is not set; cannot validate Bankr connection");
-  }
-
-  const path = process.env.BANKR_VALIDATE_PATH || "/v1/wallet";
-  const res = await fetch(`${base}${path}`, {
+  const res = await fetch(`${baseUrl()}/agent/me`, {
     method: "GET",
-    headers: {
-      Authorization: `Bearer ${bankrApiKey}`,
-      Accept: "application/json",
-    },
+    headers: headers(apiKey),
   });
-
   const data = await parseJsonSafe(res);
   if (!res.ok) {
     const msg = data.error || data.message || res.statusText;
-    throw new Error(typeof msg === "string" ? msg : `Bankr validation failed (${res.status})`);
+    throw new Error(typeof msg === "string" ? msg : `Bankr /agent/me failed (${res.status})`);
   }
-
-  const wallet =
-    data.wallet_address ||
-    data.walletAddress ||
-    data.wallet ||
-    data.address ||
-    (typeof data.default_wallet === "string" ? data.default_wallet : null);
-
-  if (!wallet || typeof wallet !== "string") {
-    throw new Error("Bankr response did not include a wallet address");
-  }
-
-  return { wallet_address: wallet.trim() };
+  return {
+    ...normalizeWallets(data),
+    ...normalizeSocials(data),
+    connection_state: inferConnectionState(data),
+    raw: data,
+  };
 }
 
-/**
- * Submit a natural-language payout prompt to Bankr.
- * Returns { job_id, status } — shapes depend on Bankr API; we persist best-effort.
- */
-async function submitPayoutPrompt({ bankrApiKey, amountUsdc, recipientWallet }) {
-  const prompt = `Send ${amountUsdc} USDC on Base to ${recipientWallet} for Clickr posting reward`;
-
+async function createPromptJob(apiKey, prompt) {
   if (process.env.BANKR_DEV_SKIP_VALIDATE === "1") {
-    return { job_id: `dev_${Date.now()}`, status: "submitted", prompt };
+    return { job_id: `dev_${Date.now()}`, thread_id: `thread_${Date.now()}`, status: "queued" };
   }
-
-  const base = baseUrl();
-  if (!base) throw new Error("BANKR_API_BASE_URL is not set");
-
-  const path = process.env.BANKR_PAYOUT_PATH || "/v1/prompt";
-  const res = await fetch(`${base}${path}`, {
+  const res = await fetch(`${baseUrl()}/agent/prompt`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${bankrApiKey}`,
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
+    headers: headers(apiKey, true),
     body: JSON.stringify({ prompt }),
   });
-
   const data = await parseJsonSafe(res);
   if (!res.ok) {
     const msg = data.error || data.message || res.statusText;
-    throw new Error(typeof msg === "string" ? msg : `Bankr payout failed (${res.status})`);
+    throw new Error(typeof msg === "string" ? msg : `Bankr /agent/prompt failed (${res.status})`);
   }
-
-  const jobId = data.job_id || data.id || data.jobId || null;
-  const status = data.status || "submitted";
-  return { job_id: jobId, status, prompt };
+  return {
+    job_id: data.jobId || data.job_id || data.id || null,
+    thread_id: data.threadId || data.thread_id || null,
+    status: data.status || "queued",
+    raw: data,
+  };
 }
 
-module.exports = { validateBankrAndResolveWallet, submitPayoutPrompt };
+async function getJob(apiKey, jobId) {
+  if (process.env.BANKR_DEV_SKIP_VALIDATE === "1") {
+    return { status: "completed", raw: { dev: true, jobId } };
+  }
+  const res = await fetch(`${baseUrl()}/agent/job/${encodeURIComponent(jobId)}`, {
+    method: "GET",
+    headers: headers(apiKey),
+  });
+  const data = await parseJsonSafe(res);
+  if (!res.ok) {
+    const msg = data.error || data.message || res.statusText;
+    throw new Error(typeof msg === "string" ? msg : `Bankr /agent/job failed (${res.status})`);
+  }
+  return { status: data.status || "unknown", raw: data };
+}
+
+async function sign(apiKey, payload) {
+  const res = await fetch(`${baseUrl()}/agent/sign`, {
+    method: "POST",
+    headers: headers(apiKey, true),
+    body: JSON.stringify(payload),
+  });
+  const data = await parseJsonSafe(res);
+  if (!res.ok) {
+    const msg = data.error || data.message || res.statusText;
+    throw new Error(typeof msg === "string" ? msg : `Bankr /agent/sign failed (${res.status})`);
+  }
+  return data;
+}
+
+async function submit(apiKey, transaction) {
+  const res = await fetch(`${baseUrl()}/agent/submit`, {
+    method: "POST",
+    headers: headers(apiKey, true),
+    body: JSON.stringify(transaction),
+  });
+  const data = await parseJsonSafe(res);
+  if (!res.ok) {
+    const msg = data.error || data.message || res.statusText;
+    throw new Error(typeof msg === "string" ? msg : `Bankr /agent/submit failed (${res.status})`);
+  }
+  return data;
+}
+
+module.exports = { getMe, createPromptJob, getJob, sign, submit };

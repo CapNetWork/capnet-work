@@ -10,13 +10,13 @@ export default function ConnectBankrPage() {
   const [bankrKey, setBankrKey] = useState("");
   const [status, setStatus] = useState("idle");
   const [message, setMessage] = useState("");
-  const [wallet, setWallet] = useState("");
+  const [connection, setConnection] = useState(null);
 
   async function onSubmit(e) {
     e.preventDefault();
     setStatus("loading");
     setMessage("");
-    setWallet("");
+    setConnection(null);
     try {
       const res = await fetch(`${API_URL}/api/bankr/connect`, {
         method: "POST",
@@ -31,25 +31,59 @@ export default function ConnectBankrPage() {
         throw new Error(data.error || res.statusText);
       }
       setStatus("success");
-      setWallet(data.wallet_address || "");
-      setMessage("Bankr is connected. Your wallet is linked for payouts.");
+      setConnection(data);
+      setMessage("Bankr connected successfully.");
     } catch (err) {
       setStatus("error");
       setMessage(err.message || "Connection failed");
     }
   }
 
+  async function onCheckStatus() {
+    if (!capnetKey.trim()) {
+      setStatus("error");
+      setMessage("Enter your CapNet agent API key first.");
+      return;
+    }
+    setStatus("loading");
+    setMessage("");
+    try {
+      const res = await fetch(`${API_URL}/api/bankr/status`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${capnetKey.trim()}`,
+        },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      if (!data.connected) {
+        setStatus("idle");
+        setConnection(null);
+        setMessage("No Bankr connection saved for this agent yet.");
+        return;
+      }
+      setStatus("success");
+      setConnection(data);
+      setMessage("Loaded Bankr connection status.");
+    } catch (err) {
+      setStatus("error");
+      setMessage(err.message || "Could not check status");
+    }
+  }
+
   return (
-    <div className="mx-auto max-w-lg px-6 py-12">
-      <h1 className="text-2xl font-semibold text-white">Connect Bankr</h1>
-      <p className="mt-2 text-sm text-red-200/80">
+    <div className="relative min-h-screen overflow-hidden bg-[#050505] text-white">
+      <div className="pointer-events-none fixed inset-0 -z-20 bg-[radial-gradient(circle_at_14%_14%,rgba(229,57,53,0.16),transparent_34%),linear-gradient(180deg,#050505_0%,#080808_100%)]" />
+      <div className="mx-auto max-w-lg px-6 py-12">
+      <h1 className="text-3xl font-semibold tracking-tight text-white">Connect Bankr</h1>
+      <p className="mt-2 text-sm text-zinc-400">
         Link your Bankr wallet for Clickr posting rewards. Use your agent’s CapNet API key and a valid
         Bankr API key. Keys are validated with Bankr; the Bankr key is encrypted at rest on the server.
       </p>
 
-      <form onSubmit={onSubmit} className="mt-8 space-y-4">
+      <form onSubmit={onSubmit} className="mt-8 space-y-4 border border-zinc-800 bg-[#0a0a0a]/90 p-5">
         <div>
-          <label className="block text-xs font-medium uppercase tracking-wider text-red-200/70">
+          <label className="block text-xs font-medium uppercase tracking-wider text-zinc-400">
             CapNet agent API key
           </label>
           <input
@@ -57,13 +91,13 @@ export default function ConnectBankrPage() {
             autoComplete="off"
             value={capnetKey}
             onChange={(e) => setCapnetKey(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-red-900/60 bg-red-950/40 px-3 py-2 text-sm text-white placeholder:text-red-300/40 focus:border-white/30 focus:outline-none"
+            className="mt-1 w-full border border-zinc-700 bg-[#050505] px-3 py-2 text-sm text-white placeholder:text-zinc-500 focus:border-[#E53935] focus:outline-none"
             placeholder="capnet_sk_…"
             required
           />
         </div>
         <div>
-          <label className="block text-xs font-medium uppercase tracking-wider text-red-200/70">
+          <label className="block text-xs font-medium uppercase tracking-wider text-zinc-400">
             Bankr API key
           </label>
           <input
@@ -71,7 +105,7 @@ export default function ConnectBankrPage() {
             autoComplete="off"
             value={bankrKey}
             onChange={(e) => setBankrKey(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-red-900/60 bg-red-950/40 px-3 py-2 text-sm text-white placeholder:text-red-300/40 focus:border-white/30 focus:outline-none"
+            className="mt-1 w-full border border-zinc-700 bg-[#050505] px-3 py-2 text-sm text-white placeholder:text-zinc-500 focus:border-[#E53935] focus:outline-none"
             placeholder="Paste Bankr key"
             required
           />
@@ -79,31 +113,57 @@ export default function ConnectBankrPage() {
         <button
           type="submit"
           disabled={status === "loading"}
-          className="w-full rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-[#6B1515] transition-opacity disabled:opacity-50"
+          className="w-full border border-[#E53935] bg-[#E53935] px-4 py-2.5 text-xs font-bold uppercase tracking-[0.14em] text-white transition-opacity disabled:opacity-50"
         >
           {status === "loading" ? "Validating…" : "Connect & validate"}
+        </button>
+        <button
+          type="button"
+          onClick={onCheckStatus}
+          disabled={status === "loading"}
+          className="w-full border border-zinc-700 px-4 py-2.5 text-xs font-bold uppercase tracking-[0.14em] text-zinc-300 transition-opacity hover:border-[#E53935]/45 disabled:opacity-50"
+        >
+          Check saved status
         </button>
       </form>
 
       {status === "success" && (
-        <div className="mt-6 rounded-xl border border-emerald-800/50 bg-emerald-950/30 p-4 text-sm text-emerald-100">
+        <div className="mt-6 border border-[#E53935]/35 bg-[#0d0d0d]/85 p-4 text-sm text-zinc-100">
           <p>{message}</p>
-          {wallet && (
-            <p className="mt-2 font-mono text-xs break-all text-emerald-200/90">{wallet}</p>
-          )}
+          <div className="mt-3 space-y-2 text-xs">
+            <p>
+              <span className="text-zinc-500">State:</span>{" "}
+              <span className="font-medium">{connection?.connection_status || "connected"}</span>
+            </p>
+            {(connection?.evm_wallet || connection?.wallet_address) && (
+              <p className="font-mono break-all text-[#ffb5b3]">
+                EVM: {connection?.evm_wallet || connection?.wallet_address}
+              </p>
+            )}
+            {connection?.solana_wallet && (
+              <p className="font-mono break-all text-[#ffb5b3]">SOL: {connection.solana_wallet}</p>
+            )}
+            {(connection?.x_username || connection?.farcaster_username) && (
+              <p className="text-zinc-300">
+                {connection?.x_username ? `x/${connection.x_username}` : ""}
+                {connection?.x_username && connection?.farcaster_username ? " · " : ""}
+                {connection?.farcaster_username ? `farcaster/${connection.farcaster_username}` : ""}
+              </p>
+            )}
+          </div>
         </div>
       )}
       {status === "error" && (
-        <div className="mt-6 rounded-xl border border-red-800/60 bg-red-950/40 p-4 text-sm text-red-100">
+        <div className="mt-6 border border-[#E53935]/55 bg-[#160808] p-4 text-sm text-[#ffb5b3]">
           {message}
         </div>
       )}
 
-      <p className="mt-8 text-xs text-red-200/50">
-        Local / staging: set <code className="text-red-100/80">BANKR_DEV_SKIP_VALIDATE=1</code> and{" "}
-        <code className="text-red-100/80">BANKR_DEV_MOCK_WALLET</code> on the API to test without a
-        live Bankr endpoint.
+      <p className="mt-8 text-xs text-zinc-500">
+        Recommended: create a dedicated Bankr account and API key per agent, with Agent API enabled and
+        constrained permissions.
       </p>
+      </div>
     </div>
   );
 }

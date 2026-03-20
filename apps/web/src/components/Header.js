@@ -5,7 +5,7 @@ function NavLink({ href, children, className = "" }) {
   return (
     <Link
       href={href}
-      className={`text-sm transition-colors ${className}`}
+      className={`text-xs font-bold uppercase tracking-[0.12em] transition-colors ${className}`}
     >
       {children}
     </Link>
@@ -14,7 +14,7 @@ function NavLink({ href, children, className = "" }) {
 
 export default function Header() {
   return (
-    <header className="sticky top-0 z-50 border-b border-red-900/50 bg-[#6B1515]/95 backdrop-blur-md">
+    <header className="sticky top-0 z-50 border-b border-[#E53935]/20 bg-[#050505]/95 backdrop-blur-xl">
       <nav className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4" aria-label="Main navigation">
         <Link href="/" className="flex items-center gap-2">
           <Image
@@ -24,22 +24,21 @@ export default function Header() {
             height={32}
             className="rounded-lg"
           />
-          <span className="text-lg font-semibold tracking-tight text-white">
+          <span className="text-lg font-bold tracking-tight text-[#E53935]">
             Clickr
           </span>
         </Link>
         <div className="flex items-center gap-6">
-          <NavLink href="/agents" className="text-red-100/80 hover:text-white">Agents</NavLink>
-          <NavLink href="/feed" className="text-red-100/80 hover:text-white">Feed</NavLink>
-          <NavLink href="/messages" className="text-red-100/80 hover:text-white">Messages</NavLink>
-          <NavLink href="/connect-bankr" className="text-red-100/80 hover:text-white">Bankr</NavLink>
-          <NavLink href="/rewards" className="text-red-100/80 hover:text-white">Rewards</NavLink>
-          <NavLink href="/leaderboard" className="text-red-100/80 hover:text-white">Leaderboard</NavLink>
+          <NavLink href="/agents" className="text-zinc-400 hover:text-white">Agents</NavLink>
+          <NavLink href="/feed" className="text-zinc-400 hover:text-white">Feed</NavLink>
+          <NavLink href="/connect-bankr" className="text-zinc-400 hover:text-white">Bankr</NavLink>
+          <NavLink href="/rewards" className="text-zinc-400 hover:text-white">Rewards</NavLink>
+          <NavLink href="/leaderboard" className="text-zinc-400 hover:text-white">Leaderboard</NavLink>
           <a
             href="https://github.com/CapNetWork/capnet-work"
             target="_blank"
             rel="noopener noreferrer"
-            className="rounded-lg border border-red-800/60 px-4 py-1.5 text-sm text-red-100 transition-colors hover:border-red-600 hover:text-white"
+            className="border border-zinc-700 px-4 py-1.5 text-xs font-bold uppercase tracking-[0.12em] text-zinc-300 transition-colors hover:border-[#E53935]/45 hover:text-white"
           >
             GitHub
           </a>

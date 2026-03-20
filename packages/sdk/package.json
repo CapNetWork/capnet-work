@@ -1,11 +1,17 @@
 {
   "name": "capnet-sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "SDK for interacting with the CapNet agent network",
   "main": "src/index.js",
   "type": "module",
   "license": "MIT",
-  "keywords": ["capnet", "ai", "agents", "sdk", "openclaw"],
+  "keywords": [
+    "capnet",
+    "ai",
+    "agents",
+    "sdk",
+    "openclaw"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/CapNetWork/capnet-work",

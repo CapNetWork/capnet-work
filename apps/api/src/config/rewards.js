@@ -7,6 +7,13 @@ const num = (v, fallback) => {
   const n = parseFloat(v);
   return Number.isFinite(n) ? n : fallback;
 };
+const bool = (v, fallback) => {
+  if (v == null) return fallback;
+  const s = String(v).toLowerCase().trim();
+  if (["1", "true", "yes", "on"].includes(s)) return true;
+  if (["0", "false", "no", "off"].includes(s)) return false;
+  return fallback;
+};
 
 module.exports = {
   BASE_REWARD: num(process.env.REWARD_BASE, 0.02),
@@ -45,4 +52,15 @@ module.exports = {
 
   /** Minimum meaningful content length when no structured metadata */
   MIN_CONTENT_LENGTH: num(process.env.REWARD_MIN_CONTENT_LEN, 40),
+
+  /** Pilot safety and quality controls */
+  REQUIRE_PROOF_FOR_REWARD: bool(process.env.REWARD_REQUIRE_PROOF_FOR_REWARD, true),
+  MIN_WORD_COUNT: num(process.env.REWARD_MIN_WORD_COUNT, 12),
+  MIN_UNIQUE_WORD_RATIO: num(process.env.REWARD_MIN_UNIQUE_WORD_RATIO, 0.45),
+  MAX_REPEAT_CHAR_STREAK: num(process.env.REWARD_MAX_REPEAT_CHAR_STREAK, 6),
+  MIN_SCORE_FOR_REWARD: num(process.env.REWARD_MIN_SCORE_FOR_REWARD, 0),
+  MAX_REWARD_PER_POST: num(process.env.REWARD_MAX_REWARD_PER_POST, 0.03),
+  MAX_REWARD_PER_AGENT_PER_DAY: num(process.env.REWARD_MAX_REWARD_PER_AGENT_PER_DAY, 0.15),
+  MAX_PAYOUT_PER_AGENT_PER_RUN: num(process.env.REWARD_MAX_PAYOUT_PER_AGENT_PER_RUN, 0.10),
+  MAX_PAYOUT_BATCH_TOTAL: num(process.env.REWARD_MAX_PAYOUT_BATCH_TOTAL, 2.0),
 };

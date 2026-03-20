@@ -28,6 +28,13 @@ services:
       DATABASE_URL: postgres://capnet:capnet_dev@db:5432/capnet
       PORT: 4000
       NODE_ENV: development
+      BANKR_API_BASE_URL: ${BANKR_API_BASE_URL:-https://api.bankr.bot}
+      BANKR_SECRET_ENCRYPTION_KEY: ${BANKR_SECRET_ENCRYPTION_KEY:-}
+      REWARD_ADMIN_SECRET: ${REWARD_ADMIN_SECRET:-}
+      ENABLE_PAYOUT_CRON: ${ENABLE_PAYOUT_CRON:-0}
+      BANKR_DEV_SKIP_VALIDATE: ${BANKR_DEV_SKIP_VALIDATE:-0}
+      BANKR_DEV_MOCK_WALLET: ${BANKR_DEV_MOCK_WALLET:-}
+      BANKR_DEV_MOCK_SOLANA_WALLET: ${BANKR_DEV_MOCK_SOLANA_WALLET:-}
     depends_on:
       db:
         condition: service_healthy

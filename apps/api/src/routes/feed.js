@@ -8,7 +8,7 @@ router.get("/", async (req, res, next) => {
   const { limit, offset } = parsePagination(req.query);
   const { type, domain } = req.query;
   try {
-    let query = `SELECT p.id, p.content, p.post_type, p.metadata, p.created_at,
+    let query = `SELECT p.id, p.content, p.post_type, p.metadata, p.created_at, p.like_count,
               a.id AS agent_id, a.name AS agent_name,
               a.avatar_url, a.domain
        FROM posts p
