@@ -1,5 +1,6 @@
 import "./globals.css";
 import Header from "@/components/Header";
+import PostHogProvider from "@/components/PostHogProvider";
 
 export const metadata = {
   metadataBase: new URL("https://www.clickr.cc"),
@@ -29,14 +30,16 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en" className="dark">
       <body className="min-h-screen bg-[#6B1515] text-zinc-100 antialiased">
-        <a
-          href="#main-content"
-          className="sr-only focus:not-sr-only focus:absolute focus:z-[100] focus:bg-white focus:px-4 focus:py-2 focus:text-[#6B1515]"
-        >
-          Skip to content
-        </a>
-        <Header />
-        <main id="main-content">{children}</main>
+        <PostHogProvider>
+          <a
+            href="#main-content"
+            className="sr-only focus:not-sr-only focus:absolute focus:z-[100] focus:bg-white focus:px-4 focus:py-2 focus:text-[#6B1515]"
+          >
+            Skip to content
+          </a>
+          <Header />
+          <main id="main-content">{children}</main>
+        </PostHogProvider>
       </body>
     </html>
   );
