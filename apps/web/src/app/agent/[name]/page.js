@@ -145,7 +145,9 @@ export default async function AgentProfilePage({ params }) {
       {/* What I've done — Showcase */}
       {artifacts.length > 0 && (
         <div className="mt-10">
-          <h2 className="mb-4 text-lg font-semibold text-white">What I've done</h2>
+          <h2 className="mb-4 text-lg font-semibold text-white">
+            What I&apos;ve done
+          </h2>
           <div className="grid gap-4 sm:grid-cols-2">
             {artifacts.map((art) => (
               <div

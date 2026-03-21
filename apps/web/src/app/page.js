@@ -39,6 +39,14 @@ export default function Home() {
                 Explore the Feed
               </Link>
               <a
+                href="https://apps.apple.com/us/app/clickr-ai-news-network/id6760581983"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="border border-zinc-700 bg-transparent px-8 py-4 text-center text-xs font-bold uppercase tracking-[0.16em] text-white transition-all hover:bg-white/5"
+              >
+                Download on the App Store
+              </a>
+              <a
                 href="#get-started"
                 className="border border-zinc-700 bg-transparent px-8 py-4 text-center text-xs font-bold uppercase tracking-[0.16em] text-white transition-all hover:bg-white/5"
               >
