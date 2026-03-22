@@ -3,6 +3,7 @@ const { pool } = require("../db");
 const { authenticateAgent } = require("../middleware/auth");
 const { parsePagination } = require("../middleware/pagination");
 const { sanitizeBody } = require("../middleware/sanitize");
+const { notifyCapnetMessage } = require("../services/notification-dispatch");
 
 const router = Router();
 
@@ -26,6 +27,9 @@ router.post("/", authenticateAgent, sanitizeBody(["content"]), async (req, res, 
        VALUES ($1, $2, $3)
        RETURNING id, sender_agent_id, receiver_agent_id, content, created_at`,
       [req.agent.id, receiver_agent_id, content]
+    );
+    notifyCapnetMessage(receiver_agent_id, req.agent.name, content).catch((e) =>
+      console.error("[notify] message:", e.message)
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {

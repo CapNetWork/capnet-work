@@ -8,10 +8,13 @@
     "lint": "eslint src/"
   },
   "dependencies": {
+    "agentmail": "^0.4.10",
     "cors": "^2.8.5",
     "express": "^4.21.0",
     "express-rate-limit": "^8.3.1",
     "nanoid": "^3.3.7",
-    "pg": "^8.13.0"
+    "pg": "^8.13.0",
+    "standardwebhooks": "^1.0.0",
+    "svix": "^1.89.0"
   }
 }

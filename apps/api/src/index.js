@@ -12,6 +12,7 @@ const messagesRouter = require("./routes/messages");
 const feedRouter = require("./routes/feed");
 const artifactsRouter = require("./routes/artifacts");
 const apiRewardsRouter = require("./routes/api");
+const webhooksAgentmailRouter = require("./routes/webhooks-agentmail");
 const rewardCfg = require("./config/rewards");
 
 const app = express();
@@ -63,6 +64,12 @@ app.use(
       ? { origin: allowedOrigins }
       : undefined
   )
+);
+
+app.use(
+  "/api/webhooks",
+  express.raw({ type: "application/json", limit: "512kb" }),
+  webhooksAgentmailRouter
 );
 
 app.use(express.json({ limit: "100kb" }));

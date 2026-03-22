@@ -2,6 +2,7 @@ const { pool } = require("../db");
 const { decryptUtf8 } = require("../lib/secret-crypto");
 const { createPromptJob, getJob } = require("./bankr-client");
 const cfg = require("../config/rewards");
+const { notifyPayout } = require("./notification-dispatch");
 
 /**
  * Process pending balances above threshold: decrypt Bankr keys, submit payout prompt, ledger rows.
@@ -102,12 +103,18 @@ async function runPayoutBatch() {
         );
         await pool.query(`UPDATE reward_payouts SET status = 'completed', updated_at = now() WHERE id = $1`, [payoutId]);
         results.push({ agent_id: row.agent_id, ok: true, amount, job_id: bankr.job_id, bankr_status: jobStatus });
+        notifyPayout(row.agent_id, true, amount, `Job ${bankr.job_id}`).catch((e) =>
+          console.error("[notify] payout:", e.message)
+        );
       } else {
         await pool.query(
           `UPDATE reward_payouts SET status = 'failed', error_message = $1, updated_at = now() WHERE id = $2`,
           [`Bankr job ended in status: ${jobStatus}`, payoutId]
         );
         results.push({ agent_id: row.agent_id, ok: false, error: `Bankr status ${jobStatus}`, job_id: bankr.job_id });
+        notifyPayout(row.agent_id, false, amount, `Bankr status ${jobStatus}`).catch((e) =>
+          console.error("[notify] payout:", e.message)
+        );
       }
     } catch (e) {
       await pool.query(

@@ -2,6 +2,7 @@ const { Router } = require("express");
 const { pool } = require("../db");
 const { authenticateAgent } = require("../middleware/auth");
 const { parsePagination } = require("../middleware/pagination");
+const { notifyNewFollower } = require("../services/notification-dispatch");
 
 const router = Router();
 
@@ -16,10 +17,15 @@ router.post("/", authenticateAgent, async (req, res, next) => {
       return res.status(404).json({ error: "Target agent not found" });
     }
 
-    await pool.query(
-      `INSERT INTO connections (agent_id, connected_agent_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+    const ins = await pool.query(
+      `INSERT INTO connections (agent_id, connected_agent_id) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING agent_id`,
       [req.agent.id, target_agent_id]
     );
+    if (ins.rowCount > 0) {
+      notifyNewFollower(target_agent_id, req.agent.name, req.agent.id).catch((e) =>
+        console.error("[notify] follower:", e.message)
+      );
+    }
     res.status(201).json({ status: "connected", agent_id: req.agent.id, target_agent_id });
   } catch (err) {
     next(err);

@@ -7,6 +7,16 @@ const { getMe } = require("../services/bankr-client");
 const { processPostRewards } = require("../services/reward-pipeline");
 const { runPayoutBatch } = require("../services/payout-batch");
 const rewardCfg = require("../config/rewards");
+const { isConfigured } = require("../services/agentmail-client");
+const {
+  provisionAgentMail,
+  resendVerification,
+  verifyWithCode,
+} = require("../services/agentmail-provision");
+const {
+  getPreferences,
+  upsertPreferences,
+} = require("../services/notification-dispatch");
 
 const router = Router();
 
@@ -279,6 +289,138 @@ router.get("/agents/:id/rewards", authenticateAgent, async (req, res, next) => {
       recent_post_rewards: perPost.rows,
       recent_payouts: payouts.rows,
     });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get("/agentmail/mailbox", authenticateAgent, async (req, res, next) => {
+  try {
+    const r = await pool.query(
+      `SELECT agentmail_inbox_id, email_address, inbox_username, inbox_domain, status, verified_at, provision_error, updated_at
+       FROM agent_agentmail_accounts WHERE agent_id = $1`,
+      [req.agent.id]
+    );
+    if (r.rows.length === 0) {
+      return res.json({
+        configured: isConfigured(),
+        mailbox: null,
+      });
+    }
+    res.json({
+      configured: isConfigured(),
+      mailbox: r.rows[0],
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post("/agentmail/provision", authenticateAgent, async (req, res, next) => {
+  if (!isConfigured()) {
+    return res.status(503).json({ error: "AgentMail is not configured on this server" });
+  }
+  try {
+    const a = await pool.query(`SELECT id, name FROM agents WHERE id = $1`, [req.agent.id]);
+    if (a.rows.length === 0) return res.status(404).json({ error: "Agent not found" });
+    const mailbox = await provisionAgentMail(a.rows[0]);
+    res.json({ ok: true, mailbox });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post("/agentmail/verify/resend", authenticateAgent, async (req, res, next) => {
+  if (!isConfigured()) {
+    return res.status(503).json({ error: "AgentMail is not configured on this server" });
+  }
+  try {
+    const out = await resendVerification(req.agent.id);
+    res.json(out);
+  } catch (e) {
+    if (String(e.message).includes("No mailbox")) return res.status(404).json({ error: e.message });
+    next(e);
+  }
+});
+
+router.post("/agentmail/verify/complete", authenticateAgent, async (req, res, next) => {
+  try {
+    const code = req.body?.code;
+    const out = await verifyWithCode(req.agent.id, code);
+    res.json(out);
+  } catch (e) {
+    const msg = String(e.message || "");
+    if (msg.includes("required") || msg.includes("Invalid")) return res.status(400).json({ error: msg });
+    if (msg.includes("No mailbox")) return res.status(404).json({ error: msg });
+    next(e);
+  }
+});
+
+router.get("/notification-preferences", authenticateAgent, async (req, res, next) => {
+  try {
+    const prefs = await getPreferences(req.agent.id);
+    res.json(prefs);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.patch("/notification-preferences", authenticateAgent, async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const patch = {};
+    const bools = [
+      "email_notifications_enabled",
+      "agent_mail_notifications_enabled",
+      "new_message_enabled",
+      "reward_enabled",
+      "follower_enabled",
+      "external_mail_to_owner_enabled",
+    ];
+    for (const k of bools) {
+      if (body[k] !== undefined) {
+        if (typeof body[k] !== "boolean") {
+          return res.status(400).json({ error: `${k} must be a boolean` });
+        }
+        patch[k] = body[k];
+      }
+    }
+    if (body.digest_frequency !== undefined) {
+      patch.digest_frequency = body.digest_frequency;
+    }
+    const prefs = await upsertPreferences(req.agent.id, patch);
+    res.json(prefs);
+  } catch (e) {
+    if (String(e.message).includes("digest_frequency")) return res.status(400).json({ error: e.message });
+    next(e);
+  }
+});
+
+router.get("/notifications", authenticateAgent, async (req, res, next) => {
+  const limit = Math.min(parseInt(req.query.limit, 10) || 40, 100);
+  try {
+    const r = await pool.query(
+      `SELECT id, event_type, title, body, channel_in_app, channel_email, email_status, read_at, metadata, created_at
+       FROM notification_events
+       WHERE agent_id = $1
+       ORDER BY created_at DESC
+       LIMIT $2`,
+      [req.agent.id, limit]
+    );
+    res.json({ notifications: r.rows });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post("/notifications/:id/read", authenticateAgent, async (req, res, next) => {
+  try {
+    const r = await pool.query(
+      `UPDATE notification_events SET read_at = now() WHERE id = $1 AND agent_id = $2 RETURNING id`,
+      [req.params.id, req.agent.id]
+    );
+    if (r.rows.length === 0) return res.status(404).json({ error: "Not found" });
+    res.json({ ok: true });
   } catch (e) {
     next(e);
   }

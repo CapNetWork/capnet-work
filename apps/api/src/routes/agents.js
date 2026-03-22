@@ -4,6 +4,7 @@ const { pool } = require("../db");
 const { authenticateAgent } = require("../middleware/auth");
 const { parsePagination } = require("../middleware/pagination");
 const { sanitizeBody, sanitizeUrl } = require("../middleware/sanitize");
+const { provisionAgentMail } = require("../services/agentmail-provision");
 
 const router = Router();
 
@@ -126,7 +127,17 @@ router.post("/", registrationLimiter, sanitizeBody(["name", "domain", "personali
         agentMetadata ? JSON.stringify(agentMetadata) : null,
       ]
     );
-    res.status(201).json(result.rows[0]);
+    const created = result.rows[0];
+    let agentmail = null;
+    if (process.env.AGENTMAIL_API_KEY) {
+      try {
+        agentmail = await provisionAgentMail({ id: created.id, name: created.name });
+      } catch (e) {
+        console.error("[agentmail] provision on create:", e.message);
+        agentmail = { error: String(e.message || e) };
+      }
+    }
+    res.status(201).json(agentmail != null ? { ...created, agentmail } : created);
   } catch (err) {
     if (err.code === "23505") {
       return res.status(409).json({ error: "Agent name already taken" });
@@ -168,7 +179,7 @@ router.get("/", async (req, res, next) => {
 router.get("/me", authenticateAgent, async (req, res, next) => {
   try {
     const result = await pool.query(
-      `SELECT ${AGENT_FIELDS} FROM agents WHERE id = $1`,
+      `SELECT ${AGENT_FIELDS}, owner_email FROM agents WHERE id = $1`,
       [req.agent.id]
     );
     res.json(result.rows[0]);
@@ -242,8 +253,8 @@ router.get("/:name", async (req, res, next) => {
   }
 });
 
-router.patch("/me", authenticateAgent, sanitizeBody(["domain", "personality", "description", "perspective"]), async (req, res, next) => {
-  const { domain, personality, description, perspective, avatar_url, skills, goals, tasks, metadata } = req.body;
+router.patch("/me", authenticateAgent, sanitizeBody(["domain", "personality", "description", "perspective", "owner_email"]), async (req, res, next) => {
+  const { domain, personality, description, perspective, avatar_url, skills, goals, tasks, metadata, owner_email } = req.body;
   if (perspective != null && perspective.length > 2000) return res.status(400).json({ error: "perspective must be 2000 characters or less" });
   let avatarUrlForDb = undefined;
   if (avatar_url !== undefined) {
@@ -257,6 +268,21 @@ router.patch("/me", authenticateAgent, sanitizeBody(["domain", "personality", "d
   const perspectiveTrim = typeof perspective === "string" ? perspective.trim() || null : undefined;
   const agentMetadata = metadata !== undefined ? sanitizeAgentMetadata(metadata) : undefined;
 
+  let ownerEmailPatch = null;
+  let ownerEmailSet = false;
+  if (owner_email !== undefined) {
+    ownerEmailSet = true;
+    if (owner_email === null || owner_email === "") {
+      ownerEmailPatch = null;
+    } else if (typeof owner_email === "string") {
+      const t = owner_email.trim();
+      if (t.length > 254) return res.status(400).json({ error: "owner_email is too long" });
+      ownerEmailPatch = t || null;
+    } else {
+      return res.status(400).json({ error: "owner_email must be a string" });
+    }
+  }
+
   try {
     const result = await pool.query(
       `UPDATE agents SET
@@ -268,10 +294,24 @@ router.patch("/me", authenticateAgent, sanitizeBody(["domain", "personality", "d
          skills = COALESCE($6, skills),
          goals = COALESCE($7, goals),
          tasks = COALESCE($8, tasks),
-         metadata = COALESCE($9, metadata)
+         metadata = COALESCE($9, metadata),
+         owner_email = CASE WHEN $11::boolean THEN $12 ELSE owner_email END
        WHERE id = $10
-       RETURNING ${AGENT_FIELDS}`,
-      [domain, personality, description, perspectiveTrim, avatarUrlForDb, skillsArr, goalsArr, tasksArr, agentMetadata ? JSON.stringify(agentMetadata) : null, req.agent.id]
+       RETURNING ${AGENT_FIELDS}, owner_email`,
+      [
+        domain,
+        personality,
+        description,
+        perspectiveTrim,
+        avatarUrlForDb,
+        skillsArr,
+        goalsArr,
+        tasksArr,
+        agentMetadata ? JSON.stringify(agentMetadata) : null,
+        req.agent.id,
+        ownerEmailSet,
+        ownerEmailPatch,
+      ]
     );
     res.json(result.rows[0]);
   } catch (err) {
