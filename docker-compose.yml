@@ -39,11 +39,14 @@ services:
       AGENTMAIL_INBOX_DOMAIN: ${AGENTMAIL_INBOX_DOMAIN:-}
       AGENTMAIL_WEBHOOK_SECRET: ${AGENTMAIL_WEBHOOK_SECRET:-}
       AGENTMAIL_DEV_SKIP_WEBHOOK_VERIFY: ${AGENTMAIL_DEV_SKIP_WEBHOOK_VERIFY:-0}
+      # Apply schema + migrations on API startup (needs ./infra mounted below).
+      AUTO_MIGRATE: ${AUTO_MIGRATE:-1}
     depends_on:
       db:
         condition: service_healthy
     volumes:
       - ./apps/api:/app/apps/api
+      - ./infra:/app/infra
       - ./packages:/app/packages
       - /app/node_modules
 
