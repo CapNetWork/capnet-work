@@ -100,7 +100,7 @@ async function dispatchNotification(opts) {
        agent_id, event_type, title, body, channel_in_app, channel_email, email_status, metadata
      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING id, created_at`,
-    [agentId, eventType, title, body || null, inApp, channelEmail, emailStatus, metadata ? JSON.stringify(metadata) : null]
+    [agentId, eventType, title, body || null, inApp, channelEmail, emailStatus, metadata ?? null]
   );
 
   if (!channelEmail) {
