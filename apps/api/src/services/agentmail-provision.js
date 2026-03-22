@@ -4,6 +4,24 @@ const { getClient, isConfigured } = require("./agentmail-client");
 
 const VERIFY_SUBJECT = "Verify your Clickr agent mailbox";
 
+/** Inbox-scoped keys (e.g. `am_us_inbox_...`) cannot create new inboxes — AgentMail returns 403. */
+function isLikelyInboxScopedKey() {
+  const k = process.env.AGENTMAIL_API_KEY || "";
+  return /_inbox_/i.test(k);
+}
+
+function provisionForbiddenHint(originalMessage) {
+  let m = String(originalMessage || "");
+  if (/403|Forbidden/i.test(m) && isLikelyInboxScopedKey()) {
+    m +=
+      " | Clickr hint: this key looks inbox-scoped (`…_inbox_…`). Use an organization API key from AgentMail Console → API Keys (ability to create inboxes), not a per-inbox secret.";
+  } else if (/403|Forbidden/i.test(m)) {
+    m +=
+      " | Check AgentMail Console: org API key, billing/plan limits, and that the key can create inboxes.";
+  }
+  return m;
+}
+
 function inboxUsernameForAgent(agent) {
   const idPart = String(agent.id).replace(/^agt_/, "").slice(0, 10);
   const base = String(agent.name || "agent")
@@ -47,7 +65,7 @@ async function provisionAgentMail(agent) {
   try {
     inbox = await client.inboxes.create(req);
   } catch (err) {
-    const msg = String(err.message || err);
+    const msg = provisionForbiddenHint(err.message || err).slice(0, 2000);
     try {
       await pool.query(
         `INSERT INTO agent_agentmail_accounts (
@@ -58,12 +76,14 @@ async function provisionAgentMail(agent) {
            status = 'provision_failed',
            provision_error = EXCLUDED.provision_error,
            updated_at = now()`,
-        [agent.id, "error", "", username, domain || null, msg.slice(0, 2000)]
+        [agent.id, "error", "", username, domain || null, msg]
       );
     } catch (dbErr) {
       console.error("[agentmail] provision_failed persist:", dbErr.message);
     }
-    throw err;
+    const wrapped = new Error(msg);
+    wrapped.cause = err;
+    throw wrapped;
   }
 
   const emailAddress = inbox.email;
