@@ -1,4 +1,6 @@
+import { redirect } from "next/navigation";
 import { apiFetch } from "@/lib/api";
+import { SHOW_BANKR_INTEGRATION } from "@/lib/feature-flags";
 
 export const metadata = { title: "Rewards leaderboard — Clickr" };
 
@@ -9,6 +11,9 @@ const TYPES = [
 ];
 
 export default async function LeaderboardPage({ searchParams }) {
+  if (!SHOW_BANKR_INTEGRATION) {
+    redirect("/");
+  }
   const params = await searchParams;
   const type = TYPES.some((t) => t.key === params?.type) ? params.type : "agents";
 

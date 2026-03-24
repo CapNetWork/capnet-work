@@ -2,8 +2,7 @@ const { Router } = require("express");
 const { pool } = require("../db");
 const { authenticateAgent } = require("../middleware/auth");
 const { rewardAdminOrAgent, requireRewardAdmin } = require("../middleware/reward-auth");
-const { encryptUtf8 } = require("../lib/secret-crypto");
-const { getMe } = require("../services/bankr-client");
+const bankrIntegration = require("../integrations/providers/bankr");
 const { processPostRewards } = require("../services/reward-pipeline");
 const { runPayoutBatch } = require("../services/payout-batch");
 const rewardCfg = require("../config/rewards");
@@ -21,50 +20,12 @@ router.post("/bankr/connect", authenticateAgent, async (req, res, next) => {
   }
 
   try {
-    const me = await getMe(trimmed);
-    const walletAddress = me.evm_wallet;
-    if (!walletAddress) {
+    const body = await bankrIntegration.connect(req.agent.id, trimmed);
+    res.json(body);
+  } catch (err) {
+    if (err.code === "BANKR_NO_EVM_WALLET") {
       return res.status(422).json({ error: "Bankr account has no primary EVM wallet" });
     }
-    const enc = encryptUtf8(trimmed);
-    await pool.query(
-      `INSERT INTO agent_bankr_accounts (
-         agent_id, wallet_address, evm_wallet, solana_wallet, x_username, farcaster_username,
-         permissions_json, api_key_encrypted, connection_status
-       )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       ON CONFLICT (agent_id) DO UPDATE SET
-         wallet_address = EXCLUDED.wallet_address,
-         evm_wallet = EXCLUDED.evm_wallet,
-         solana_wallet = EXCLUDED.solana_wallet,
-         x_username = EXCLUDED.x_username,
-         farcaster_username = EXCLUDED.farcaster_username,
-         permissions_json = EXCLUDED.permissions_json,
-         api_key_encrypted = EXCLUDED.api_key_encrypted,
-         connection_status = EXCLUDED.connection_status,
-         updated_at = now()`,
-      [
-        req.agent.id,
-        walletAddress,
-        walletAddress,
-        me.solana_wallet,
-        me.x_username,
-        me.farcaster_username,
-        JSON.stringify(me.raw || {}),
-        enc,
-        me.connection_state,
-      ]
-    );
-    res.json({
-      ok: true,
-      wallet_address: walletAddress,
-      evm_wallet: walletAddress,
-      solana_wallet: me.solana_wallet,
-      x_username: me.x_username,
-      farcaster_username: me.farcaster_username,
-      connection_status: me.connection_state,
-    });
-  } catch (err) {
     const msg = String(err.message || "");
     if (msg.includes("BANKR_SECRET_ENCRYPTION_KEY")) {
       return res.status(503).json({ error: msg });
@@ -85,17 +46,11 @@ router.post("/bankr/connect", authenticateAgent, async (req, res, next) => {
 
 router.get("/bankr/status", authenticateAgent, async (req, res, next) => {
   try {
-    const r = await pool.query(
-      `SELECT connection_status, wallet_address, evm_wallet, solana_wallet,
-              x_username, farcaster_username, updated_at
-       FROM agent_bankr_accounts
-       WHERE agent_id = $1`,
-      [req.agent.id]
-    );
-    if (r.rows.length === 0) {
+    const s = await bankrIntegration.getIntegrationStatus(req.agent.id);
+    if (!s.connected) {
       return res.json({ connected: false, connection_status: "disconnected" });
     }
-    return res.json({ connected: true, ...r.rows[0] });
+    return res.json({ connected: true, ...s.config });
   } catch (e) {
     next(e);
   }
