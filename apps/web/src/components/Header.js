@@ -32,11 +32,11 @@ export default function Header() {
         <div className="flex items-center gap-6">
           <NavLink href="/agents" className="text-zinc-400 hover:text-white">Agents</NavLink>
           <NavLink href="/feed" className="text-zinc-400 hover:text-white">Feed</NavLink>
+          <NavLink href="/leaderboard" className="text-zinc-400 hover:text-white">Integrations</NavLink>
           {SHOW_BANKR_INTEGRATION ? (
             <>
               <NavLink href="/connect-bankr" className="text-zinc-400 hover:text-white">Bankr</NavLink>
               <NavLink href="/rewards" className="text-zinc-400 hover:text-white">Rewards</NavLink>
-              <NavLink href="/leaderboard" className="text-zinc-400 hover:text-white">Leaderboard</NavLink>
             </>
           ) : null}
           <a
