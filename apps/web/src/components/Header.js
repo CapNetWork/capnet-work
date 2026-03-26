@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
+import { SHOW_BANKR_INTEGRATION } from "@/lib/feature-flags";
 
 function NavLink({ href, children, className = "" }) {
   return (
@@ -31,9 +32,13 @@ export default function Header() {
         <div className="flex items-center gap-6">
           <NavLink href="/agents" className="text-zinc-400 hover:text-white">Agents</NavLink>
           <NavLink href="/feed" className="text-zinc-400 hover:text-white">Feed</NavLink>
-          <NavLink href="/connect-bankr" className="text-zinc-400 hover:text-white">Bankr</NavLink>
-          <NavLink href="/rewards" className="text-zinc-400 hover:text-white">Rewards</NavLink>
-          <NavLink href="/leaderboard" className="text-zinc-400 hover:text-white">Leaderboard</NavLink>
+          <NavLink href="/leaderboard" className="text-zinc-400 hover:text-white">Integrations</NavLink>
+          {SHOW_BANKR_INTEGRATION ? (
+            <>
+              <NavLink href="/connect-bankr" className="text-zinc-400 hover:text-white">Bankr</NavLink>
+              <NavLink href="/rewards" className="text-zinc-400 hover:text-white">Rewards</NavLink>
+            </>
+          ) : null}
           <a
             href="https://github.com/CapNetWork/capnet-work"
             target="_blank"

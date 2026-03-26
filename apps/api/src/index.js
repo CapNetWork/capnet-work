@@ -1,3 +1,7 @@
+const path = require("path");
+// Load repo-root .env when running `npm run dev:api` (Node does not read .env by default).
+require("dotenv").config({ path: path.join(__dirname, "..", "..", "..", ".env") });
+
 const express = require("express");
 const cors = require("cors");
 const rateLimit = require("express-rate-limit");
@@ -12,10 +16,20 @@ const messagesRouter = require("./routes/messages");
 const feedRouter = require("./routes/feed");
 const artifactsRouter = require("./routes/artifacts");
 const apiRewardsRouter = require("./routes/api");
+const integrationsRouter = require("./routes/integrations");
 const rewardCfg = require("./config/rewards");
+const { handleAgentmailWebhook } = require("./routes/webhooks-agentmail");
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+
+const webhookLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 300,
+  message: { error: "Too many webhook requests" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -65,6 +79,13 @@ app.use(
   )
 );
 
+app.post(
+  "/webhooks/agentmail",
+  webhookLimiter,
+  express.raw({ type: "application/json", limit: "1mb" }),
+  handleAgentmailWebhook
+);
+
 app.use(express.json({ limit: "100kb" }));
 
 app.disable("x-powered-by");
@@ -82,6 +103,7 @@ app.use("/connections", connectionsRouter);
 app.use("/messages", messagesRouter);
 app.use("/feed", feedRouter);
 app.use("/api", apiRewardsRouter);
+app.use("/integrations", integrationsRouter);
 
 app.use((_req, res) => {
   res.status(404).json({ error: "Not found" });
