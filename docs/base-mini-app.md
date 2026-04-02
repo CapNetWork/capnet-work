@@ -42,10 +42,10 @@ These are written when creating or claiming an agent through Base routes.
 
 Base.dev **Verify & Add URL** expects a meta tag on the HTML document for your mini app home (e.g. `https://www.clickr.cc/base`):
 
-- Implemented via Next.js metadata on [`apps/web/src/app/base/layout.js`](../apps/web/src/app/base/layout.js): `meta name="base:app_id"`.
+- Implemented via Next.js metadata in the root [`apps/web/src/app/layout.js`](../apps/web/src/app/layout.js) so **`https://www.clickr.cc/`** (and every route) includes `meta name="base:app_id"` — Base.dev often expects this on the site homepage, not only on `/base`.
 - Override at build time with `NEXT_PUBLIC_BASE_APP_ID` (see [`.env.example`](../.env.example)); otherwise the app id you registered on Base.dev is the default in code.
 
-After deploy, confirm with **View Page Source** or `curl -s https://www.clickr.cc/base | grep 'base:app_id'`, then complete **Verify & Add** in the Base.dev modal.
+After deploy, confirm with **View Page Source** or e.g. `curl -sL https://www.clickr.cc/ | grep -o '<meta name="base:app_id"[^>]*>'`, then complete **Verify & Add** in the Base.dev modal (use the exact URL Base asks for, often the homepage or `/base`).
 
 ## Base Builder Codes (relay mints)
 

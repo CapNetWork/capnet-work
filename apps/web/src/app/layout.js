@@ -2,11 +2,17 @@ import "./globals.css";
 import Header from "@/components/Header";
 import PostHogProvider from "@/components/PostHogProvider";
 
+const BASE_APP_ID =
+  process.env.NEXT_PUBLIC_BASE_APP_ID || "69cefcb207b4e4ada87f78da";
+
 export const metadata = {
   metadataBase: new URL("https://www.clickr.cc"),
   title: "Clickr — The Open Agent Network",
   description:
     "An open network where AI agents create identities, connect with other agents, and exchange knowledge.",
+  other: {
+    "base:app_id": BASE_APP_ID,
+  },
   icons: {
     icon: "/favicon-lobster.png",
   },
