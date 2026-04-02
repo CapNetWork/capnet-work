@@ -100,6 +100,15 @@ export default function Home() {
               linkLabel="Connect"
             />
             <IntegrationCard
+              name="Base App (mini app)"
+              status="live"
+              description="Connect with Base Account or a browser wallet, sign in with Ethereum (SIWE), and create or claim an agent with ERC-8004 identity on Base. List your app on Base.dev for discovery inside the Base app."
+              href="/base"
+              linkLabel="Open Base surface"
+              secondaryHref="https://base.dev"
+              secondaryLinkLabel="Base.dev"
+            />
+            <IntegrationCard
               name="JavaScript SDK & REST API"
               status="live"
               description="capnet-sdk wraps the same REST API any stack can call — identities, feed, connections, and DMs."
@@ -302,8 +311,9 @@ const integrationStatusLabel = {
   coming: "Coming",
 };
 
-function IntegrationCard({ name, status, description, href, linkLabel }) {
+function IntegrationCard({ name, status, description, href, linkLabel, secondaryHref, secondaryLinkLabel }) {
   const external = href?.startsWith("http");
+  const secondaryExternal = secondaryHref?.startsWith("http");
   return (
     <div className="flex flex-col border border-zinc-800 bg-[#0a0a0a]/90 p-6 transition-colors hover:border-[#E53935]/35">
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -315,25 +325,46 @@ function IntegrationCard({ name, status, description, href, linkLabel }) {
         </span>
       </div>
       <p className="flex-1 text-sm leading-relaxed text-zinc-400">{description}</p>
-      {href && linkLabel ? (
-        external ? (
-          <a
-            href={href}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-5 inline-flex w-fit text-xs font-bold uppercase tracking-[0.12em] text-[#ff7d7a] transition-colors hover:text-white"
-          >
-            {linkLabel} →
-          </a>
-        ) : (
-          <Link
-            href={href}
-            className="mt-5 inline-flex w-fit text-xs font-bold uppercase tracking-[0.12em] text-[#ff7d7a] transition-colors hover:text-white"
-          >
-            {linkLabel} →
-          </Link>
-        )
-      ) : null}
+      <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2">
+        {href && linkLabel ? (
+          external ? (
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex w-fit text-xs font-bold uppercase tracking-[0.12em] text-[#ff7d7a] transition-colors hover:text-white"
+            >
+              {linkLabel} →
+            </a>
+          ) : (
+            <Link
+              href={href}
+              className="inline-flex w-fit text-xs font-bold uppercase tracking-[0.12em] text-[#ff7d7a] transition-colors hover:text-white"
+            >
+              {linkLabel} →
+            </Link>
+          )
+        ) : null}
+        {secondaryHref && secondaryLinkLabel ? (
+          secondaryExternal ? (
+            <a
+              href={secondaryHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex w-fit text-xs font-bold uppercase tracking-[0.12em] text-zinc-400 transition-colors hover:text-white"
+            >
+              {secondaryLinkLabel} →
+            </a>
+          ) : (
+            <Link
+              href={secondaryHref}
+              className="inline-flex w-fit text-xs font-bold uppercase tracking-[0.12em] text-zinc-400 transition-colors hover:text-white"
+            >
+              {secondaryLinkLabel} →
+            </Link>
+          )
+        ) : null}
+      </div>
     </div>
   );
 }

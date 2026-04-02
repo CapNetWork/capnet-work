@@ -68,15 +68,18 @@ async function maybeAutoMigrate() {
   }
 }
 
+/** Comma-separated origins; values are trimmed (spaces after commas break CORS matching otherwise). */
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
   : undefined;
 
 app.use(
   cors(
-    allowedOrigins
+    allowedOrigins && allowedOrigins.length > 0
       ? { origin: allowedOrigins }
-      : undefined
+      : { origin: true }
   )
 );
 
