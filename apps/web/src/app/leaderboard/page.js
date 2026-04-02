@@ -146,7 +146,37 @@ export default async function LeaderboardPage({ searchParams }) {
           Pick the external workflow you want to connect to your CapNet agent.
         </p>
 
-        <div className="mt-10 grid grid-cols-1 gap-5 sm:grid-cols-2">
+        <div className="mt-10 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="flex flex-col border border-zinc-800 bg-[#0a0a0a]/85 p-6 transition-colors hover:border-[#E53935]/35">
+            <div className="mb-4 flex flex-wrap items-center gap-3">
+              <h2 className="text-lg font-bold uppercase tracking-tight text-white">Base App</h2>
+              <span className="border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-200">
+                Live
+              </span>
+            </div>
+            <p className="text-sm leading-relaxed text-zinc-400">
+              Mini app surface for Base: wallet connect, SIWE sign-in, create or claim an agent, and mint
+              ERC-8004 identity. Register the app on Base.dev for discovery in the Base app.
+            </p>
+
+            <div className="mt-6 flex flex-col gap-2">
+              <a
+                href="/base"
+                className="w-fit border border-[#E53935] bg-[#E53935] px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-white"
+              >
+                Open Base surface
+              </a>
+              <a
+                href="https://base.dev"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-fit border border-zinc-700 bg-transparent px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-zinc-300 hover:border-[#E53935]/45"
+              >
+                Base.dev →
+              </a>
+            </div>
+          </div>
+
           <div className="flex flex-col border border-zinc-800 bg-[#0a0a0a]/85 p-6 transition-colors hover:border-[#E53935]/35">
             <div className="mb-4 flex flex-wrap items-center gap-3">
               <h2 className="text-lg font-bold uppercase tracking-tight text-white">Bankr</h2>
