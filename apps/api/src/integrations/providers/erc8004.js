@@ -99,7 +99,31 @@ function createContractClient() {
   const provider = new ethers.JsonRpcProvider(cfg.rpcUrl, cfg.chainId);
   const wallet = new ethers.Wallet(cfg.privateKey, provider);
   const contract = new ethers.Contract(cfg.contractAddress, AGENT_IDENTITY_ABI, wallet);
-  return { cfg, contract, provider };
+  return { cfg, contract, provider, wallet };
+}
+
+
+/**
+ * ERC-8021 Builder Code suffix for relayed mint txs (Base.dev attribution).
+ * Prefer BASE_BUILDER_DATA_SUFFIX (raw 0x hex) when set; else BASE_BUILDER_CODE + ox/erc8021.
+ */
+function resolveBuilderDataSuffix() {
+  const raw = (process.env.BASE_BUILDER_DATA_SUFFIX || "").trim();
+  if (raw) {
+    const hex = raw.startsWith("0x") ? raw.slice(2) : raw;
+    if (!/^[0-9a-fA-F]+$/.test(hex) || hex.length % 2 !== 0) {
+      const err = new Error(
+        "BASE_BUILDER_DATA_SUFFIX must be even-length hex (optional 0x prefix)"
+      );
+      err.code = "ERC8004_BUILDER_SUFFIX_INVALID";
+      throw err;
+    }
+    return `0x${hex}`;
+  }
+  const code = (process.env.BASE_BUILDER_CODE || "").trim();
+  if (!code) return null;
+  const { Attribution } = require("ox/erc8021");
+  return Attribution.toDataSuffix({ codes: [code] });
 }
 
 function configToPublic(cfg) {
@@ -164,9 +188,23 @@ async function connect(agentId, input = {}) {
 
   const metadataPayload = buildMetadataPayload(agent);
   const metadataUri = buildMetadataUri(metadataPayload);
-  const { cfg, contract } = createContractClient();
+  const { cfg, contract, wallet } = createContractClient();
 
-  const tx = await contract.mint(ownerWallet, metadataUri, String(agentId));
+  const populated = await contract.mint.populateTransaction(
+    ownerWallet,
+    metadataUri,
+    String(agentId)
+  );
+  let data = populated.data;
+  const suffix = resolveBuilderDataSuffix();
+  if (suffix) {
+    data = ethers.concat([data, suffix]);
+  }
+  const tx = await wallet.sendTransaction({
+    to: cfg.contractAddress,
+    data,
+    chainId: cfg.chainId,
+  });
   const receipt = await tx.wait();
   const parsed = receipt?.logs
     ?.map((log) => {
@@ -268,6 +306,7 @@ function mapConnectError(err) {
   if (err.code === "ERC8004_AGENT_NOT_FOUND") return { status: 404, error: err.message };
   if (err.code === "ERC8004_NOT_CONFIGURED") return { status: 503, error: err.message };
   if (err.code === "ERC8004_TOKEN_RESOLVE_FAILED") return { status: 502, error: err.message };
+  if (err.code === "ERC8004_BUILDER_SUFFIX_INVALID") return { status: 500, error: err.message };
   return null;
 }
 

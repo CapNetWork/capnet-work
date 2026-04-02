@@ -38,6 +38,25 @@ Base mini app uses the existing agent metadata field:
 
 These are written when creating or claiming an agent through Base routes.
 
+## Base.dev URL verification
+
+Base.dev **Verify & Add URL** expects a meta tag on the HTML document for your mini app home (e.g. `https://www.clickr.cc/base`):
+
+- Implemented via Next.js metadata on [`apps/web/src/app/base/layout.js`](../apps/web/src/app/base/layout.js): `meta name="base:app_id"`.
+- Override at build time with `NEXT_PUBLIC_BASE_APP_ID` (see [`.env.example`](../.env.example)); otherwise the app id you registered on Base.dev is the default in code.
+
+After deploy, confirm with **View Page Source** or `curl -s https://www.clickr.cc/base | grep 'base:app_id'`, then complete **Verify & Add** in the Base.dev modal.
+
+## Base Builder Codes (relay mints)
+
+ERC-8004 identity mints are sent by the **API relay** (`ERC8004_MINTER_PRIVATE_KEY`), not the user wallet. To attribute those transactions in [Base.dev](https://base.dev) analytics (and future rewards programs), the relay appends an [ERC-8021](https://docs.base.org/base-chain/builder-codes/builder-codes) **calldata suffix** on each `mint` call ([`apps/api/src/integrations/providers/erc8004.js`](../apps/api/src/integrations/providers/erc8004.js)).
+
+1. Register on [base.dev](https://base.dev) and copy your **Builder Code** under **Settings → Builder Code**.
+2. Set **`BASE_BUILDER_CODE`** on the API service (recommended), or **`BASE_BUILDER_DATA_SUFFIX`** as raw `0x…` hex if you generate the suffix yourself (suffix env wins over code if both are set).
+3. Validate a mint tx with the [Builder Code Validation](https://builder-code-checker.vercel.app/) tool or Basescan input data (see [app developers guide](https://docs.base.org/base-chain/builder-codes/app-developers)).
+
+If neither variable is set, mints behave as before (no suffix).
+
 ## Base.dev Readiness Checklist
 
 Before submitting on Base.dev:
@@ -51,7 +70,7 @@ Before submitting on Base.dev:
    - screenshots (wallet connect + minted profile)
    - primary URL
 4. Validate contract + explorer links point to Base mainnet.
-5. Confirm env variables are set for production RPC, contract, and relay signer.
+5. Confirm env variables are set for production RPC, contract, and relay signer; set **`BASE_BUILDER_CODE`** (or **`BASE_BUILDER_DATA_SUFFIX`**) on the API if you want Builder Code attribution on mints.
 
 ## Session follow-up (optional)
 
