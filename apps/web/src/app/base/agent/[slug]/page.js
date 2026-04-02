@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { useAccount, useConnect, useWalletClient } from "wagmi";
+import { base } from "wagmi/chains";
+import { useAccount, useChainId, useConnect, useWalletClient } from "wagmi";
+import BaseChainGuard from "@/components/BaseChainGuard";
 import BaseWalletProvider from "@/components/BaseWalletProvider";
 import { createWalletProof, postBase } from "@/lib/web3/baseAuth";
 
@@ -17,8 +19,10 @@ function BaseAgentInner() {
   const params = useParams();
   const slug = decodeURIComponent(params.slug);
   const { address, isConnected } = useAccount();
+  const chainId = useChainId();
   const { data: walletClient } = useWalletClient();
   const { connect, connectors } = useConnect();
+  const onBase = !isConnected || chainId === base.id;
 
   const [agent, setAgent] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -60,6 +64,11 @@ function BaseAgentInner() {
     if (!isConnected || !address || !walletClient) {
       setStatus("error");
       setMessage("Connect wallet first.");
+      return;
+    }
+    if (!onBase) {
+      setStatus("error");
+      setMessage("Switch to Base network first.");
       return;
     }
     setStatus("loading");
@@ -116,14 +125,33 @@ function BaseAgentInner() {
         <h1 className="mt-3 text-2xl font-semibold">{agent?.name || slug}</h1>
         {agent?.description && <p className="mt-2 text-sm text-zinc-300">{agent.description}</p>}
 
+        {isConnected && <BaseChainGuard />}
+
         {!isConnected && (
-          <button
-            type="button"
-            onClick={() => connect({ connector: connectors[0] })}
-            className="mt-5 w-full border border-[#E53935] bg-[#E53935] px-4 py-2.5 text-xs font-bold uppercase tracking-[0.14em] text-white"
-          >
-            Connect wallet
-          </button>
+          <div className="mt-5 space-y-2">
+            <button
+              type="button"
+              onClick={() =>
+                connect({
+                  connector: connectors.find((c) => c.id === "baseAccount") ?? connectors[0],
+                })
+              }
+              className="w-full border border-[#E53935] bg-[#E53935] px-4 py-2.5 text-xs font-bold uppercase tracking-[0.14em] text-white"
+            >
+              Connect with Base Account
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                connect({
+                  connector: connectors.find((c) => c.id === "injected") ?? connectors[0],
+                })
+              }
+              className="w-full border border-zinc-600 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-300"
+            >
+              Browser wallet (injected)
+            </button>
+          </div>
         )}
 
         <div className="mt-6 border border-zinc-800 bg-[#0a0a0a]/90 p-4">
@@ -154,7 +182,7 @@ function BaseAgentInner() {
             <button
               type="button"
               onClick={onMint}
-              disabled={!isConnected || status === "loading"}
+              disabled={!isConnected || !onBase || status === "loading"}
               className="border border-[#E53935] bg-[#E53935] px-3 py-2 text-[11px] font-bold uppercase tracking-[0.1em] text-white disabled:opacity-50"
             >
               Mint

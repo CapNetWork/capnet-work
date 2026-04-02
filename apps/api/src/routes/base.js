@@ -1,19 +1,19 @@
 const { Router } = require("express");
 const crypto = require("crypto");
 const { ethers } = require("ethers");
+const { SiweMessage } = require("siwe");
 const { pool } = require("../db");
 const erc8004Adapter = require("../integrations/providers/erc8004");
 
 const router = Router();
 
-const CHALLENGE_TTL_MS = Number(process.env.BASE_AUTH_CHALLENGE_TTL_MS || 5 * 60 * 1000);
+const SIWE_NONCE_TTL_MS = Number(
+  process.env.BASE_AUTH_SIWE_NONCE_TTL_MS || process.env.BASE_AUTH_CHALLENGE_TTL_MS || 5 * 60 * 1000
+);
 const VERIFIED_TTL_MS = Number(process.env.BASE_AUTH_VERIFIED_TTL_MS || 10 * 60 * 1000);
 
-/**
- * Lightweight in-memory challenge/proof store.
- * Good enough for v1 and can be replaced by Redis/session storage in SIWE phase.
- */
-const challengesByWallet = new Map();
+/** nonce string -> { expiresAt } — one-time use after successful SIWE verify */
+const siweNonces = new Map();
 const verifiedProofs = new Map();
 
 function now() {
@@ -46,21 +46,27 @@ function withBaseMetadata(existing, patch) {
 
 function cleanupStores() {
   const ts = now();
-  for (const [wallet, item] of challengesByWallet.entries()) {
-    if (item.expiresAt <= ts) challengesByWallet.delete(wallet);
+  for (const [nonce, item] of siweNonces.entries()) {
+    if (item.expiresAt <= ts) siweNonces.delete(nonce);
   }
   for (const [token, item] of verifiedProofs.entries()) {
     if (item.expiresAt <= ts) verifiedProofs.delete(token);
   }
 }
 
-function issueChallenge(wallet) {
-  cleanupStores();
-  const nonce = crypto.randomBytes(16).toString("hex");
-  const expiresAt = now() + CHALLENGE_TTL_MS;
-  challengesByWallet.set(wallet, { nonce, expiresAt });
-  const message = `Clickr Base Mini App\nWallet: ${wallet}\nNonce: ${nonce}\nExpiresAt: ${new Date(expiresAt).toISOString()}`;
-  return { nonce, message, expires_at: new Date(expiresAt).toISOString() };
+function getAllowedSiweDomains() {
+  const raw = process.env.SIWE_ALLOWED_DOMAINS || process.env.SIWE_DOMAIN;
+  if (raw && String(raw).trim()) {
+    return String(raw)
+      .split(",")
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean);
+  }
+  return ["localhost:3000", "127.0.0.1:3000"];
+}
+
+function expectedSiweChainId() {
+  return Number(process.env.BASE_CHAIN_ID || process.env.ERC8004_CHAIN_ID || 8453);
 }
 
 function verifyProofToken(wallet, proofToken) {
@@ -97,31 +103,65 @@ async function findAgentBySlug(slug) {
   return r.rows[0] || null;
 }
 
-router.post("/auth/challenge", async (req, res) => {
-  const wallet = normalizeWallet(req.body?.wallet_address);
-  if (!wallet) return res.status(400).json({ error: "wallet_address is required and must be a valid EVM address" });
-  const challenge = issueChallenge(wallet);
-  return res.json({ wallet_address: wallet, ...challenge });
+router.get("/auth/siwe/nonce", (req, res) => {
+  cleanupStores();
+  const nonce = crypto.randomBytes(16).toString("hex");
+  const expiresAt = now() + SIWE_NONCE_TTL_MS;
+  siweNonces.set(nonce, { expiresAt });
+  return res.json({ nonce, expires_at: new Date(expiresAt).toISOString() });
 });
 
-router.post("/auth/verify", async (req, res) => {
+router.post("/auth/siwe/verify", async (req, res) => {
   cleanupStores();
-  const wallet = normalizeWallet(req.body?.wallet_address);
+  const messageStr = typeof req.body?.message === "string" ? req.body.message.trim() : "";
   const signature = typeof req.body?.signature === "string" ? req.body.signature.trim() : "";
-  if (!wallet) return res.status(400).json({ error: "wallet_address is required and must be valid" });
+  if (!messageStr) {
+    return res.status(400).json({ error: "message is required (full EIP-4361 SIWE string that was signed)" });
+  }
   if (!signature) return res.status(400).json({ error: "signature is required" });
 
-  const challenge = challengesByWallet.get(wallet);
-  if (!challenge || challenge.expiresAt <= now()) {
-    return res.status(400).json({ error: "Challenge missing or expired. Request a new challenge." });
-  }
-  const message = `Clickr Base Mini App\nWallet: ${wallet}\nNonce: ${challenge.nonce}\nExpiresAt: ${new Date(challenge.expiresAt).toISOString()}`;
-  const recovered = normalizeWallet(ethers.verifyMessage(message, signature));
-  if (!recovered || recovered !== wallet) {
-    return res.status(401).json({ error: "Invalid signature for wallet challenge" });
+  let siweMessage;
+  try {
+    siweMessage = new SiweMessage(messageStr);
+  } catch {
+    return res.status(400).json({ error: "Invalid SIWE message" });
   }
 
-  challengesByWallet.delete(wallet);
+  const allowedDomains = getAllowedSiweDomains();
+  const msgDomain = String(siweMessage.domain || "").toLowerCase();
+  if (!allowedDomains.includes(msgDomain)) {
+    return res.status(400).json({ error: "SIWE domain is not allowed for this deployment" });
+  }
+
+  const wantChain = expectedSiweChainId();
+  if (Number(siweMessage.chainId) !== wantChain) {
+    return res.status(400).json({ error: `SIWE chainId must be ${wantChain} (Base)` });
+  }
+
+  const nonceEntry = siweNonces.get(siweMessage.nonce);
+  if (!nonceEntry || nonceEntry.expiresAt <= now()) {
+    return res.status(400).json({ error: "Nonce missing or expired. Request a new nonce." });
+  }
+
+  try {
+    const result = await siweMessage.verify({
+      signature,
+      domain: siweMessage.domain,
+      nonce: siweMessage.nonce,
+    });
+    if (!result.success) {
+      const msg = result.error?.type || result.error?.message || "SIWE verification failed";
+      return res.status(401).json({ error: String(msg) });
+    }
+  } catch (err) {
+    return res.status(401).json({ error: err.message || "SIWE verification failed" });
+  }
+
+  siweNonces.delete(siweMessage.nonce);
+
+  const wallet = normalizeWallet(siweMessage.address);
+  if (!wallet) return res.status(400).json({ error: "Invalid address in SIWE message" });
+
   const proofToken = crypto.randomBytes(24).toString("hex");
   const expiresAt = now() + VERIFIED_TTL_MS;
   verifiedProofs.set(proofToken, { wallet, expiresAt });

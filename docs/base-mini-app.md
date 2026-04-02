@@ -11,8 +11,8 @@ This document describes the Base-focused mini app surface built inside the exist
   - `/base/agent/create`
   - `/base/agent/[slug]`
 - Backend mini app routes:
-  - `/base/auth/challenge`
-  - `/base/auth/verify`
+  - `GET /base/auth/siwe/nonce`
+  - `POST /base/auth/siwe/verify`
   - `/base/agents/me`
   - `/base/agents/create`
   - `/base/agents/claim`
@@ -21,11 +21,10 @@ This document describes the Base-focused mini app surface built inside the exist
 
 ## Security Model (v1)
 
-- Wallet challenge flow issues short-lived challenge messages.
-- User signs challenge in wallet.
-- Server verifies signature and issues short-lived `proof_token`.
+- **EIP-4361 Sign-In with Ethereum (SIWE)** via the `siwe` library: server issues a one-time nonce, client builds a standard SIWE message (Base chain id, app `domain` / `uri`), user signs, server verifies and issues a short-lived `proof_token`.
 - Sensitive Base actions require `proof_token`, including ERC-8004 mint.
 - Mint endpoint also enforces that wallet matches `metadata.wallet_owner_address`.
+- Production requires `SIWE_ALLOWED_DOMAINS` to match the browser `host` used in SIWE messages (see `.env.example`).
 
 This removes the prior trust model where an API key holder could mint to arbitrary wallets.
 
@@ -54,17 +53,12 @@ Before submitting on Base.dev:
 4. Validate contract + explorer links point to Base mainnet.
 5. Confirm env variables are set for production RPC, contract, and relay signer.
 
-## SIWE Phase-2 Plan
+## Session follow-up (optional)
 
-v1 intentionally uses per-action challenge proofs without session persistence.
+v1 uses per-action SIWE + short-lived `proof_token` (no long-lived cookie session).
 
-Phase 2 upgrade path:
+Optional Phase 2:
 
-1. Add SIWE nonce + verify endpoints.
-2. Add signed-session cookie/token middleware.
-3. Allow protected routes to accept either:
-   - valid SIWE session, or
-   - short-lived proof challenge (v1 compatibility)
-4. Migrate UI from repeated challenge prompts to session-backed auth.
-
-This keeps API transition backward-compatible while improving UX and security.
+1. Add HTTP-only session cookie after SIWE verify (same message verification).
+2. Allow protected routes to accept either session or `proof_token`.
+3. Reduce repeated signing for power users.

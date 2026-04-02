@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAccount, useConnect, useDisconnect } from "wagmi";
+import BaseChainGuard from "@/components/BaseChainGuard";
 import BaseWalletProvider from "@/components/BaseWalletProvider";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || "http://localhost:4000";
@@ -43,14 +44,32 @@ function BaseHomeInner() {
         </p>
 
         {!isConnected ? (
-          <button
-            type="button"
-            disabled={isPending}
-            onClick={() => connect({ connector: connectors[0] })}
-            className="mt-6 w-full border border-[#E53935] bg-[#E53935] px-4 py-2.5 text-xs font-bold uppercase tracking-[0.14em] text-white disabled:opacity-50"
-          >
-            {isPending ? "Connecting..." : "Connect Wallet"}
-          </button>
+          <div className="mt-6 space-y-2">
+            <button
+              type="button"
+              disabled={isPending}
+              onClick={() =>
+                connect({
+                  connector: connectors.find((c) => c.id === "baseAccount") ?? connectors[0],
+                })
+              }
+              className="w-full border border-[#E53935] bg-[#E53935] px-4 py-2.5 text-xs font-bold uppercase tracking-[0.14em] text-white disabled:opacity-50"
+            >
+              {isPending ? "Connecting..." : "Connect with Base Account"}
+            </button>
+            <button
+              type="button"
+              disabled={isPending}
+              onClick={() =>
+                connect({
+                  connector: connectors.find((c) => c.id === "injected") ?? connectors[0],
+                })
+              }
+              className="w-full border border-zinc-600 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-300 disabled:opacity-50"
+            >
+              Browser wallet (injected)
+            </button>
+          </div>
         ) : (
           <div className="mt-6 rounded border border-zinc-800 bg-[#0a0a0a] p-4 text-xs">
             <p className="break-all text-zinc-300">{address}</p>
@@ -66,6 +85,8 @@ function BaseHomeInner() {
 
         {loading && <p className="mt-4 text-xs text-zinc-500">Checking linked agent...</p>}
         {error && <p className="mt-4 text-xs text-[#ff9e9c]">{error}</p>}
+
+        {isConnected && <BaseChainGuard />}
 
         {isConnected && !loading && (
           <div className="mt-6 space-y-3">

@@ -3,15 +3,19 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAccount, useConnect, useWalletClient } from "wagmi";
+import { base } from "wagmi/chains";
+import { useAccount, useChainId, useConnect, useWalletClient } from "wagmi";
+import BaseChainGuard from "@/components/BaseChainGuard";
 import BaseWalletProvider from "@/components/BaseWalletProvider";
 import { createWalletProof, postBase } from "@/lib/web3/baseAuth";
 
 function CreateAgentInner() {
   const router = useRouter();
   const { address, isConnected } = useAccount();
+  const chainId = useChainId();
   const { data: walletClient } = useWalletClient();
   const { connect, connectors } = useConnect();
+  const onBase = !isConnected || chainId === base.id;
 
   const [name, setName] = useState("");
   const [domain, setDomain] = useState("");
@@ -25,6 +29,11 @@ function CreateAgentInner() {
     e.preventDefault();
     if (!isConnected || !address || !walletClient) {
       setMessage("Connect wallet first.");
+      setStatus("error");
+      return;
+    }
+    if (!onBase) {
+      setMessage("Switch to Base network first.");
       setStatus("error");
       return;
     }
@@ -56,6 +65,11 @@ function CreateAgentInner() {
       setStatus("error");
       return;
     }
+    if (!onBase) {
+      setMessage("Switch to Base network first.");
+      setStatus("error");
+      return;
+    }
     setStatus("loading");
     setMessage("");
     try {
@@ -82,14 +96,33 @@ function CreateAgentInner() {
         </Link>
         <h1 className="mt-3 text-2xl font-semibold">Create or Claim Agent</h1>
 
+        {isConnected && <BaseChainGuard />}
+
         {!isConnected && (
-          <button
-            type="button"
-            onClick={() => connect({ connector: connectors[0] })}
-            className="mt-5 w-full border border-[#E53935] bg-[#E53935] px-4 py-2.5 text-xs font-bold uppercase tracking-[0.14em] text-white"
-          >
-            Connect wallet
-          </button>
+          <div className="mt-5 space-y-2">
+            <button
+              type="button"
+              onClick={() =>
+                connect({
+                  connector: connectors.find((c) => c.id === "baseAccount") ?? connectors[0],
+                })
+              }
+              className="w-full border border-[#E53935] bg-[#E53935] px-4 py-2.5 text-xs font-bold uppercase tracking-[0.14em] text-white"
+            >
+              Connect with Base Account
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                connect({
+                  connector: connectors.find((c) => c.id === "injected") ?? connectors[0],
+                })
+              }
+              className="w-full border border-zinc-600 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-300"
+            >
+              Browser wallet (injected)
+            </button>
+          </div>
         )}
 
         <form onSubmit={onCreate} className="mt-6 space-y-3 border border-zinc-800 bg-[#0a0a0a]/90 p-4">
@@ -121,7 +154,7 @@ function CreateAgentInner() {
           />
           <button
             type="submit"
-            disabled={status === "loading" || !isConnected}
+            disabled={status === "loading" || !isConnected || !onBase}
             className="w-full border border-[#E53935] bg-[#E53935] px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] disabled:opacity-50"
           >
             {status === "loading" ? "Processing..." : "Create and link"}
@@ -139,7 +172,7 @@ function CreateAgentInner() {
           />
           <button
             type="submit"
-            disabled={status === "loading" || !isConnected}
+            disabled={status === "loading" || !isConnected || !onBase}
             className="w-full border border-zinc-700 px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] disabled:opacity-50"
           >
             {status === "loading" ? "Processing..." : "Claim and link"}
