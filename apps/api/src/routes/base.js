@@ -69,6 +69,19 @@ function expectedSiweChainId() {
   return Number(process.env.BASE_CHAIN_ID || process.env.ERC8004_CHAIN_ID || 8453);
 }
 
+/** Used by `siwe` for EIP-1271 (smart wallets / Base Account). Without this, verify always fails for contract signatures. */
+let siweRpcProviderCache;
+function getSiweRpcProvider() {
+  if (siweRpcProviderCache !== undefined) return siweRpcProviderCache;
+  const url = process.env.BASE_RPC_URL || process.env.ERC8004_RPC_URL || "https://mainnet.base.org";
+  try {
+    siweRpcProviderCache = new ethers.JsonRpcProvider(url);
+  } catch {
+    siweRpcProviderCache = null;
+  }
+  return siweRpcProviderCache;
+}
+
 function verifyProofToken(wallet, proofToken) {
   if (!proofToken || typeof proofToken !== "string") return false;
   const item = verifiedProofs.get(proofToken);
@@ -143,18 +156,34 @@ router.post("/auth/siwe/verify", async (req, res) => {
     return res.status(400).json({ error: "Nonce missing or expired. Request a new nonce." });
   }
 
+  let verifiedOk = false;
   try {
-    const result = await siweMessage.verify({
-      signature,
-      domain: siweMessage.domain,
-      nonce: siweMessage.nonce,
-    });
-    if (!result.success) {
-      const msg = result.error?.type || result.error?.message || "SIWE verification failed";
-      return res.status(401).json({ error: String(msg) });
+    const provider = getSiweRpcProvider();
+    const result = await siweMessage.verify(
+      { signature, domain: siweMessage.domain, nonce: siweMessage.nonce },
+      { provider, suppressExceptions: true }
+    );
+    if (result.success) verifiedOk = true;
+  } catch {
+    /* fall through to EOA fallback */
+  }
+
+  if (!verifiedOk) {
+    try {
+      const prepared = siweMessage.prepareMessage();
+      const recovered = normalizeWallet(ethers.verifyMessage(prepared, signature));
+      const claimed = normalizeWallet(siweMessage.address);
+      if (recovered && claimed && recovered === claimed) verifiedOk = true;
+    } catch {
+      /* ignore */
     }
-  } catch (err) {
-    return res.status(401).json({ error: err.message || "SIWE verification failed" });
+  }
+
+  if (!verifiedOk) {
+    return res.status(401).json({
+      error:
+        "SIWE verification failed. Smart wallets need BASE_RPC_URL or ERC8004_RPC_URL on the API (Base mainnet). Try again or use a standard EOA.",
+    });
   }
 
   siweNonces.delete(siweMessage.nonce);

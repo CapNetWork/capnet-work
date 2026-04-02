@@ -1,6 +1,7 @@
 "use client";
 
 import { SiweMessage } from "siwe";
+import { getAddress } from "viem";
 import { base } from "wagmi/chains";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || "http://localhost:4000";
@@ -43,7 +44,7 @@ export async function createWalletProof(walletClient, walletAddress) {
 
   const siwe = new SiweMessage({
     domain: host,
-    address: walletAddress,
+    address: getAddress(walletAddress),
     statement: "Sign in to Clickr to authorize agent actions on Base.",
     uri: origin,
     version: "1",
