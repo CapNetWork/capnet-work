@@ -11,11 +11,13 @@ const {
 } = require("../integrations/store");
 const bankrAdapter = require("../integrations/providers/bankr");
 const agentmailAdapter = require("../integrations/providers/agentmail");
+const erc8004Adapter = require("../integrations/providers/erc8004");
 
 /** Providers with custom persistence (DB, external APIs). Keys must match registry ids. */
 const ADAPTERS = {
   bankr: bankrAdapter,
   agentmail: agentmailAdapter,
+  erc8004: erc8004Adapter,
 };
 
 const router = Router();
@@ -32,6 +34,17 @@ function sanitizeConfigInput(input) {
   return out;
 }
 
+function toProviderErrorResponse(providerId, err) {
+  const adapter = ADAPTERS[providerId];
+  if (typeof adapter?.mapConnectError === "function") {
+    const mapped = adapter.mapConnectError(err);
+    if (mapped && typeof mapped === "object") {
+      return mapped;
+    }
+  }
+  return null;
+}
+
 router.get("/providers", authenticateAgent, async (_req, res) => {
   const providers = listProviders().map((provider) => ({
     id: provider.id,
@@ -40,6 +53,30 @@ router.get("/providers", authenticateAgent, async (_req, res) => {
     supports: provider.supports,
   }));
   res.json({ providers });
+});
+
+router.post("/:providerId/connect", authenticateAgent, sanitizeBody([]), async (req, res, next) => {
+  const provider = getProvider(req.params.providerId);
+  if (!provider) return res.status(404).json({ error: "Unsupported provider" });
+
+  const adapter = ADAPTERS[provider.id];
+  if (!adapter?.connect) {
+    return res.status(400).json({
+      error: "This provider does not expose a connect flow. Use PUT /integrations/:providerId/config.",
+    });
+  }
+
+  const input = typeof adapter.readConnectInput === "function" ? adapter.readConnectInput(req.body) : req.body;
+  try {
+    const out = await adapter.connect(req.agent.id, input);
+    res.json(out);
+  } catch (err) {
+    const mapped = toProviderErrorResponse(provider.id, err);
+    if (mapped) {
+      return res.status(mapped.status || 400).json({ error: mapped.error || "Provider connect failed" });
+    }
+    next(err);
+  }
 });
 
 router.post("/agentmail/link", authenticateAgent, async (req, res, next) => {
@@ -63,6 +100,24 @@ router.post("/agentmail/link", authenticateAgent, async (req, res, next) => {
       });
     }
     console.error("[integrations/agentmail/link]", err.message, err.stack);
+    next(err);
+  }
+});
+
+router.post("/erc8004/verify", authenticateAgent, async (req, res, next) => {
+  try {
+    const out = await erc8004Adapter.verify(req.agent.id);
+    res.json(out);
+  } catch (err) {
+    if (err.code === "ERC8004_NOT_MINTED") {
+      return res.status(400).json({ error: err.message });
+    }
+    if (err.code === "ERC8004_NOT_CONFIGURED") {
+      return res.status(503).json({ error: err.message });
+    }
+    if (err.code === "ERC8004_INVALID_OWNER") {
+      return res.status(422).json({ error: err.message });
+    }
     next(err);
   }
 });
@@ -192,7 +247,7 @@ router.put("/:providerId/config", authenticateAgent, sanitizeBody([]), async (re
   if (adapter?.forbidDirectConfigPut?.()) {
     return res.status(400).json({
       error:
-        "This provider cannot be linked by editing config here. Use the provider connect flow (e.g. POST /api/bankr/connect or POST /integrations/agentmail/link).",
+        "This provider cannot be linked by editing config here. Use the provider connect flow (e.g. POST /integrations/bankr/connect or POST /integrations/agentmail/link).",
     });
   }
 

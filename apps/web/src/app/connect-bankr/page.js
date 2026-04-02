@@ -18,7 +18,7 @@ export default function ConnectBankrPage() {
     setMessage("");
     setConnection(null);
     try {
-      const res = await fetch(`${API_URL}/api/bankr/connect`, {
+      const res = await fetch(`${API_URL}/integrations/bankr/connect`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -48,7 +48,7 @@ export default function ConnectBankrPage() {
     setStatus("loading");
     setMessage("");
     try {
-      const res = await fetch(`${API_URL}/api/bankr/status`, {
+      const res = await fetch(`${API_URL}/integrations/bankr/status`, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${capnetKey.trim()}`,
@@ -62,8 +62,9 @@ export default function ConnectBankrPage() {
         setMessage("No Bankr connection saved for this agent yet.");
         return;
       }
+      const cfg = data.config && typeof data.config === "object" ? data.config : {};
       setStatus("success");
-      setConnection(data);
+      setConnection(cfg);
       setMessage("Loaded Bankr connection status.");
     } catch (err) {
       setStatus("error");

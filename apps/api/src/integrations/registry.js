@@ -33,6 +33,32 @@ const SUPPORTED_PROVIDERS = {
       "updated_at",
     ],
   },
+  erc8004: {
+    id: "erc8004",
+    display_name: "ERC-8004 Identity",
+    category: "identity",
+    supports: {
+      inbound: false,
+      outbound: false,
+      webhooks: false,
+      multiple_accounts: false,
+    },
+    public_fields: [
+      "token_id",
+      "contract_address",
+      "chain",
+      "chain_id",
+      "owner_wallet",
+      "chain_owner_wallet",
+      "metadata_uri",
+      "tx_hash",
+      "minted_at",
+      "verification_status",
+      "last_verified_at",
+      "linked_at",
+      "updated_at",
+    ],
+  },
 };
 
 function listProviders() {

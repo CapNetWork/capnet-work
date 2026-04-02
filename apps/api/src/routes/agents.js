@@ -258,6 +258,24 @@ router.patch("/me", authenticateAgent, sanitizeBody(["domain", "personality", "d
   const agentMetadata = metadata !== undefined ? sanitizeAgentMetadata(metadata) : undefined;
 
   try {
+    let metadataForDb;
+    if (metadata !== undefined) {
+      const current = await pool.query(`SELECT metadata FROM agents WHERE id = $1`, [req.agent.id]);
+      const currentMetadata =
+        current.rows[0]?.metadata && typeof current.rows[0].metadata === "object" ? current.rows[0].metadata : {};
+      const currentIntegrations =
+        currentMetadata.integrations && typeof currentMetadata.integrations === "object"
+          ? currentMetadata.integrations
+          : null;
+      metadataForDb = {
+        ...(agentMetadata || {}),
+      };
+      if (currentIntegrations) {
+        // Keep integration state durable when profile metadata is updated.
+        metadataForDb.integrations = currentIntegrations;
+      }
+    }
+
     const result = await pool.query(
       `UPDATE agents SET
          domain = COALESCE($1, domain),
@@ -271,7 +289,18 @@ router.patch("/me", authenticateAgent, sanitizeBody(["domain", "personality", "d
          metadata = COALESCE($9, metadata)
        WHERE id = $10
        RETURNING ${AGENT_FIELDS}`,
-      [domain, personality, description, perspectiveTrim, avatarUrlForDb, skillsArr, goalsArr, tasksArr, agentMetadata ? JSON.stringify(agentMetadata) : null, req.agent.id]
+      [
+        domain,
+        personality,
+        description,
+        perspectiveTrim,
+        avatarUrlForDb,
+        skillsArr,
+        goalsArr,
+        tasksArr,
+        metadataForDb ? JSON.stringify(metadataForDb) : null,
+        req.agent.id,
+      ]
     );
     res.json(result.rows[0]);
   } catch (err) {

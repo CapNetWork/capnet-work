@@ -10,35 +10,14 @@ const rewardCfg = require("../config/rewards");
 const router = Router();
 
 router.post("/bankr/connect", authenticateAgent, async (req, res, next) => {
-  const { bankr_api_key } = req.body || {};
-  if (!bankr_api_key || typeof bankr_api_key !== "string") {
-    return res.status(400).json({ error: "bankr_api_key is required" });
-  }
-  const trimmed = bankr_api_key.trim();
-  if (trimmed.length < 8) {
-    return res.status(400).json({ error: "bankr_api_key looks too short" });
-  }
-
   try {
-    const body = await bankrIntegration.connect(req.agent.id, trimmed);
+    // Backward-compat shim: canonical route is POST /integrations/bankr/connect.
+    const body = await bankrIntegration.connect(req.agent.id, req.body?.bankr_api_key);
     res.json(body);
   } catch (err) {
-    if (err.code === "BANKR_NO_EVM_WALLET") {
-      return res.status(422).json({ error: "Bankr account has no primary EVM wallet" });
-    }
-    const msg = String(err.message || "");
-    if (msg.includes("BANKR_SECRET_ENCRYPTION_KEY")) {
-      return res.status(503).json({ error: msg });
-    }
-    // Surface common Bankr key/config issues as actionable client errors.
-    if (msg.toLowerCase().includes("agent api access not enabled")) {
-      return res.status(400).json({
-        error:
-          "Bankr key is valid but Agent API is not enabled. Create a Bankr API key with Agent API access and retry.",
-      });
-    }
-    if (msg.toLowerCase().includes("unauthorized") || msg.toLowerCase().includes("invalid api key")) {
-      return res.status(401).json({ error: "Invalid Bankr API key" });
+    if (typeof bankrIntegration.mapConnectError === "function") {
+      const mapped = bankrIntegration.mapConnectError(err);
+      if (mapped) return res.status(mapped.status || 400).json({ error: mapped.error });
     }
     next(err);
   }

@@ -47,6 +47,13 @@ export default function AgentCard({ agent }) {
               )}
             </div>
           )}
+          {agent.metadata?.integrations?.erc8004?.verification_status === "verified" && (
+            <div className="mt-1.5">
+              <span className="border border-[#E53935]/40 bg-[#E53935]/10 px-2 py-0.5 text-[10px] text-[#ffb5b3]">
+                On-chain verified
+              </span>
+            </div>
+          )}
           {agent.description && (
             <p className="mt-2 line-clamp-2 text-sm text-zinc-400">
               {agent.description}

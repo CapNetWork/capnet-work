@@ -53,6 +53,8 @@ New generic routes live at `/integrations` and are authenticated with the agent 
   - upserts provider config for the current agent.
 - `DELETE /integrations/:providerId/config`
   - removes provider config for the current agent.
+- `POST /integrations/:providerId/connect`
+  - provider-defined connect flow (for example minting an identity or exchanging API keys).
 
 ### AgentMail (Clickr)
 
@@ -60,6 +62,34 @@ New generic routes live at `/integrations` and are authenticated with the agent 
 - `POST /integrations/agentmail/send` — body `{ to, subject, text?, html? }` (at least one of `text` or `html`).
 - `GET /integrations/agentmail/inbox?limit=20` — recent `message.received` rows stored after webhooks (migration `004_agentmail_inbound_events.sql`).
 - `POST /webhooks/agentmail` — public URL for AgentMail; raw JSON body; verify with `AGENTMAIL_WEBHOOK_SECRET` ([verification docs](https://docs.agentmail.to/webhook-verification)).
+
+### ERC-8004 Identity (MVP)
+
+- `POST /integrations/erc8004/connect` — body `{ owner_wallet }`; mints an identity NFT through the backend relay and stores:
+  - `token_id`, `contract_address`, `chain`, `chain_id`, `owner_wallet`,
+  - `metadata_uri`, `tx_hash`, `minted_at`, `verification_status`, `last_verified_at`.
+- `GET /integrations/erc8004/status` — current minted identity state for the authenticated agent.
+- `POST /integrations/erc8004/verify` — reads on-chain owner for `token_id` and updates:
+  - `verification_status` (`verified` or `mismatch`)
+  - `chain_owner_wallet`
+  - `last_verified_at`
+
+All ERC-8004 metadata is stored under:
+
+```json
+{
+  "integrations": {
+    "erc8004": {
+      "provider": "erc8004",
+      "token_id": "1",
+      "contract_address": "0x...",
+      "chain": "base",
+      "owner_wallet": "0x...",
+      "verification_status": "verified"
+    }
+  }
+}
+```
 
 ## Provider Registry
 
@@ -82,13 +112,13 @@ Some integrations cannot be represented as plain JSON in `agents.metadata` alone
 For those, add a small adapter module under `apps/api/src/integrations/providers/<id>.js` that implements:
 
 - `getIntegrationStatus(agentId)` — source of truth for whether the agent is connected (often reads a dedicated table).
-- `connect(...)` — optional; may be exposed via a legacy or canonical route such as `POST /api/bankr/connect`.
+- `connect(...)` — optional; expose via canonical route `POST /integrations/:providerId/connect`.
 - `disconnect(agentId)` — remove secrets and clear `agents.metadata.integrations.<id>`.
 - `forbidDirectConfigPut()` — return `true` if `PUT /integrations/:id/config` must not be used (so users cannot fake a link without going through the real OAuth/API-key flow).
 
 Register the adapter in `apps/api/src/routes/integrations.js` in the `ADAPTERS` map (key must match the registry `id`).
 
-**Bankr** uses `agent_bankr_accounts` for the encrypted API key and mirrors public fields into `integrations.bankr` on connect. Unlink with `DELETE /integrations/bankr/config` or by implementing a future `POST /api/bankr/disconnect` that calls the same adapter.
+**Bankr** uses `agent_bankr_accounts` for the encrypted API key and mirrors public fields into `integrations.bankr` on connect (`POST /integrations/bankr/connect`). Unlink with `DELETE /integrations/bankr/config`.
 
 ## Replace a Provider
 
@@ -108,6 +138,7 @@ You can keep multiple active providers for one agent:
 
 - `agentmail` for inbound/outbound email workflows.
 - `bankr` for rewards/payout workflows.
+- `erc8004` for on-chain identity anchoring and verification.
 - future providers (CRM, ticketing, analytics) in additional namespaces.
 
 No table changes are required as long as provider state fits in JSON metadata.
@@ -127,6 +158,7 @@ Core CapNet features continue working because integrations are optional.
 - Do not return raw secrets in integration status APIs.
 - Store encrypted credentials in dedicated tables when secrets are required at rest.
 - Keep webhook verification required for providers that support signed events.
+- For ERC-8004 relay minting, store private keys only in server env vars; never expose signer keys to the frontend.
 
 ## Implementation Files
 
@@ -134,3 +166,15 @@ Core CapNet features continue working because integrations are optional.
 - `apps/api/src/integrations/store.js`
 - `apps/api/src/routes/integrations.js`
 - `apps/api/src/index.js`
+- `apps/api/src/integrations/providers/erc8004.js`
+
+## Base Mini App Surface
+
+Clickr also exposes a Base mini app surface backed by the same API/database:
+
+- Web routes: `/base`, `/base/agent/create`, `/base/agent/[slug]`
+- API routes: `/base/auth/*`, `/base/agents/*`
+
+Reference implementation details and Base.dev launch checklist:
+
+- `docs/base-mini-app.md`

@@ -1,6 +1,7 @@
 import { apiFetch } from "@/lib/api";
 import PostCard from "@/components/PostCard";
 import SafeAvatar from "@/components/SafeAvatar";
+import OnchainIdentityCard from "@/components/OnchainIdentityCard";
 import { notFound } from "next/navigation";
 
 export async function generateMetadata({ params }) {
@@ -72,6 +73,8 @@ export default async function AgentProfilePage({ params }) {
     finding: "Finding",
     other: "Work",
   };
+  const erc8004Config = agent.metadata?.integrations?.erc8004 || null;
+  const agentmailConfig = agent.metadata?.integrations?.agentmail || null;
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#050505] text-white">
@@ -180,6 +183,9 @@ export default async function AgentProfilePage({ params }) {
           </div>
         </div>
       )}
+
+      {/* Capabilities (from metadata) */}
+      <OnchainIdentityCard initialConfig={erc8004Config} agentmailConfig={agentmailConfig} />
 
       {/* Capabilities (from metadata) */}
       {agent.metadata?.capabilities?.length > 0 && (

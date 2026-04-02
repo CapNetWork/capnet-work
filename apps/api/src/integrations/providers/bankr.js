@@ -58,10 +58,27 @@ async function mirrorMetadata(agentId, row) {
 
 /**
  * Connect Bankr: validate key with Bankr API, persist encrypted key, mirror public fields.
- * @returns {Promise<object>} Same shape as legacy POST /api/bankr/connect response body.
+ * @returns {Promise<object>} Connect response body for POST /integrations/bankr/connect.
  */
 async function connect(agentId, bankrApiKey) {
-  const me = await getMe(bankrApiKey);
+  const key =
+    typeof bankrApiKey === "string"
+      ? bankrApiKey.trim()
+      : typeof bankrApiKey?.bankr_api_key === "string"
+        ? bankrApiKey.bankr_api_key.trim()
+        : "";
+  if (!key) {
+    const err = new Error("bankr_api_key is required");
+    err.code = "BANKR_KEY_REQUIRED";
+    throw err;
+  }
+  if (key.length < 8) {
+    const err = new Error("bankr_api_key looks too short");
+    err.code = "BANKR_KEY_TOO_SHORT";
+    throw err;
+  }
+
+  const me = await getMe(key);
   const walletAddress = me.evm_wallet;
   if (!walletAddress) {
     const err = new Error("BANKR_NO_EVM_WALLET");
@@ -69,7 +86,7 @@ async function connect(agentId, bankrApiKey) {
     throw err;
   }
 
-  const enc = encryptUtf8(bankrApiKey);
+  const enc = encryptUtf8(key);
   const result = await pool.query(
     `INSERT INTO agent_bankr_accounts (
        agent_id, wallet_address, evm_wallet, solana_wallet, x_username, farcaster_username,
@@ -128,9 +145,40 @@ async function disconnect(agentId) {
   };
 }
 
-/** Generic PUT /integrations/bankr/config cannot set secrets — use POST /api/bankr/connect */
+/** Generic PUT /integrations/bankr/config cannot set secrets — use POST /integrations/bankr/connect */
 function forbidDirectConfigPut() {
   return true;
+}
+
+function readConnectInput(body) {
+  return typeof body === "object" && body !== null ? body.bankr_api_key : null;
+}
+
+function mapConnectError(err) {
+  if (!err) return null;
+  if (err.code === "BANKR_KEY_REQUIRED") {
+    return { status: 400, error: "bankr_api_key is required" };
+  }
+  if (err.code === "BANKR_KEY_TOO_SHORT") {
+    return { status: 400, error: "bankr_api_key looks too short" };
+  }
+  if (err.code === "BANKR_NO_EVM_WALLET") {
+    return { status: 422, error: "Bankr account has no primary EVM wallet" };
+  }
+  const msg = String(err.message || "").toLowerCase();
+  if (msg.includes("bankr_secret_encryption_key")) {
+    return { status: 503, error: String(err.message || "BANKR_SECRET_ENCRYPTION_KEY is not configured") };
+  }
+  if (msg.includes("agent api access not enabled")) {
+    return {
+      status: 400,
+      error: "Bankr key is valid but Agent API is not enabled. Create a Bankr API key with Agent API access and retry.",
+    };
+  }
+  if (msg.includes("unauthorized") || msg.includes("invalid api key")) {
+    return { status: 401, error: "Invalid Bankr API key" };
+  }
+  return null;
 }
 
 module.exports = {
@@ -139,4 +187,6 @@ module.exports = {
   connect,
   disconnect,
   forbidDirectConfigPut,
+  readConnectInput,
+  mapConnectError,
 };
