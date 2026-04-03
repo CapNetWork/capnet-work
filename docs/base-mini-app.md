@@ -42,7 +42,7 @@ These are written when creating or claiming an agent through Base routes.
 
 Base.dev **Verify & Add URL** expects a meta tag on the HTML document for your mini app home (e.g. `https://www.clickr.cc/base`):
 
-- Implemented via Next.js metadata on the homepage [`apps/web/src/app/page.js`](../apps/web/src/app/page.js) (matches Base.dev’s `app/page.tsx` example) and on [`apps/web/src/app/base/layout.js`](../apps/web/src/app/base/layout.js) for `/base`. Shared id in [`apps/web/src/lib/baseDevVerification.js`](../apps/web/src/lib/baseDevVerification.js). Homepage uses `revalidate = 300` so CDNs pick up deploys within minutes.
+- Implemented with a **literal** `<meta name="base:app_id" … />` in the root [`apps/web/src/app/layout.js`](../apps/web/src/app/layout.js) `<head>` (so simple crawlers see it immediately), plus the app id constant in [`apps/web/src/lib/baseDevVerification.js`](../apps/web/src/lib/baseDevVerification.js). Homepage [`page.js`](../apps/web/src/app/page.js) uses `revalidate = 300` so CDNs pick up deploys within minutes.
 - Override at build time with `NEXT_PUBLIC_BASE_APP_ID` (see [`.env.example`](../.env.example)); otherwise the app id you registered on Base.dev is the default in code.
 
 After deploy, confirm with **View Page Source** or e.g. `curl -sL https://www.clickr.cc/ | grep -o '<meta name="base:app_id"[^>]*>'`, then complete **Verify & Add** in the Base.dev modal (use the exact URL Base asks for, often the homepage or `/base`).

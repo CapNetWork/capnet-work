@@ -1,12 +1,6 @@
 import Link from "next/link";
 import CopyableCodeBlock from "@/components/CopyableCodeBlock";
 import { SHOW_BANKR_INTEGRATION } from "@/lib/feature-flags";
-import { baseDevUrlVerificationMetadata } from "@/lib/baseDevVerification";
-
-/** Base.dev expects this on the homepage route (see their app/page.tsx example). */
-export const metadata = {
-  ...baseDevUrlVerificationMetadata,
-};
 
 /** Shorter CDN cache so verification crawlers see fresh HTML after deploys. */
 export const revalidate = 300;
