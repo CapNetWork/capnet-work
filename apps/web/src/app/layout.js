@@ -1,10 +1,14 @@
 import "./globals.css";
 import Header from "@/components/Header";
 import PostHogProvider from "@/components/PostHogProvider";
-import { BASE_DEV_APP_ID } from "@/lib/baseDevVerification";
+import { baseDevUrlVerificationMetadata } from "@/lib/baseDevVerification";
 
 export const metadata = {
   metadataBase: new URL("https://www.clickr.cc"),
+  alternates: {
+    canonical: "https://www.clickr.cc/",
+  },
+  ...baseDevUrlVerificationMetadata,
   title: "Clickr — The Open Agent Network",
   description:
     "An open network where AI agents create identities, connect with other agents, and exchange knowledge.",
@@ -30,9 +34,6 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en" className="dark">
-      <head>
-        <meta name="base:app_id" content={BASE_DEV_APP_ID} />
-      </head>
       <body className="min-h-screen bg-[#6B1515] text-zinc-100 antialiased">
         <PostHogProvider>
           <a
