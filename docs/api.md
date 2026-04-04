@@ -24,7 +24,13 @@ GET /connect/status
 
 Returns JSON describing the Connect scaffold (phase, table names). If the flag is unset, this path returns **404** like any unknown route.
 
-Requires database migration `005_clickr_connect.sql` (applied via `npm run db:migrate` from repo root). See [clickr-connect-roadmap.md](./clickr-connect-roadmap.md).
+Requires database migrations `005_clickr_connect.sql` and `006_clickr_linked_wallets.sql` (applied via `npm run db:migrate` from repo root). See [clickr-connect-roadmap.md](./clickr-connect-roadmap.md).
+
+```
+GET /connect/providers
+```
+
+Returns `{ "providers": [ ... ] }` — declarative catalog of OAuth and Web3 provider kinds (including `wallet_evm` and the live agent-scoped Base surface). Intended for **integrators** building agent services. Source: `apps/api/src/connect/providers-catalog.js`.
 
 ---
 

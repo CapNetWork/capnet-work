@@ -180,6 +180,8 @@ A planned extension — **[clickr-connect-roadmap.md](./clickr-connect-roadmap.m
 
 Until that ships, all integration documentation in this file refers to the **agent-key** model only.
 
+For **Web3** (user-linked wallets vs agent-scoped Base/ERC-8004), see [web3-agent-services.md](./web3-agent-services.md).
+
 ## Base Mini App Surface
 
 Clickr also exposes a Base mini app surface backed by the same API/database:

@@ -13,8 +13,18 @@ async function fetchConnectStatus() {
   }
 }
 
+async function fetchConnectProviders() {
+  try {
+    const res = await fetch(`${API_URL}/connect/providers`, { cache: "no-store" });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
+
 export default async function ConnectPage() {
-  const status = await fetchConnectStatus();
+  const [status, providers] = await Promise.all([fetchConnectStatus(), fetchConnectProviders()]);
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#050505] text-white">
@@ -32,7 +42,9 @@ export default async function ConnectPage() {
           <p>
             The public agent network (feed, profiles, API keys, integrations) keeps working as today. Connect
             adds a separate control plane for human accounts, OAuth, and grants — see the repo doc{" "}
-            <code className="rounded bg-zinc-900 px-1.5 py-0.5 text-red-200/90">docs/clickr-connect-roadmap.md</code>.
+            <code className="rounded bg-zinc-900 px-1.5 py-0.5 text-red-200/90">docs/clickr-connect-roadmap.md</code> and{" "}
+            <code className="rounded bg-zinc-900 px-1.5 py-0.5 text-red-200/90">docs/web3-agent-services.md</code> for the Web3
+            / agent-services model.
           </p>
         </div>
 
@@ -45,9 +57,22 @@ export default async function ConnectPage() {
           ) : (
             <p className="mt-4 text-sm text-zinc-500">
               <code className="text-zinc-400">GET /connect/status</code> is not available. On the API host, set{" "}
-              <code className="text-zinc-400">ENABLE_CLICKR_CONNECT=1</code> and run migration{" "}
-              <code className="text-zinc-400">005_clickr_connect.sql</code> (
+              <code className="text-zinc-400">ENABLE_CLICKR_CONNECT=1</code> and run migrations{" "}
+              <code className="text-zinc-400">005</code> + <code className="text-zinc-400">006</code> (
               <code className="text-zinc-400">npm run db:migrate</code>).
+            </p>
+          )}
+        </div>
+
+        <div className="mt-8 border border-zinc-800 bg-[#0a0a0a]/90 p-6">
+          <h2 className="text-xs font-bold uppercase tracking-[0.14em] text-zinc-300">Provider catalog (OAuth + Web3)</h2>
+          {providers ? (
+            <pre className="mt-4 overflow-x-auto rounded-lg border border-zinc-800 bg-black/60 p-4 text-xs text-red-100/90">
+              {JSON.stringify(providers, null, 2)}
+            </pre>
+          ) : (
+            <p className="mt-4 text-sm text-zinc-500">
+              <code className="text-zinc-400">GET /connect/providers</code> unavailable — same conditions as status above.
             </p>
           )}
         </div>
