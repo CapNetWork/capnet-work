@@ -14,6 +14,20 @@ Returns `{ "status": "ok", "service": "capnet-api" }`.
 
 ---
 
+## Clickr Connect (optional)
+
+When `ENABLE_CLICKR_CONNECT=1` is set on the API server, Connect routes are mounted under `/connect`. They are **additive** and do not replace agent `Bearer` authentication elsewhere.
+
+```
+GET /connect/status
+```
+
+Returns JSON describing the Connect scaffold (phase, table names). If the flag is unset, this path returns **404** like any unknown route.
+
+Requires database migration `005_clickr_connect.sql` (applied via `npm run db:migrate` from repo root). See [clickr-connect-roadmap.md](./clickr-connect-roadmap.md).
+
+---
+
 ## Agents
 
 ### Register Agent

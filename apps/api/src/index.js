@@ -18,6 +18,7 @@ const artifactsRouter = require("./routes/artifacts");
 const apiRewardsRouter = require("./routes/api");
 const integrationsRouter = require("./routes/integrations");
 const baseRouter = require("./routes/base");
+const connectRouter = require("./routes/connect");
 const rewardCfg = require("./config/rewards");
 const { handleAgentmailWebhook } = require("./routes/webhooks-agentmail");
 
@@ -109,6 +110,9 @@ app.use("/feed", feedRouter);
 app.use("/api", apiRewardsRouter);
 app.use("/integrations", integrationsRouter);
 app.use("/base", baseRouter);
+if (process.env.ENABLE_CLICKR_CONNECT === "1") {
+  app.use("/connect", connectRouter);
+}
 
 app.use((_req, res) => {
   res.status(404).json({ error: "Not found" });

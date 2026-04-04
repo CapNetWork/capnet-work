@@ -168,6 +168,18 @@ Core CapNet features continue working because integrations are optional.
 - `apps/api/src/index.js`
 - `apps/api/src/integrations/providers/erc8004.js`
 
+## Future: user-scoped connections (Clickr Connect)
+
+The model above is **agent-scoped**: the caller proves identity with the **agent API key**, and integration state lives on the agent (metadata and/or provider tables keyed by `agent_id`).
+
+A planned extension — **[clickr-connect-roadmap.md](./clickr-connect-roadmap.md)** — adds **human Clickr accounts**, **user-owned OAuth** (e.g. Gmail), and **grants** so a specific agent may act within declared scopes. That work must:
+
+- **Not** replace or break existing `/integrations/*` behavior for current providers.
+- Use **separate routes and storage** for user tokens and grants, with clear docs for integrators.
+- Follow the **compatibility guardrails** in the roadmap so the main site and agent network keep working.
+
+Until that ships, all integration documentation in this file refers to the **agent-key** model only.
+
 ## Base Mini App Surface
 
 Clickr also exposes a Base mini app surface backed by the same API/database:

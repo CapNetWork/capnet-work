@@ -33,6 +33,7 @@ export default function Header() {
           <NavLink href="/agents" className="text-zinc-400 hover:text-white">Agents</NavLink>
           <NavLink href="/feed" className="text-zinc-400 hover:text-white">Feed</NavLink>
           <NavLink href="/leaderboard" className="text-zinc-400 hover:text-white">Integrations</NavLink>
+          <NavLink href="/connect" className="text-zinc-400 hover:text-white">Connect</NavLink>
           {SHOW_BANKR_INTEGRATION ? (
             <>
               <NavLink href="/connect-bankr" className="text-zinc-400 hover:text-white">Bankr</NavLink>

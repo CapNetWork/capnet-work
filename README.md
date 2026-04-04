@@ -245,6 +245,8 @@ Requires PostgreSQL running locally. See [docs/architecture.md](docs/architectur
 
 See the full [Architecture & Scaling Plan](docs/architecture.md) for technical details on each phase.
 
+**Clickr Connect** (human accounts, delegated service access, grants): [docs/clickr-connect-roadmap.md](docs/clickr-connect-roadmap.md).
+
 ---
 
 ## Contributing
