@@ -7,7 +7,7 @@ const CONNECT_PROVIDERS = [
   {
     id: "wallet_evm",
     kind: "web3",
-    implementation: "schema",
+    implementation: "partial",
     display_name: "EVM wallet link",
     description:
       "Associate one or more chain-specific addresses with a Clickr user. verified_at is set after SIWE (or equivalent). Future: scoped delegation to agents.",

@@ -271,7 +271,7 @@ Branch: **`feat/clickr-connect-phase1`** (merge when ready).
 | Piece | Location |
 |-------|-----------|
 | Migrations | [`005_clickr_connect.sql`](../infra/database/migrations/005_clickr_connect.sql) (core tables), [`006_clickr_linked_wallets.sql`](../infra/database/migrations/006_clickr_linked_wallets.sql) (Web3 user wallets) |
-| API (feature-flagged) | [`apps/api/src/routes/connect.js`](../apps/api/src/routes/connect.js) — `GET /status`, `GET /providers`; catalog in [`connect/providers-catalog.js`](../apps/api/src/connect/providers-catalog.js); mounted in [`index.js`](../apps/api/src/index.js) when `ENABLE_CLICKR_CONNECT=1` |
+| API (feature-flagged) | [`connect.js`](../apps/api/src/routes/connect.js) — bootstrap user, SIWE nonce, `/me`, wallets CRUD+verify, agent link/unlink, grants list, audit; helpers in [`connect/session.js`](../apps/api/src/connect/session.js), [`connect/siwe-link.js`](../apps/api/src/connect/siwe-link.js); catalog in [`providers-catalog.js`](../apps/api/src/connect/providers-catalog.js); mounted when `ENABLE_CLICKR_CONNECT=1` |
 | Web3 doc | [web3-agent-services.md](./web3-agent-services.md) |
 | Web landing | [`apps/web/src/app/connect/page.js`](../apps/web/src/app/connect/page.js), [`layout.js`](../apps/web/src/app/connect/layout.js) — **always** served at `/connect`; calls `GET /connect/status` when API flag is on |
 | Nav | [`Header.js`](../apps/web/src/components/Header.js) → **Connect** |
@@ -279,11 +279,11 @@ Branch: **`feat/clickr-connect-phase1`** (merge when ready).
 **Enable locally**
 
 1. `npm run db:migrate` (repo root) after Postgres is up (applies `005` and `006`).  
-2. Set `ENABLE_CLICKR_CONNECT=1` on the API process.  
-3. Restart API — `GET …/connect/status` and `GET …/connect/providers` should return JSON.  
-4. Open `/connect` on the web app; panels should show the payloads when the API is reachable.
+2. Set `ENABLE_CLICKR_CONNECT=1` and `CLICKR_CONNECT_BOOTSTRAP_SECRET` on the API.  
+3. Restart API — exercise `GET /connect/status`, bootstrap + session + wallet verify per [api.md](./api.md#clickr-connect-optional).  
+4. Open `/connect` on the web app; panels show status/providers when the API is reachable.
 
-Auth, Gmail OAuth, grant CRUD, and `agents.owner_id` linkage are **not** implemented yet; they follow Epic 1–5 in **Connect Phase 1 — technical plan (repo-aligned)** above.
+**Done in API:** bootstrap user + session, SIWE wallet verify, linked wallets, **agent link** (`agents.owner_id`), audit read, grants list (empty until user OAuth connections exist). **Not done:** Gmail OAuth, creating provider connections + grant CRUD for OAuth, public signup without bootstrap secret.
 
 ---
 

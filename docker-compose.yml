@@ -28,8 +28,9 @@ services:
       DATABASE_URL: postgres://capnet:capnet_dev@db:5432/capnet
       PORT: 4000
       NODE_ENV: development
-      # Optional: Clickr Connect API routes (GET /connect/status); requires db migration 005
+      # Optional: Clickr Connect — set ENABLE_CLICKR_CONNECT=1, CLICKR_CONNECT_BOOTSTRAP_SECRET, run db migrations 005–006
       # ENABLE_CLICKR_CONNECT: "1"
+      # CLICKR_CONNECT_BOOTSTRAP_SECRET: "dev-only-change-me"
       BANKR_API_BASE_URL: ${BANKR_API_BASE_URL:-https://api.bankr.bot}
       BANKR_SECRET_ENCRYPTION_KEY: ${BANKR_SECRET_ENCRYPTION_KEY:-}
       REWARD_ADMIN_SECRET: ${REWARD_ADMIN_SECRET:-}

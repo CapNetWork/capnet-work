@@ -29,6 +29,14 @@ API normalization: before insert, lowercase address and validate hex length.
 
 `GET /connect/providers` (when `ENABLE_CLICKR_CONNECT=1`) returns a machine-readable list including `wallet_evm`, `base_agent_identity`, and planned OAuth entries. Source: [`apps/api/src/connect/providers-catalog.js`](../apps/api/src/connect/providers-catalog.js).
 
+## Manual flow (current API)
+
+1. Set `ENABLE_CLICKR_CONNECT=1` and `CLICKR_CONNECT_BOOTSTRAP_SECRET`, run migrations `005`–`006`.  
+2. `POST /connect/bootstrap/user` with `Authorization: Bearer <secret>` → save `session_token`.  
+3. `GET /connect/auth/siwe/nonce` → sign SIWE in the wallet (domain must match `SIWE_ALLOWED_DOMAINS`, chain Base).  
+4. `POST /connect/me/wallets/verify` with headers `X-Clickr-Connect-Session: <token>` and body `{ message, signature }`.  
+5. Optional: `POST /connect/me/agents/link` with session header + `X-Capnet-Agent-Key: <capnet_sk_…>` to set `agents.owner_id`.
+
 ## Guardrails
 
 - Do **not** move ERC-8004 private keys or agent `api_key` into browser storage for Connect.

@@ -18,19 +18,33 @@ Returns `{ "status": "ok", "service": "capnet-api" }`.
 
 When `ENABLE_CLICKR_CONNECT=1` is set on the API server, Connect routes are mounted under `/connect`. They are **additive** and do not replace agent `Bearer` authentication elsewhere.
 
-```
-GET /connect/status
-```
+**Env:** `CLICKR_CONNECT_BOOTSTRAP_SECRET` (required for `POST /connect/bootstrap/user`), optional `CLICKR_CONNECT_SESSION_DAYS` (default 30), `CLICKR_CONNECT_SIWE_NONCE_TTL_MS`. SIWE uses the same `SIWE_ALLOWED_DOMAINS` / `BASE_CHAIN_ID` / `BASE_RPC_URL` expectations as [`/base` SIWE](./base-mini-app.md).
 
-Returns JSON describing the Connect scaffold (phase, table names). If the flag is unset, this path returns **404** like any unknown route.
+**Session header (choose one):** `X-Clickr-Connect-Session: <session_token>` or `Authorization: Connect-Session <session_token>`.
 
-Requires database migrations `005_clickr_connect.sql` and `006_clickr_linked_wallets.sql` (applied via `npm run db:migrate` from repo root). See [clickr-connect-roadmap.md](./clickr-connect-roadmap.md).
+Migrations: `005_clickr_connect.sql`, `006_clickr_linked_wallets.sql` (`npm run db:migrate`). See [clickr-connect-roadmap.md](./clickr-connect-roadmap.md) and [web3-agent-services.md](./web3-agent-services.md).
 
-```
-GET /connect/providers
-```
+### Public / bootstrap
 
-Returns `{ "providers": [ ... ] }` — declarative catalog of OAuth and Web3 provider kinds (including `wallet_evm` and the live agent-scoped Base surface). Intended for **integrators** building agent services. Source: `apps/api/src/connect/providers-catalog.js`.
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/connect/status` | none | Capability and schema summary |
+| GET | `/connect/providers` | none | OAuth/Web3 provider catalog |
+| GET | `/connect/auth/siwe/nonce` | none | Nonce for wallet-link SIWE |
+| POST | `/connect/bootstrap/user` | `Authorization: Bearer <CLICKR_CONNECT_BOOTSTRAP_SECRET>` | Creates `clickr_users` + session; body optional `{ "email": "..." }`; returns `session_token` |
+
+### Session-authenticated (`X-Clickr-Connect-Session` or `Connect-Session`)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/connect/me` | Current user row |
+| GET | `/connect/me/wallets` | Linked EVM wallets |
+| POST | `/connect/me/wallets` | Body `{ "address", "chain_id"?, "label"? }` — upsert row (may be unverified) |
+| POST | `/connect/me/wallets/verify` | Body `{ "message", "signature" }` — EIP-4361 SIWE; sets `verified_at` |
+| POST | `/connect/me/agents/link` | Also header `X-Capnet-Agent-Key: <agent api_key>` — sets `agents.owner_id` |
+| DELETE | `/connect/me/agents/:agentId` | Clears `owner_id` if it matches this user |
+| GET | `/connect/me/grants` | Lists non-revoked grants (empty until OAuth connections exist) |
+| GET | `/connect/me/audit?limit=50` | Audit events for this user |
 
 ---
 
