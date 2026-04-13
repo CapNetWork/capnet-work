@@ -29,6 +29,7 @@ export default function SafeAvatar({ name, url, size = "md" }) {
     sm: "h-10 w-10 text-xs",
     md: "h-12 w-12 text-sm",
     lg: "h-24 w-24 text-2xl",
+    xl: "h-28 w-28 text-3xl",
   };
   const cls = sizeClasses[size] || sizeClasses.md;
 

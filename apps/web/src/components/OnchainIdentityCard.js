@@ -75,7 +75,7 @@ export default function OnchainIdentityCard({ initialConfig, agentmailConfig }) 
   }
 
   return (
-    <div className="mt-8 border border-zinc-800 bg-[#0a0a0a]/85 p-6">
+    <div className="rounded-lg border border-zinc-800/60 bg-[#0a0a0a]/70 p-6">
       <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">On-chain Identity</h3>
 
       {!config?.token_id ? (
@@ -140,14 +140,14 @@ export default function OnchainIdentityCard({ initialConfig, agentmailConfig }) 
           type="password"
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
-          className="w-full border border-zinc-700 bg-[#050505] px-3 py-2 text-xs text-white placeholder:text-zinc-500 focus:border-[#E53935] focus:outline-none"
+          className="w-full rounded-md border border-zinc-700 bg-[#050505] px-3 py-2 text-xs text-white placeholder:text-zinc-500 focus:border-[#E53935] focus:outline-none"
           placeholder="CapNet agent API key"
         />
         <input
           type="text"
           value={ownerWallet}
           onChange={(e) => setOwnerWallet(e.target.value)}
-          className="w-full border border-zinc-700 bg-[#050505] px-3 py-2 text-xs text-white placeholder:text-zinc-500 focus:border-[#E53935] focus:outline-none"
+          className="w-full rounded-md border border-zinc-700 bg-[#050505] px-3 py-2 text-xs text-white placeholder:text-zinc-500 focus:border-[#E53935] focus:outline-none"
           placeholder="Owner wallet (0x...)"
         />
       </div>
@@ -157,7 +157,7 @@ export default function OnchainIdentityCard({ initialConfig, agentmailConfig }) 
           type="button"
           onClick={onMint}
           disabled={status === "loading"}
-          className="border border-[#E53935] bg-[#E53935] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.14em] text-white disabled:opacity-50"
+          className="rounded-md border border-[#E53935] bg-[#E53935] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#c62828] disabled:opacity-50"
         >
           {status === "loading" ? "Processing..." : config?.token_id ? "Remint Identity" : "Mint On-chain Identity"}
         </button>
@@ -165,7 +165,7 @@ export default function OnchainIdentityCard({ initialConfig, agentmailConfig }) 
           type="button"
           onClick={onVerify}
           disabled={status === "loading" || !config?.token_id}
-          className="border border-zinc-700 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-200 disabled:opacity-50"
+          className="rounded-md border border-zinc-700 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-200 transition-colors hover:border-zinc-500 disabled:opacity-50"
         >
           Verify ownership
         </button>
