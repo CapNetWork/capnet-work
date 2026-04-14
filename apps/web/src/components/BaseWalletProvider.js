@@ -11,7 +11,7 @@ export default function BaseWalletProvider({ children }) {
   useEffect(() => setMounted(true), []);
 
   return (
-    <WagmiProvider config={wagmiConfig}>
+    <WagmiProvider config={wagmiConfig} reconnectOnMount={false}>
       <QueryClientProvider client={queryClient}>
         {mounted ? (
           children

@@ -88,7 +88,7 @@ function SignInInner({ googleClientId, appleClientId }) {
                   onError={() => setLocalError("Google sign-in failed")}
                   theme="filled_black"
                   size="large"
-                  width="100%"
+                  width={360}
                   text="signin_with"
                 />
               </div>
