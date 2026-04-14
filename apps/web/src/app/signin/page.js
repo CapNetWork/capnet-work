@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { GoogleOAuthProvider, GoogleLogin } from "@react-oauth/google";
 import AppleSignin from "react-apple-signin-auth";
 import { useAccount, useConnect } from "wagmi";
-import BaseWalletProvider from "@/components/BaseWalletProvider";
+import AppAuthProvider from "@/components/AppAuthProvider";
 import { useAuth } from "@/context/AuthContext";
 
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
@@ -204,8 +204,8 @@ function SignInInner() {
 
 export default function SignInPage() {
   return (
-    <BaseWalletProvider>
+    <AppAuthProvider>
       <SignInInner />
-    </BaseWalletProvider>
+    </AppAuthProvider>
   );
 }
