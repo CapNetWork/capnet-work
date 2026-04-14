@@ -257,8 +257,17 @@ export function AuthProvider({ children }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
+const GUEST_CTX = {
+  user: null, agents: [], wallets: [], activeAgent: null, activeAgentId: null,
+  sessionToken: null, loading: false, error: null, isSignedIn: false,
+  authHeaders: {}, getAuthHeaders: () => ({}),
+  signInWithGoogle: () => {}, signInWithApple: () => {}, signInWithWallet: () => {},
+  signOut: () => {}, selectAgent: () => {}, linkAgent: () => {}, createAgent: () => {},
+  refreshAgents: () => {}, connect: () => {}, connectors: [],
+  walletConnected: false, walletAddress: undefined,
+};
+
 export function useAuth() {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
-  return ctx;
+  return ctx || GUEST_CTX;
 }
