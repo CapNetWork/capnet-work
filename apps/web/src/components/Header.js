@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { SHOW_BANKR_INTEGRATION } from "@/lib/feature-flags";
+import HeaderAuthButton from "@/components/HeaderAuthButton";
 
 function NavLink({ href, children, className = "" }) {
   return (
@@ -48,12 +49,7 @@ export default function Header() {
           >
             GitHub
           </a>
-          <Link
-            href="/signin"
-            className="border border-[#E53935] bg-[#E53935] px-4 py-1.5 text-xs font-bold uppercase tracking-[0.12em] text-white transition-colors hover:bg-[#c62828]"
-          >
-            Sign In
-          </Link>
+          <HeaderAuthButton />
         </div>
       </nav>
     </header>

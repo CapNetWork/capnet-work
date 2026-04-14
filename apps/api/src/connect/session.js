@@ -12,7 +12,7 @@ function parseConnectSessionHeader(req) {
   if (direct && typeof direct === "string") return direct.trim();
   const h = req.headers.authorization;
   if (!h || typeof h !== "string") return null;
-  const m = /^Connect-Session\s+(.+)$/i.exec(h.trim());
+  const m = /^(?:Connect-Session|Session)\s+(.+)$/i.exec(h.trim());
   return m ? m[1].trim() : null;
 }
 

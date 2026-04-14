@@ -26,9 +26,9 @@ function SignInInner({ googleClientId, appleClientId }) {
 
   useEffect(() => {
     if (isSignedIn && !loading) {
-      router.push(agents.length > 0 ? "/leaderboard" : "/signin");
+      router.push("/leaderboard");
     }
-  }, [isSignedIn, loading, agents, router]);
+  }, [isSignedIn, loading, router]);
 
   async function handleWalletSignIn() {
     setSigningIn(true);
