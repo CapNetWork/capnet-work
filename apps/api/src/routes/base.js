@@ -1,33 +1,15 @@
 const { Router } = require("express");
-const crypto = require("crypto");
-const { ethers } = require("ethers");
-const { SiweMessage } = require("siwe");
 const { pool } = require("../db");
 const erc8004Adapter = require("../integrations/providers/erc8004");
+const {
+  issueNonce,
+  verifySiweMessage,
+  issueProofToken,
+  verifyProofToken,
+  normalizeWallet,
+} = require("../lib/siwe-proof-store");
 
 const router = Router();
-
-const SIWE_NONCE_TTL_MS = Number(
-  process.env.BASE_AUTH_SIWE_NONCE_TTL_MS || process.env.BASE_AUTH_CHALLENGE_TTL_MS || 5 * 60 * 1000
-);
-const VERIFIED_TTL_MS = Number(process.env.BASE_AUTH_VERIFIED_TTL_MS || 10 * 60 * 1000);
-
-/** nonce string -> { expiresAt } — one-time use after successful SIWE verify */
-const siweNonces = new Map();
-const verifiedProofs = new Map();
-
-function now() {
-  return Date.now();
-}
-
-function normalizeWallet(value) {
-  if (!value || typeof value !== "string") return null;
-  try {
-    return ethers.getAddress(value.trim());
-  } catch {
-    return null;
-  }
-}
 
 function parseMetadata(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
@@ -44,57 +26,19 @@ function withBaseMetadata(existing, patch) {
   };
 }
 
-function cleanupStores() {
-  const ts = now();
-  for (const [nonce, item] of siweNonces.entries()) {
-    if (item.expiresAt <= ts) siweNonces.delete(nonce);
-  }
-  for (const [token, item] of verifiedProofs.entries()) {
-    if (item.expiresAt <= ts) verifiedProofs.delete(token);
-  }
-}
-
-function getAllowedSiweDomains() {
-  const raw = process.env.SIWE_ALLOWED_DOMAINS || process.env.SIWE_DOMAIN;
-  if (raw && String(raw).trim()) {
-    return String(raw)
-      .split(",")
-      .map((s) => s.trim().toLowerCase())
-      .filter(Boolean);
-  }
-  return ["localhost:3000", "127.0.0.1:3000"];
-}
-
-function expectedSiweChainId() {
-  return Number(process.env.BASE_CHAIN_ID || process.env.ERC8004_CHAIN_ID || 8453);
-}
-
-/** Used by `siwe` for EIP-1271 (smart wallets / Base Account). Without this, verify always fails for contract signatures. */
-let siweRpcProviderCache;
-function getSiweRpcProvider() {
-  if (siweRpcProviderCache !== undefined) return siweRpcProviderCache;
-  const url = process.env.BASE_RPC_URL || process.env.ERC8004_RPC_URL || "https://mainnet.base.org";
-  try {
-    siweRpcProviderCache = new ethers.JsonRpcProvider(url);
-  } catch {
-    siweRpcProviderCache = null;
-  }
-  return siweRpcProviderCache;
-}
-
-function verifyProofToken(wallet, proofToken) {
-  if (!proofToken || typeof proofToken !== "string") return false;
-  const item = verifiedProofs.get(proofToken);
-  if (!item) return false;
-  if (item.expiresAt <= now()) {
-    verifiedProofs.delete(proofToken);
-    return false;
-  }
-  return item.wallet === wallet;
-}
-
 async function findAgentByWallet(wallet) {
   const r = await pool.query(
+    `SELECT a.id, a.name, a.domain, a.personality, a.avatar_url, a.description, a.metadata, a.created_at
+     FROM agents a
+     JOIN agent_wallets aw ON aw.agent_id = a.id
+     WHERE LOWER(aw.wallet_address) = LOWER($1)
+     ORDER BY a.created_at ASC
+     LIMIT 1`,
+    [wallet]
+  );
+  if (r.rows.length > 0) return r.rows[0];
+  // Fallback: check legacy metadata field for agents not yet migrated
+  const legacy = await pool.query(
     `SELECT id, name, domain, personality, avatar_url, description, metadata, created_at
      FROM agents
      WHERE LOWER(metadata->>'wallet_owner_address') = LOWER($1)
@@ -102,7 +46,7 @@ async function findAgentByWallet(wallet) {
      LIMIT 1`,
     [wallet]
   );
-  return r.rows[0] || null;
+  return legacy.rows[0] || null;
 }
 
 async function findAgentBySlug(slug) {
@@ -116,16 +60,21 @@ async function findAgentBySlug(slug) {
   return r.rows[0] || null;
 }
 
-router.get("/auth/siwe/nonce", (req, res) => {
-  cleanupStores();
-  const nonce = crypto.randomBytes(16).toString("hex");
-  const expiresAt = now() + SIWE_NONCE_TTL_MS;
-  siweNonces.set(nonce, { expiresAt });
-  return res.json({ nonce, expires_at: new Date(expiresAt).toISOString() });
+async function linkWalletToAgent(agentId, wallet, label) {
+  const addrDb = wallet.toLowerCase();
+  await pool.query(
+    `INSERT INTO agent_wallets (agent_id, wallet_address, chain_id, label)
+     VALUES ($1, $2, 8453, $3)
+     ON CONFLICT (wallet_address, chain_id) DO NOTHING`,
+    [agentId, addrDb, label || null]
+  );
+}
+
+router.get("/auth/siwe/nonce", (_req, res) => {
+  return res.json(issueNonce());
 });
 
 router.post("/auth/siwe/verify", async (req, res) => {
-  cleanupStores();
   const messageStr = typeof req.body?.message === "string" ? req.body.message.trim() : "";
   const signature = typeof req.body?.signature === "string" ? req.body.signature.trim() : "";
   if (!messageStr) {
@@ -133,73 +82,17 @@ router.post("/auth/siwe/verify", async (req, res) => {
   }
   if (!signature) return res.status(400).json({ error: "signature is required" });
 
-  let siweMessage;
-  try {
-    siweMessage = new SiweMessage(messageStr);
-  } catch {
-    return res.status(400).json({ error: "Invalid SIWE message" });
+  const result = await verifySiweMessage(messageStr, signature);
+  if (!result.ok) {
+    return res.status(401).json({ error: result.error });
   }
 
-  const allowedDomains = getAllowedSiweDomains();
-  const msgDomain = String(siweMessage.domain || "").toLowerCase();
-  if (!allowedDomains.includes(msgDomain)) {
-    return res.status(400).json({ error: "SIWE domain is not allowed for this deployment" });
-  }
-
-  const wantChain = expectedSiweChainId();
-  if (Number(siweMessage.chainId) !== wantChain) {
-    return res.status(400).json({ error: `SIWE chainId must be ${wantChain} (Base)` });
-  }
-
-  const nonceEntry = siweNonces.get(siweMessage.nonce);
-  if (!nonceEntry || nonceEntry.expiresAt <= now()) {
-    return res.status(400).json({ error: "Nonce missing or expired. Request a new nonce." });
-  }
-
-  let verifiedOk = false;
-  try {
-    const provider = getSiweRpcProvider();
-    const result = await siweMessage.verify(
-      { signature, domain: siweMessage.domain, nonce: siweMessage.nonce },
-      { provider, suppressExceptions: true }
-    );
-    if (result.success) verifiedOk = true;
-  } catch {
-    /* fall through to EOA fallback */
-  }
-
-  if (!verifiedOk) {
-    try {
-      const prepared = siweMessage.prepareMessage();
-      const recovered = normalizeWallet(ethers.verifyMessage(prepared, signature));
-      const claimed = normalizeWallet(siweMessage.address);
-      if (recovered && claimed && recovered === claimed) verifiedOk = true;
-    } catch {
-      /* ignore */
-    }
-  }
-
-  if (!verifiedOk) {
-    return res.status(401).json({
-      error:
-        "SIWE verification failed. Smart wallets need BASE_RPC_URL or ERC8004_RPC_URL on the API (Base mainnet). Try again or use a standard EOA.",
-    });
-  }
-
-  siweNonces.delete(siweMessage.nonce);
-
-  const wallet = normalizeWallet(siweMessage.address);
-  if (!wallet) return res.status(400).json({ error: "Invalid address in SIWE message" });
-
-  const proofToken = crypto.randomBytes(24).toString("hex");
-  const expiresAt = now() + VERIFIED_TTL_MS;
-  verifiedProofs.set(proofToken, { wallet, expiresAt });
-
+  const proof = issueProofToken(result.wallet);
   return res.json({
     ok: true,
-    wallet_address: wallet,
-    proof_token: proofToken,
-    expires_at: new Date(expiresAt).toISOString(),
+    wallet_address: result.wallet,
+    proof_token: proof.proof_token,
+    expires_at: proof.expires_at,
   });
 });
 
@@ -253,7 +146,9 @@ router.post("/agents/create", async (req, res, next) => {
        RETURNING id, name, domain, personality, avatar_url, description, metadata, api_key, created_at`,
       [name, domain, personality, description, JSON.stringify(metadata)]
     );
-    return res.status(201).json({ ok: true, agent: result.rows[0] });
+    const agent = result.rows[0];
+    await linkWalletToAgent(agent.id, wallet, "base-create");
+    return res.status(201).json({ ok: true, agent });
   } catch (err) {
     if (err.code === "23505") return res.status(409).json({ error: "Agent name already taken" });
     next(err);
@@ -296,6 +191,7 @@ router.post("/agents/claim", async (req, res, next) => {
        RETURNING id, name, domain, personality, avatar_url, description, metadata, created_at`,
       [JSON.stringify(nextMetadata), agent.id]
     );
+    await linkWalletToAgent(agent.id, wallet, "base-claim");
     return res.json({ ok: true, agent: up.rows[0] });
   } catch (err) {
     next(err);
@@ -311,11 +207,18 @@ router.post("/agents/:id/mint-identity", async (req, res, next) => {
   if (!verifyProofToken(wallet, proofToken)) return res.status(401).json({ error: "Invalid or expired proof_token" });
 
   try {
-    const r = await pool.query(`SELECT id, metadata FROM agents WHERE id = $1 LIMIT 1`, [agentId]);
-    if (r.rows.length === 0) return res.status(404).json({ error: "Agent not found" });
-    const metadata = parseMetadata(r.rows[0].metadata);
-    const owner = normalizeWallet(metadata.wallet_owner_address);
-    if (!owner || owner !== wallet) {
+    // Check ownership via agent_wallets table (with legacy metadata fallback)
+    const r = await pool.query(
+      `SELECT a.id, a.metadata FROM agents a
+       WHERE a.id = $1
+         AND (
+           EXISTS (SELECT 1 FROM agent_wallets aw WHERE aw.agent_id = a.id AND LOWER(aw.wallet_address) = LOWER($2))
+           OR LOWER(a.metadata->>'wallet_owner_address') = LOWER($2)
+         )
+       LIMIT 1`,
+      [agentId, wallet]
+    );
+    if (r.rows.length === 0) {
       return res.status(403).json({ error: "Wallet does not control this agent" });
     }
     const minted = await erc8004Adapter.connect(agentId, { owner_wallet: wallet });

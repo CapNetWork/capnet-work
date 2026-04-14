@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || "http://localhost:4000";
 
@@ -10,7 +11,7 @@ function getExplorerBase(chain) {
 }
 
 export default function OnchainIdentityCard({ initialConfig, agentmailConfig }) {
-  const [apiKey, setApiKey] = useState("");
+  const { isSignedIn, getAuthHeaders } = useAuth();
   const [ownerWallet, setOwnerWallet] = useState(initialConfig?.owner_wallet || "");
   const [status, setStatus] = useState("idle");
   const [message, setMessage] = useState("");
@@ -23,16 +24,16 @@ export default function OnchainIdentityCard({ initialConfig, agentmailConfig }) 
       : null;
   const explorerTxUrl = config?.tx_hash ? `${explorerBase}/tx/${config.tx_hash}` : null;
 
-  async function withAgentAuth(path, options = {}) {
-    const key = apiKey.trim();
-    if (!key) {
-      throw new Error("Enter your CapNet agent API key to continue.");
+  async function withAuth(path, options = {}) {
+    const headers = getAuthHeaders();
+    if (!Object.keys(headers).length) {
+      throw new Error("Sign in to continue.");
     }
     const res = await fetch(`${API_URL}${path}`, {
       ...options,
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${key}`,
+        ...headers,
         ...(options.headers || {}),
       },
     });
@@ -45,7 +46,7 @@ export default function OnchainIdentityCard({ initialConfig, agentmailConfig }) 
     setStatus("loading");
     setMessage("");
     try {
-      const data = await withAgentAuth("/integrations/erc8004/connect", {
+      const data = await withAuth("/integrations/erc8004/connect", {
         method: "POST",
         body: JSON.stringify({ owner_wallet: ownerWallet.trim() }),
       });
@@ -63,7 +64,7 @@ export default function OnchainIdentityCard({ initialConfig, agentmailConfig }) 
     setStatus("loading");
     setMessage("");
     try {
-      const data = await withAgentAuth("/integrations/erc8004/verify", { method: "POST" });
+      const data = await withAuth("/integrations/erc8004/verify", { method: "POST" });
       const cfg = data?.config && typeof data.config === "object" ? data.config : config;
       setConfig(cfg);
       setStatus("success");
@@ -135,46 +136,48 @@ export default function OnchainIdentityCard({ initialConfig, agentmailConfig }) 
         </div>
       )}
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <input
-          type="password"
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-          className="w-full rounded-md border border-zinc-700 bg-[#050505] px-3 py-2 text-xs text-white placeholder:text-zinc-500 focus:border-[#E53935] focus:outline-none"
-          placeholder="CapNet agent API key"
-        />
-        <input
-          type="text"
-          value={ownerWallet}
-          onChange={(e) => setOwnerWallet(e.target.value)}
-          className="w-full rounded-md border border-zinc-700 bg-[#050505] px-3 py-2 text-xs text-white placeholder:text-zinc-500 focus:border-[#E53935] focus:outline-none"
-          placeholder="Owner wallet (0x...)"
-        />
-      </div>
+      {!isSignedIn && (
+        <p className="mt-4 text-xs text-zinc-500">
+          <a href="/signin" className="text-[#ffb5b3] underline">Sign in</a> to mint or verify identity.
+        </p>
+      )}
 
-      <div className="mt-3 flex flex-wrap gap-3">
-        <button
-          type="button"
-          onClick={onMint}
-          disabled={status === "loading"}
-          className="rounded-md border border-[#E53935] bg-[#E53935] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#c62828] disabled:opacity-50"
-        >
-          {status === "loading" ? "Processing..." : config?.token_id ? "Remint Identity" : "Mint On-chain Identity"}
-        </button>
-        <button
-          type="button"
-          onClick={onVerify}
-          disabled={status === "loading" || !config?.token_id}
-          className="rounded-md border border-zinc-700 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-200 transition-colors hover:border-zinc-500 disabled:opacity-50"
-        >
-          Verify ownership
-        </button>
-      </div>
+      {isSignedIn && (
+        <>
+          <div className="mt-4">
+            <input
+              type="text"
+              value={ownerWallet}
+              onChange={(e) => setOwnerWallet(e.target.value)}
+              className="w-full rounded-md border border-zinc-700 bg-[#050505] px-3 py-2 text-xs text-white placeholder:text-zinc-500 focus:border-[#E53935] focus:outline-none"
+              placeholder="Owner wallet (0x...)"
+            />
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={onMint}
+              disabled={status === "loading"}
+              className="rounded-md border border-[#E53935] bg-[#E53935] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#c62828] disabled:opacity-50"
+            >
+              {status === "loading" ? "Processing..." : config?.token_id ? "Remint Identity" : "Mint On-chain Identity"}
+            </button>
+            <button
+              type="button"
+              onClick={onVerify}
+              disabled={status === "loading" || !config?.token_id}
+              className="rounded-md border border-zinc-700 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-200 transition-colors hover:border-zinc-500 disabled:opacity-50"
+            >
+              Verify ownership
+            </button>
+          </div>
+        </>
+      )}
 
       {agentmailConfig?.address && (
         <p className="mt-4 text-xs text-zinc-400">
-          AgentMail linked at <span className="text-zinc-200">{agentmailConfig.address}</span>. This identity is
-          reachable by email.
+          AgentMail linked at <span className="text-zinc-200">{agentmailConfig.address}</span>.
         </p>
       )}
 

@@ -1,5 +1,5 @@
 const { Router } = require("express");
-const { authenticateAgent } = require("../middleware/auth");
+const { authenticateBySessionOrKey } = require("../middleware/auth");
 const { sanitizeBody } = require("../middleware/sanitize");
 const { listProviders, getProvider } = require("../integrations/registry");
 const {
@@ -45,7 +45,7 @@ function toProviderErrorResponse(providerId, err) {
   return null;
 }
 
-router.get("/providers", authenticateAgent, async (_req, res) => {
+router.get("/providers", authenticateBySessionOrKey, async (_req, res) => {
   const providers = listProviders().map((provider) => ({
     id: provider.id,
     display_name: provider.display_name,
@@ -55,7 +55,7 @@ router.get("/providers", authenticateAgent, async (_req, res) => {
   res.json({ providers });
 });
 
-router.post("/:providerId/connect", authenticateAgent, sanitizeBody([]), async (req, res, next) => {
+router.post("/:providerId/connect", authenticateBySessionOrKey, sanitizeBody([]), async (req, res, next) => {
   const provider = getProvider(req.params.providerId);
   if (!provider) return res.status(404).json({ error: "Unsupported provider" });
 
@@ -79,7 +79,7 @@ router.post("/:providerId/connect", authenticateAgent, sanitizeBody([]), async (
   }
 });
 
-router.post("/agentmail/link", authenticateAgent, async (req, res, next) => {
+router.post("/agentmail/link", authenticateBySessionOrKey, async (req, res, next) => {
   try {
     const { username, display_name } = req.body || {};
     const body = await agentmailAdapter.link(req.agent.id, { username, display_name });
@@ -104,7 +104,7 @@ router.post("/agentmail/link", authenticateAgent, async (req, res, next) => {
   }
 });
 
-router.post("/erc8004/verify", authenticateAgent, async (req, res, next) => {
+router.post("/erc8004/verify", authenticateBySessionOrKey, async (req, res, next) => {
   try {
     const out = await erc8004Adapter.verify(req.agent.id);
     res.json(out);
@@ -122,7 +122,7 @@ router.post("/erc8004/verify", authenticateAgent, async (req, res, next) => {
   }
 });
 
-router.post("/agentmail/send", authenticateAgent, sanitizeBody(["to", "subject", "text"]), async (req, res, next) => {
+router.post("/agentmail/send", authenticateBySessionOrKey, sanitizeBody(["to", "subject", "text"]), async (req, res, next) => {
   const { to, subject, text, html } = req.body || {};
   if (!to || typeof to !== "string") {
     return res.status(400).json({ error: "to is required" });
@@ -154,7 +154,7 @@ router.post("/agentmail/send", authenticateAgent, sanitizeBody(["to", "subject",
   }
 });
 
-router.get("/agentmail/inbox", authenticateAgent, async (req, res, next) => {
+router.get("/agentmail/inbox", authenticateBySessionOrKey, async (req, res, next) => {
   try {
     const status = await agentmailAdapter.getIntegrationStatus(req.agent.id);
     if (!status.connected) {
@@ -173,7 +173,7 @@ router.get("/agentmail/inbox", authenticateAgent, async (req, res, next) => {
   }
 });
 
-router.get("/", authenticateAgent, async (req, res, next) => {
+router.get("/", authenticateBySessionOrKey, async (req, res, next) => {
   try {
     const metadata = await getAgentMetadata(req.agent.id);
     const integrations = metadata.integrations && typeof metadata.integrations === "object" ? metadata.integrations : {};
@@ -208,7 +208,7 @@ router.get("/", authenticateAgent, async (req, res, next) => {
   }
 });
 
-router.get("/:providerId/status", authenticateAgent, async (req, res, next) => {
+router.get("/:providerId/status", authenticateBySessionOrKey, async (req, res, next) => {
   const provider = getProvider(req.params.providerId);
   if (!provider) return res.status(404).json({ error: "Unsupported provider" });
 
@@ -239,7 +239,7 @@ router.get("/:providerId/status", authenticateAgent, async (req, res, next) => {
   }
 });
 
-router.put("/:providerId/config", authenticateAgent, sanitizeBody([]), async (req, res, next) => {
+router.put("/:providerId/config", authenticateBySessionOrKey, sanitizeBody([]), async (req, res, next) => {
   const provider = getProvider(req.params.providerId);
   if (!provider) return res.status(404).json({ error: "Unsupported provider" });
 
@@ -268,7 +268,7 @@ router.put("/:providerId/config", authenticateAgent, sanitizeBody([]), async (re
   }
 });
 
-router.delete("/:providerId/config", authenticateAgent, async (req, res, next) => {
+router.delete("/:providerId/config", authenticateBySessionOrKey, async (req, res, next) => {
   const provider = getProvider(req.params.providerId);
   if (!provider) return res.status(404).json({ error: "Unsupported provider" });
   try {
