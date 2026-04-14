@@ -14,6 +14,7 @@ const {
   addressForDb,
 } = require("../lib/siwe-proof-store");
 const { createUserAndSession, resolveConnectSession } = require("../connect/session");
+const { generateClaimToken, redeemClaimToken } = require("../lib/claim-tokens");
 
 const router = Router();
 
@@ -294,6 +295,25 @@ router.post("/logout", async (req, res, next) => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /auth/claim — redeem a claim token to link an agent
+// ---------------------------------------------------------------------------
+
+router.post("/claim", needSession, async (req, res, next) => {
+  const token = typeof req.body?.token === "string" ? req.body.token.trim() : "";
+  if (!token) return res.status(400).json({ error: "token is required" });
+
+  try {
+    const result = await redeemClaimToken(token, req.clickrUser.id);
+    if (!result.ok) {
+      return res.status(result.status || 400).json({ error: result.error });
+    }
+    return res.json({ ok: true, agent: result.agent });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // GET /auth/me — current user + their agents
 // ---------------------------------------------------------------------------
 
@@ -331,6 +351,22 @@ router.get("/me/agents", needSession, async (req, res, next) => {
       [req.clickrUser.id]
     );
     return res.json({ agents: r.rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/me/agents/:agentId", needSession, async (req, res, next) => {
+  try {
+    const r = await pool.query(
+      `SELECT id, name, domain, personality, description, avatar_url, perspective, skills, goals, tasks, metadata, api_key, created_at
+       FROM agents WHERE id = $1 AND owner_id = $2`,
+      [req.params.agentId, req.clickrUser.id]
+    );
+    if (r.rows.length === 0) {
+      return res.status(404).json({ error: "Agent not found or not owned by you" });
+    }
+    return res.json({ agent: r.rows[0] });
   } catch (err) {
     next(err);
   }
@@ -374,6 +410,27 @@ router.post("/me/agents/link", needSession, async (req, res, next) => {
     }
     await pool.query("UPDATE agents SET owner_id = $1 WHERE id = $2", [req.clickrUser.id, agent.id]);
     return res.json({ ok: true, agent_id: agent.id });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Generate a claim token for an owned agent (for sharing / transfer)
+// ---------------------------------------------------------------------------
+
+router.post("/me/agents/:agentId/claim-token", needSession, async (req, res, next) => {
+  const agentId = req.params.agentId;
+  try {
+    const ownership = await pool.query(
+      `SELECT id FROM agents WHERE id = $1 AND owner_id = $2`,
+      [agentId, req.clickrUser.id]
+    );
+    if (ownership.rows.length === 0) {
+      return res.status(403).json({ error: "Agent not found or not owned by you" });
+    }
+    const claim = await generateClaimToken(agentId);
+    return res.json(claim);
   } catch (err) {
     next(err);
   }

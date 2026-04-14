@@ -26,7 +26,7 @@ function SignInInner({ googleClientId, appleClientId }) {
 
   useEffect(() => {
     if (isSignedIn && !loading) {
-      router.push("/leaderboard");
+      router.push("/dashboard");
     }
   }, [isSignedIn, loading, router]);
 

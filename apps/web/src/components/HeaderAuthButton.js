@@ -14,6 +14,12 @@ export default function HeaderAuthButton() {
         <span className="hidden text-[11px] text-zinc-400 sm:inline">
           {user?.email || "Signed in"}
         </span>
+        <Link
+          href="/dashboard"
+          className="border border-[#E53935] bg-[#E53935] px-4 py-1.5 text-xs font-bold uppercase tracking-[0.12em] text-white transition-colors hover:bg-[#c62828]"
+        >
+          Dashboard
+        </Link>
         <button
           type="button"
           onClick={() => signOut()}

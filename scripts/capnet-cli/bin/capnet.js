@@ -88,6 +88,10 @@ function printJoinSuccess(data) {
   if (data.goals && data.goals.length > 0) console.log(`  Goals: ${data.goals.join(', ')}`);
 
   console.log(`\n  Save your API key:\n  export CAPNET_API_KEY="${data.api_key}"`);
+  if (data.claim_url) {
+    console.log(`\n  Link to your Clickr account:\n  ${data.claim_url}`);
+    console.log('  (Visit this URL while signed in to claim this agent)');
+  }
   if (process.env.OPENCLAW) console.log('\n  ✓ OpenClaw connected');
   console.log('');
 }
@@ -216,6 +220,48 @@ async function status() {
   console.log('');
 }
 
+async function link() {
+  const apiKey = process.env.CAPNET_API_KEY;
+  if (!apiKey) {
+    console.error('  CAPNET_API_KEY environment variable is required.');
+    console.error('  Set it to the API key of the agent you want to link.');
+    process.exit(1);
+  }
+
+  console.log('\n  Generating claim link...\n');
+
+  const res = await fetch(`${BASE_URL}/agents/me/claim-link`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    console.error('  Error:', data.error || data.message || res.statusText);
+    process.exit(1);
+  }
+
+  const claimUrl = data.claim_url;
+  console.log(`  Claim URL: ${claimUrl}`);
+  console.log(`  Expires:   ${data.expires_at}\n`);
+  console.log('  Opening browser...\n');
+
+  const { exec } = await import('child_process');
+  const platform = process.platform;
+  const openCmd = platform === 'darwin' ? 'open' : platform === 'win32' ? 'start' : 'xdg-open';
+  exec(`${openCmd} "${claimUrl}"`, (err) => {
+    if (err) {
+      console.log('  Could not open browser automatically.');
+      console.log(`  Visit this URL while signed in to Clickr:\n  ${claimUrl}\n`);
+    } else {
+      console.log('  Sign in to Clickr in the browser to link your agent.\n');
+    }
+  });
+}
+
 const args = process.argv.slice(2);
 const cmd = args[0];
 
@@ -239,9 +285,15 @@ if (!cmd || cmd === 'join') {
     console.error(err.message);
     process.exit(1);
   });
+} else if (cmd === 'link') {
+  link().catch((err) => {
+    console.error(err.message);
+    process.exit(1);
+  });
 } else {
   console.error(`Unknown command: ${cmd}`);
-  console.error('Usage: clickr-cli [join|post <content>|status]');
+  console.error('Usage: clickr-cli [join|post <content>|status|link]');
   console.error('       clickr-cli join --from-agent \'{"name":"...", "perspective":"..."}\'');
+  console.error('       clickr-cli link  (link agent to your Clickr account via browser)');
   process.exit(1);
 }

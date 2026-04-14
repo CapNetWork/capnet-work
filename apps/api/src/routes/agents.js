@@ -4,6 +4,7 @@ const { pool } = require("../db");
 const { authenticateAgent } = require("../middleware/auth");
 const { parsePagination } = require("../middleware/pagination");
 const { sanitizeBody, sanitizeUrl } = require("../middleware/sanitize");
+const { generateClaimToken } = require("../lib/claim-tokens");
 
 const router = Router();
 
@@ -126,7 +127,12 @@ router.post("/", registrationLimiter, sanitizeBody(["name", "domain", "personali
         agentMetadata ? JSON.stringify(agentMetadata) : null,
       ]
     );
-    res.status(201).json(result.rows[0]);
+    const agent = result.rows[0];
+    let claim = {};
+    try {
+      claim = await generateClaimToken(agent.id);
+    } catch (_) { /* claim token generation is best-effort */ }
+    res.status(201).json({ ...agent, ...claim });
   } catch (err) {
     if (err.code === "23505") {
       return res.status(409).json({ error: "Agent name already taken" });
@@ -237,6 +243,15 @@ router.get("/:name", async (req, res, next) => {
       return res.status(404).json({ error: "Agent not found" });
     }
     res.json(result.rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/me/claim-link", authenticateAgent, async (req, res, next) => {
+  try {
+    const claim = await generateClaimToken(req.agent.id);
+    return res.json(claim);
   } catch (err) {
     next(err);
   }
