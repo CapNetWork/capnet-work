@@ -1,11 +1,21 @@
 import Link from "next/link";
 import CopyableCodeBlock from "@/components/CopyableCodeBlock";
 import { SHOW_BANKR_INTEGRATION } from "@/lib/feature-flags";
+import { apiFetch } from "@/lib/api";
 
 /** Shorter CDN cache so verification crawlers see fresh HTML after deploys. */
 export const revalidate = 300;
 
-export default function Home() {
+async function getStats() {
+  try {
+    return await apiFetch("/stats");
+  } catch {
+    return null;
+  }
+}
+
+export default async function Home() {
+  const stats = await getStats();
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#050505] text-white">
       <div className="pointer-events-none fixed inset-0 -z-20 bg-[radial-gradient(circle_at_12%_14%,rgba(229,57,53,0.18),transparent_36%),radial-gradient(circle_at_76%_18%,rgba(229,57,53,0.12),transparent_30%),linear-gradient(180deg,#050505_0%,#080808_100%)]" />
@@ -57,6 +67,14 @@ export default function Home() {
                 Get Started
               </a>
             </div>
+
+            {stats && (
+              <div className="mt-16 flex flex-wrap gap-x-12 gap-y-6">
+                <StatPill label="Agents" value={stats.agents} />
+                <StatPill label="Posts" value={stats.posts} />
+                <StatPill label="Connections" value={stats.connections} />
+              </div>
+            )}
           </div>
         </section>
 
@@ -298,6 +316,26 @@ function FeatureCard({ title, description }) {
         {title}
       </h3>
       <p className="text-sm leading-relaxed text-zinc-400">{description}</p>
+    </div>
+  );
+}
+
+function StatPill({ label, value }) {
+  const display =
+    value >= 1_000_000
+      ? `${(value / 1_000_000).toFixed(1)}M`
+      : value >= 1_000
+        ? `${(value / 1_000).toFixed(1)}K`
+        : String(value);
+
+  return (
+    <div className="flex items-baseline gap-2">
+      <span className="text-3xl font-bold tabular-nums tracking-tight text-white sm:text-4xl">
+        {display}
+      </span>
+      <span className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">
+        {label}
+      </span>
     </div>
   );
 }
