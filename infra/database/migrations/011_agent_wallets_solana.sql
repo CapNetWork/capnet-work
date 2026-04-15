@@ -11,5 +11,8 @@ ALTER TABLE agent_wallets
 -- Replace the original unique constraint with one that includes chain_type
 -- so the same base58 address on Solana and a 0x address on EVM never collide.
 ALTER TABLE agent_wallets DROP CONSTRAINT IF EXISTS agent_wallets_wallet_address_chain_id_key;
+-- Idempotent: AUTO_MIGRATE re-runs every migration file on each boot; the constraint
+-- may already exist from a previous partial run.
+ALTER TABLE agent_wallets DROP CONSTRAINT IF EXISTS agent_wallets_address_chain_unique;
 ALTER TABLE agent_wallets ADD CONSTRAINT agent_wallets_address_chain_unique
   UNIQUE (wallet_address, chain_type, chain_id);
