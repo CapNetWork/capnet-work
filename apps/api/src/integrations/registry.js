@@ -59,6 +59,42 @@ const SUPPORTED_PROVIDERS = {
       "updated_at",
     ],
   },
+  privy_wallet: {
+    id: "privy_wallet",
+    display_name: "Privy Wallet",
+    category: "wallet",
+    supports: {
+      inbound: false,
+      outbound: true,
+      webhooks: false,
+      multiple_accounts: false,
+    },
+    public_fields: ["wallet_address", "balance_sol", "policy_summary", "linked_at"],
+  },
+  world_id: {
+    id: "world_id",
+    display_name: "World ID",
+    category: "verification",
+    supports: {
+      inbound: false,
+      outbound: false,
+      webhooks: false,
+      multiple_accounts: false,
+    },
+    public_fields: ["verified", "verification_level", "verified_at"],
+  },
+  x402: {
+    id: "x402",
+    display_name: "x402 Payments",
+    category: "payments",
+    supports: {
+      inbound: true,
+      outbound: true,
+      webhooks: false,
+      multiple_accounts: false,
+    },
+    public_fields: ["total_earned", "total_spent", "payment_wallet", "linked_at"],
+  },
 };
 
 function listProviders() {

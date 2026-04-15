@@ -451,7 +451,8 @@ router.get("/me/agents/:agentId/wallets", needSession, async (req, res, next) =>
       return res.status(403).json({ error: "Agent not found or not owned by you" });
     }
     const r = await pool.query(
-      `SELECT id, wallet_address, chain_id, label, linked_at FROM agent_wallets WHERE agent_id = $1 ORDER BY linked_at DESC`,
+      `SELECT id, wallet_address, chain_id, chain_type, custody_type, label, linked_at
+       FROM agent_wallets WHERE agent_id = $1 ORDER BY linked_at DESC`,
       [agentId]
     );
     return res.json({ wallets: r.rows });
@@ -462,11 +463,9 @@ router.get("/me/agents/:agentId/wallets", needSession, async (req, res, next) =>
 
 router.post("/me/agents/:agentId/wallets", needSession, async (req, res, next) => {
   const agentId = req.params.agentId;
-  const walletAddress = normalizeWallet(req.body?.wallet_address);
-  const chainId = Number(req.body?.chain_id) || 8453;
+  const chainType = req.body?.chain_type || "evm";
+  const custodyType = req.body?.custody_type || "linked";
   const label = typeof req.body?.label === "string" ? req.body.label.slice(0, 200) : null;
-
-  if (!walletAddress) return res.status(400).json({ error: "wallet_address is required" });
 
   try {
     const ownership = await pool.query(
@@ -476,24 +475,64 @@ router.post("/me/agents/:agentId/wallets", needSession, async (req, res, next) =
     if (ownership.rows.length === 0) {
       return res.status(403).json({ error: "Agent not found or not owned by you" });
     }
+
+    if (chainType === "solana" && custodyType === "privy") {
+      const privyWalletAdapter = require("../integrations/providers/privy-wallet");
+      const result = await privyWalletAdapter.connect(agentId, {
+        action: "generate",
+        label,
+        _authMethod: "session",
+      });
+      return res.status(201).json(result);
+    }
+
+    if (chainType === "solana") {
+      const { PublicKey } = require("@solana/web3.js");
+      const addr = typeof req.body?.wallet_address === "string" ? req.body.wallet_address.trim() : "";
+      if (!addr) return res.status(400).json({ error: "wallet_address is required" });
+      try {
+        new PublicKey(addr);
+      } catch {
+        return res.status(400).json({ error: "Invalid Solana address" });
+      }
+      const r = await pool.query(
+        `INSERT INTO agent_wallets (agent_id, wallet_address, chain_id, chain_type, custody_type, label)
+         VALUES ($1, $2, 0, 'solana', $3, $4)
+         ON CONFLICT (wallet_address, chain_type, chain_id)
+           DO UPDATE SET label = COALESCE(EXCLUDED.label, agent_wallets.label)
+         RETURNING id, wallet_address, chain_id, chain_type, custody_type, label, linked_at`,
+        [agentId, addr, custodyType, label]
+      );
+      return res.status(201).json({ wallet: r.rows[0] });
+    }
+
+    // Default: EVM wallet
+    const walletAddress = normalizeWallet(req.body?.wallet_address);
+    const chainId = Number(req.body?.chain_id) || 8453;
+    if (!walletAddress) return res.status(400).json({ error: "wallet_address is required" });
+
     const addrDb = addressForDb(walletAddress);
     const r = await pool.query(
-      `INSERT INTO agent_wallets (agent_id, wallet_address, chain_id, label)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (wallet_address, chain_id) DO UPDATE SET label = COALESCE(EXCLUDED.label, agent_wallets.label)
-       RETURNING id, wallet_address, chain_id, label, linked_at`,
+      `INSERT INTO agent_wallets (agent_id, wallet_address, chain_id, chain_type, custody_type, label)
+       VALUES ($1, $2, $3, 'evm', 'linked', $4)
+       ON CONFLICT (wallet_address, chain_type, chain_id)
+         DO UPDATE SET label = COALESCE(EXCLUDED.label, agent_wallets.label)
+       RETURNING id, wallet_address, chain_id, chain_type, custody_type, label, linked_at`,
       [agentId, addrDb, chainId, label]
     );
     return res.status(201).json({ wallet: r.rows[0] });
   } catch (err) {
+    if (err.code === "PRIVY_NOT_CONFIGURED") {
+      return res.status(503).json({ error: err.message });
+    }
     next(err);
   }
 });
 
 router.delete("/me/agents/:agentId/wallets/:address", needSession, async (req, res, next) => {
   const agentId = req.params.agentId;
-  const address = addressForDb(normalizeWallet(req.params.address));
-  if (!address) return res.status(400).json({ error: "Invalid wallet address" });
+  const rawAddress = typeof req.params.address === "string" ? req.params.address.trim() : "";
+  if (!rawAddress) return res.status(400).json({ error: "Invalid wallet address" });
 
   try {
     const ownership = await pool.query(
@@ -503,12 +542,23 @@ router.delete("/me/agents/:agentId/wallets/:address", needSession, async (req, r
     if (ownership.rows.length === 0) {
       return res.status(403).json({ error: "Agent not found or not owned by you" });
     }
-    const r = await pool.query(
-      `DELETE FROM agent_wallets WHERE agent_id = $1 AND LOWER(wallet_address) = $2 RETURNING id`,
-      [agentId, address]
+
+    // Try Solana address first, then EVM
+    let r = await pool.query(
+      `DELETE FROM agent_wallets WHERE agent_id = $1 AND wallet_address = $2 RETURNING id, custody_type`,
+      [agentId, rawAddress]
     );
+    if (r.rows.length === 0) {
+      const evmAddr = addressForDb(normalizeWallet(rawAddress));
+      if (evmAddr) {
+        r = await pool.query(
+          `DELETE FROM agent_wallets WHERE agent_id = $1 AND LOWER(wallet_address) = $2 RETURNING id, custody_type`,
+          [agentId, evmAddr]
+        );
+      }
+    }
     if (r.rows.length === 0) return res.status(404).json({ error: "Wallet not found on this agent" });
-    return res.json({ ok: true });
+    return res.json({ ok: true, custody_type: r.rows[0].custody_type });
   } catch (err) {
     next(err);
   }

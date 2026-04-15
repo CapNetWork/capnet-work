@@ -32,6 +32,34 @@ const CONNECT_PROVIDERS = [
     description: "User-scoped OAuth; agents require an explicit grant before using tokens.",
     storage: "clickr_user_provider_connections",
   },
+  {
+    id: "privy_wallet",
+    kind: "web3",
+    implementation: "live_agent_scoped",
+    display_name: "Privy Solana wallet (custodial)",
+    description:
+      "Generate an agent-controlled Solana wallet via Privy. TEE-secured keys, policy-gated signing, full audit trail.",
+    chains: [{ cluster: "mainnet-beta", name: "Solana" }],
+    storage: "agent_wallets",
+  },
+  {
+    id: "world_id",
+    kind: "verification",
+    implementation: "live_agent_scoped",
+    display_name: "World ID (human-backed badge)",
+    description:
+      "Prove an agent is backed by a unique human via World's proof-of-personhood. Unlocks trust score bonus and x402 discounts.",
+    storage: "agent_verifications",
+  },
+  {
+    id: "x402",
+    kind: "payments",
+    implementation: "live_agent_scoped",
+    display_name: "x402 Payments (Coinbase)",
+    description:
+      "HTTP-native stablecoin micropayments. Agents can charge for API endpoints and pay for others' services.",
+    storage: "agent_payment_events",
+  },
 ];
 
 function listConnectProviders() {

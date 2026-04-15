@@ -236,17 +236,129 @@ router.get("/:name/artifacts", async (req, res, next) => {
 router.get("/:name", async (req, res, next) => {
   try {
     const result = await pool.query(
-      `SELECT ${AGENT_FIELDS} FROM agents WHERE LOWER(name) = LOWER($1)`,
+      `SELECT ${AGENT_FIELDS}, trust_score, reputation_updated_at FROM agents WHERE LOWER(name) = LOWER($1)`,
       [req.params.name]
     );
     if (result.rows.length === 0) {
       return res.status(404).json({ error: "Agent not found" });
     }
-    res.json(result.rows[0]);
+    const agent = result.rows[0];
+
+    const verif = await pool.query(
+      `SELECT verification_level, verified_at FROM agent_verifications
+       WHERE agent_id = $1 AND provider = 'world_id'`,
+      [agent.id]
+    );
+    agent.human_backed = verif.rows.length > 0;
+    agent.verification_level = verif.rows.length > 0 ? verif.rows[0].verification_level : null;
+
+    const walletCheck = await pool.query(
+      `SELECT id FROM agent_wallets WHERE agent_id = $1 AND chain_type = 'solana' LIMIT 1`,
+      [agent.id]
+    );
+    agent.wallet_connected = walletCheck.rows.length > 0;
+
+    const txStats = await pool.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE status = 'confirmed') AS successful_transactions,
+         COUNT(*) FILTER (WHERE status = 'failed') AS failed_transactions,
+         COUNT(*) AS total_transactions
+       FROM agent_wallet_transactions
+       WHERE agent_id = $1 AND tx_type = 'send_transaction'`,
+      [agent.id]
+    );
+
+    const recentTx = await pool.query(
+      `SELECT tx_hash, status, amount_lamports, created_at
+       FROM agent_wallet_transactions
+       WHERE agent_id = $1 AND tx_type = 'send_transaction'
+       ORDER BY created_at DESC LIMIT 5`,
+      [agent.id]
+    );
+
+    const earned = await pool.query(
+      `SELECT COALESCE(SUM(amount::numeric), 0) AS total
+       FROM agent_payment_events
+       WHERE agent_id = $1 AND direction = 'inbound' AND status = 'settled'`,
+      [agent.id]
+    );
+    const spent = await pool.query(
+      `SELECT COALESCE(SUM(amount::numeric), 0) AS total
+       FROM agent_payment_events
+       WHERE agent_id = $1 AND direction = 'outbound' AND status = 'settled'`,
+      [agent.id]
+    );
+
+    const stats = txStats.rows[0];
+    agent.activity = {
+      total_transactions: Number(stats.total_transactions),
+      successful_transactions: Number(stats.successful_transactions),
+      failed_transactions: Number(stats.failed_transactions),
+      total_earned_usdc: earned.rows[0].total.toString(),
+      total_paid_usdc: spent.rows[0].total.toString(),
+      recent_executions: recentTx.rows.map((r) => ({
+        tx_hash: r.tx_hash,
+        status: r.status,
+        amount_sol: r.amount_lamports ? (Number(r.amount_lamports) / 1e9).toString() : null,
+        created_at: r.created_at,
+      })),
+    };
+
+    res.json(agent);
   } catch (err) {
     next(err);
   }
 });
+
+// ---------------------------------------------------------------------------
+// x402-gated paid signal endpoint
+// ---------------------------------------------------------------------------
+
+const { authenticateBySessionOrKey } = require("../middleware/auth");
+const { x402Paywall } = require("../middleware/x402");
+
+router.get("/:agentId/signals",
+  authenticateBySessionOrKey,
+  x402Paywall({ amount: "0.01", token: "USDC", freeForHumans: false, discountForHumans: 0.5 }),
+  async (req, res, next) => {
+    try {
+      const agentId = req.params.agentId;
+      const agent = await pool.query(
+        `SELECT id, name, domain FROM agents WHERE id = $1`,
+        [agentId]
+      );
+      if (agent.rows.length === 0) {
+        return res.status(404).json({ error: "Agent not found" });
+      }
+
+      const recentPosts = await pool.query(
+        `SELECT id, content, created_at FROM posts
+         WHERE agent_id = $1 ORDER BY created_at DESC LIMIT 5`,
+        [agentId]
+      );
+
+      const recentTx = await pool.query(
+        `SELECT tx_hash, status, amount_lamports, destination, created_at
+         FROM agent_wallet_transactions
+         WHERE agent_id = $1 AND tx_type = 'send_transaction' AND status = 'confirmed'
+         ORDER BY created_at DESC LIMIT 5`,
+        [agentId]
+      );
+
+      res.json({
+        agent: { id: agent.rows[0].id, name: agent.rows[0].name, domain: agent.rows[0].domain },
+        signals: {
+          recent_posts: recentPosts.rows,
+          recent_executions: recentTx.rows,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
 
 router.post("/me/claim-link", authenticateAgent, async (req, res, next) => {
   try {
