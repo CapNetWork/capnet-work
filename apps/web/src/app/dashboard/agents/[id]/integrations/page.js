@@ -48,7 +48,7 @@ function IntegrationCard({ integration, agentId, agentMeta, authHeaders, onRefre
   const [showForm, setShowForm] = useState(false);
 
   const currentStatus = agentMeta?.[integration.id];
-  const isConnected = !!currentStatus;
+  const isConnected = currentStatus?.connected ? true : Boolean(currentStatus);
 
   function updateField(key, val) {
     setFormValues((prev) => ({ ...prev, [key]: val }));
@@ -207,17 +207,38 @@ export default function AgentIntegrationsPage() {
   const [agent, setAgent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [integrations, setIntegrations] = useState({});
 
   const fetchAgent = useCallback(async () => {
     try {
       const headers = getAuthHeaders();
-      const res = await fetch(`${API_URL}/auth/me/agents/${id}`, {
-        headers: { "Content-Type": "application/json", ...headers },
-        cache: "no-store",
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || res.statusText);
-      setAgent(data.agent);
+      const [agentRes, integRes] = await Promise.all([
+        fetch(`${API_URL}/auth/me/agents/${id}`, {
+          headers: { "Content-Type": "application/json", ...headers },
+          cache: "no-store",
+        }),
+        fetch(`${API_URL}/integrations`, {
+          headers: { "Content-Type": "application/json", ...headers },
+          cache: "no-store",
+        }),
+      ]);
+
+      const agentData = await agentRes.json().catch(() => ({}));
+      if (!agentRes.ok) throw new Error(agentData.error || agentRes.statusText);
+      setAgent(agentData.agent);
+
+      const integData = await integRes.json().catch(() => ({}));
+      if (!integRes.ok) throw new Error(integData.error || integRes.statusText);
+      const providers = Array.isArray(integData.providers) ? integData.providers : [];
+      const byId = {};
+      for (const p of providers) {
+        if (!p?.id) continue;
+        byId[p.id] = {
+          connected: Boolean(p.enabled),
+          ...(p.config && typeof p.config === "object" ? p.config : {}),
+        };
+      }
+      setIntegrations(byId);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -244,7 +265,7 @@ export default function AgentIntegrationsPage() {
     );
   }
 
-  const agentIntegrations = agent.metadata?.integrations || {};
+  const agentIntegrations = integrations && typeof integrations === "object" ? integrations : {};
   const authHeaders = getAuthHeaders();
 
   return (
