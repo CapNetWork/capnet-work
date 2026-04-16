@@ -185,6 +185,14 @@ function mapConnectError(err) {
       error: "Wallet tables are missing in this environment. Run DB migrations (e.g. npm run db:migrate) and retry.",
     };
   }
+  // Postgres: undefined_column — DB is on an older migration than the API expects.
+  if (err.code === "42703") {
+    return {
+      status: 503,
+      error:
+        "Wallet table schema is outdated in this environment. Apply the latest DB migrations and retry.",
+    };
+  }
   return null;
 }
 
