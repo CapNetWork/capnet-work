@@ -211,7 +211,9 @@ export default function AgentIntegrationsPage() {
 
   const fetchAgent = useCallback(async () => {
     try {
-      const headers = getAuthHeaders();
+      const baseHeaders = getAuthHeaders();
+      // IMPORTANT: /integrations routes are agent-scoped; select the agent in the URL explicitly.
+      const headers = { ...baseHeaders, "X-Agent-Id": id };
       const [agentRes, integRes] = await Promise.all([
         fetch(`${API_URL}/auth/me/agents/${id}`, {
           headers: { "Content-Type": "application/json", ...headers },
@@ -266,7 +268,7 @@ export default function AgentIntegrationsPage() {
   }
 
   const agentIntegrations = integrations && typeof integrations === "object" ? integrations : {};
-  const authHeaders = getAuthHeaders();
+  const authHeaders = { ...getAuthHeaders(), "X-Agent-Id": id };
 
   return (
     <>
