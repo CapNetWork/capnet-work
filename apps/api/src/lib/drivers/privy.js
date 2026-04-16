@@ -19,9 +19,10 @@ async function getPrivyClient() {
     throw err;
   }
   if (!_privyPromise) {
-    _privyPromise = import("@privy-io/node").then(
-      ({ PrivyClient }) => new PrivyClient(PRIVY_APP_ID, PRIVY_APP_SECRET)
-    );
+    _privyPromise = import("@privy-io/node").then(({ PrivyClient }) => {
+      // @privy-io/node expects a single options object.
+      return new PrivyClient({ appId: PRIVY_APP_ID, appSecret: PRIVY_APP_SECRET });
+    });
   }
   return _privyPromise;
 }
@@ -46,7 +47,12 @@ function validateSolanaAddress(address) {
 
 async function createWallet() {
   const privy = await getPrivyClient();
-  const wallet = await privy.walletApi.create({ chainType: "solana" });
+  if (!privy?.wallets) {
+    const err = new Error("Privy SDK client is missing wallets() — check @privy-io/node version");
+    err.code = "PRIVY_SDK_INCOMPATIBLE";
+    throw err;
+  }
+  const wallet = await privy.wallets().create({ chain_type: "solana" });
   return {
     publicKey: wallet.address,
     providerWalletId: wallet.id,
@@ -66,30 +72,36 @@ async function getBalance(address) {
 
 async function signMessage(walletRow, messageBase64) {
   const privy = await getPrivyClient();
-  const result = await privy.walletApi.solana.signMessage({
-    walletId: walletRow.provider_wallet_id,
+  if (!privy?.wallets) {
+    const err = new Error("Privy SDK client is missing wallets() — check @privy-io/node version");
+    err.code = "PRIVY_SDK_INCOMPATIBLE";
+    throw err;
+  }
+  const result = await privy.wallets().solana().signMessage(walletRow.provider_wallet_id, {
     message: messageBase64,
   });
-  return { signature: result.signature };
+  return { signature: result.signature || result.sig || result.result || null };
 }
 
 async function signAndSend(walletRow, transactionBase64) {
   const privy = await getPrivyClient();
-  const result = await privy.walletApi.solana.signAndSendTransaction({
-    walletId: walletRow.provider_wallet_id,
-    caip2: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
-    transaction: { serializedTransaction: transactionBase64 },
+  if (!privy?.wallets) {
+    const err = new Error("Privy SDK client is missing wallets() — check @privy-io/node version");
+    err.code = "PRIVY_SDK_INCOMPATIBLE";
+    throw err;
+  }
+  const result = await privy.wallets().solana().signAndSendTransaction(walletRow.provider_wallet_id, {
+    transaction: transactionBase64,
   });
-  return { txHash: result.hash };
+  return { txHash: result.hash || result.signature || result.txHash || null };
 }
 
 async function getPolicy(walletRow) {
   if (!walletRow.provider_policy_id) return null;
   const privy = await getPrivyClient();
   try {
-    const policy = await privy.walletApi.getPolicy({
-      walletId: walletRow.provider_wallet_id,
-    });
+    if (!privy?.policies) return null;
+    const policy = await privy.policies().get(walletRow.provider_wallet_id);
     return policy;
   } catch {
     return null;
@@ -98,11 +110,12 @@ async function getPolicy(walletRow) {
 
 async function updatePolicy(walletRow, policyUpdate) {
   const privy = await getPrivyClient();
-  const result = await privy.walletApi.updatePolicy({
-    walletId: walletRow.provider_wallet_id,
-    policy: policyUpdate,
-  });
-  return result;
+  if (!privy?.policies) {
+    const err = new Error("Privy SDK client is missing policies() — check @privy-io/node version");
+    err.code = "PRIVY_SDK_INCOMPATIBLE";
+    throw err;
+  }
+  return await privy.policies().update(walletRow.provider_wallet_id, { policy: policyUpdate });
 }
 
 module.exports = {

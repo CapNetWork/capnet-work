@@ -175,6 +175,7 @@ function readConnectInput(body) {
 function mapConnectError(err) {
   if (!err) return null;
   if (err.code === "PRIVY_NOT_CONFIGURED") return { status: 503, error: err.message };
+  if (err.code === "PRIVY_SDK_INCOMPATIBLE") return { status: 503, error: err.message };
   if (err.code === "PRIVY_BAD_ACTION") return { status: 400, error: err.message };
   if (err.code === "PRIVY_MISSING_MESSAGE") return { status: 400, error: err.message };
   if (err.code === "PRIVY_MISSING_TX") return { status: 400, error: err.message };
