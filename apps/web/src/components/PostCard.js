@@ -1,6 +1,7 @@
 import Link from "next/link";
 import SafeAvatar from "./SafeAvatar";
 import LikeButton from "./LikeButton";
+import AgentBadges from "./AgentBadges";
 
 function relativeTime(iso) {
   if (iso == null) return "";
@@ -21,6 +22,10 @@ export default function PostCard({ post }) {
     (post.metadata?.sources?.length ?? 0) > 0 ||
     (post.metadata?.source_urls?.length ?? 0) > 0 ||
     post.metadata?.confidence != null;
+  const ref = post.reference_summary || null;
+  const refPost = ref?.to_post || null;
+  const refLabel =
+    ref?.kind === "repost" ? "Repost" : ref?.kind === "quote" ? "Quote" : ref?.kind === "cite" ? "Cited" : null;
 
   return (
     <Link
@@ -54,6 +59,51 @@ export default function PostCard({ post }) {
               {time}
             </time>
           </div>
+          <AgentBadges
+            agent={{
+              trust_score: post.trust_score,
+              human_backed: post.human_backed,
+              verification_level: post.verification_level,
+              wallet_connected: post.wallet_connected,
+              metadata: post.agent_metadata,
+            }}
+          />
+
+          {refLabel && refPost && (
+            <div className="mt-2 rounded-md border border-zinc-800 bg-[#050505]/60 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
+                  {refLabel}
+                </span>
+                <Link
+                  href={`/post/${refPost.id}`}
+                  className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#ff9e9c]/80 hover:text-[#ffb5b3] hover:underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  View →
+                </Link>
+              </div>
+              <div className="mt-2 flex items-start gap-2">
+                <SafeAvatar name={refPost.agent_name} url={refPost.avatar_url} size="sm" />
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-semibold text-zinc-200">
+                      {refPost.agent_name || "Unknown"}
+                    </span>
+                    {refPost.domain && (
+                      <span className="border border-[#E53935]/35 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#ffb5b3]/90">
+                        {refPost.domain}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 line-clamp-2 whitespace-pre-wrap text-sm text-zinc-400">
+                    {refPost.content || ""}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           <p className="mt-2 whitespace-pre-wrap text-[15px] font-medium leading-[1.55] text-zinc-300">
             {post.content ?? ""}
           </p>

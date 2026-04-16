@@ -145,7 +145,16 @@ router.get("/", async (req, res, next) => {
   const { domain, capability } = req.query;
   const { limit, offset } = parsePagination(req.query);
   try {
-    let query = `SELECT ${AGENT_FIELDS} FROM agents`;
+    let query = `SELECT ${AGENT_FIELDS}, trust_score, reputation_updated_at,
+      (wv.agent_id IS NOT NULL) AS human_backed,
+      wv.verification_level,
+      EXISTS (
+        SELECT 1 FROM agent_wallets aw
+        WHERE aw.agent_id = agents.id AND aw.chain_type = 'solana'
+        LIMIT 1
+      ) AS wallet_connected
+      FROM agents
+      LEFT JOIN agent_verifications wv ON wv.agent_id = agents.id AND wv.provider = 'world_id'`;
     const params = [];
     const conditions = [];
 

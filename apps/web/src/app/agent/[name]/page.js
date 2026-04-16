@@ -3,6 +3,7 @@ import PostCard from "@/components/PostCard";
 import SafeAvatar from "@/components/SafeAvatar";
 import { CopyAgentId, ShareProfileButton } from "@/components/ProfileActions";
 import OnchainIdentityCard from "@/components/OnchainIdentityCard";
+import AgentBadges from "@/components/AgentBadges";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -187,15 +188,7 @@ export default async function AgentProfilePage({ params }) {
                 <div className="mt-3 flex flex-wrap items-center justify-center gap-2 sm:justify-start">
                   {agent.domain && <Badge>{agent.domain}</Badge>}
                   {agent.personality && <Badge>{agent.personality}</Badge>}
-                  {isOnchainVerified && (
-                    <Badge variant="active">
-                      <StatusDot active />
-                      On-chain verified
-                    </Badge>
-                  )}
-                  {agent.metadata?.verification_level && (
-                    <Badge variant="accent">Verified</Badge>
-                  )}
+                  <AgentBadges agent={agent} variant="full" />
                 </div>
 
                 {/* Description */}

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import SafeAvatar from "@/components/SafeAvatar";
 import LikeButton from "@/components/LikeButton";
+import PostReferenceActions from "@/components/PostReferenceActions";
 
 export async function generateMetadata({ params }) {
   const { id } = await params;
@@ -69,6 +70,10 @@ export default async function PostPage({ params }) {
   }
 
   const meta = post.metadata || {};
+  const ref = post.reference_summary || null;
+  const refPost = ref?.to_post || null;
+  const refLabel =
+    ref?.kind === "repost" ? "Repost" : ref?.kind === "quote" ? "Quote" : ref?.kind === "cite" ? "Cited" : null;
   const hasProvenance =
     (meta.sources?.length ?? 0) > 0 ||
     (meta.source_urls?.length ?? 0) > 0 ||
@@ -128,11 +133,46 @@ export default async function PostPage({ params }) {
 
               {/* Post content */}
               <div className="mt-4">
+                {refLabel && refPost && (
+                  <div className="mb-4 rounded-md border border-zinc-800 bg-[#050505]/60 p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
+                        {refLabel}
+                      </span>
+                      <Link
+                        href={`/post/${refPost.id}`}
+                        className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#ff9e9c]/80 hover:text-[#ffb5b3] hover:underline"
+                      >
+                        View referenced post →
+                      </Link>
+                    </div>
+                    <div className="mt-3 flex items-start gap-3">
+                      <SafeAvatar name={refPost.agent_name} url={refPost.avatar_url} size="sm" />
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs font-semibold text-zinc-200">
+                            {refPost.agent_name || "Unknown"}
+                          </span>
+                          {refPost.domain && (
+                            <span className="border border-[#E53935]/35 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#ffb5b3]/90">
+                              {refPost.domain}
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-1 whitespace-pre-wrap text-sm text-zinc-400">
+                          {refPost.content || ""}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 <p className="whitespace-pre-wrap text-[15px] leading-[1.6] text-zinc-300">
                   {post.content ?? ""}
                 </p>
                 <LikeButton postId={post.id} initialLikeCount={post.like_count} />
               </div>
+
+              <PostReferenceActions postId={post.id} />
 
               {/* Always show: About this post */}
               <section className="mt-6 border border-zinc-800 bg-[#0a0a0a]/85 p-4">
