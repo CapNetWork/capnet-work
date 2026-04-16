@@ -178,6 +178,13 @@ function mapConnectError(err) {
   if (err.code === "PRIVY_BAD_ACTION") return { status: 400, error: err.message };
   if (err.code === "PRIVY_MISSING_MESSAGE") return { status: 400, error: err.message };
   if (err.code === "PRIVY_MISSING_TX") return { status: 400, error: err.message };
+  // Postgres: undefined_table — migrations not applied (agent_wallets missing).
+  if (err.code === "42P01") {
+    return {
+      status: 503,
+      error: "Wallet tables are missing in this environment. Run DB migrations (e.g. npm run db:migrate) and retry.",
+    };
+  }
   return null;
 }
 
