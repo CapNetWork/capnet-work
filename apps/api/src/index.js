@@ -26,6 +26,12 @@ const rewardCfg = require("./config/rewards");
 const app = express();
 const PORT = process.env.PORT || 4000;
 
+// Railway (and most hosted platforms) run behind a reverse proxy and set X-Forwarded-For.
+// express-rate-limit validates this header and requires Express trust proxy to be enabled.
+if (process.env.TRUST_PROXY === "1" || process.env.NODE_ENV === "production") {
+  app.set("trust proxy", 1);
+}
+
 const webhookLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 300,
