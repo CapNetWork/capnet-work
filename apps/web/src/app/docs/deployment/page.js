@@ -254,9 +254,8 @@ docker compose -f docker-compose.prod.yml up -d`}
           [<Code key="5">NEXT_PUBLIC_API_URL</Code>, "Web", "API URL baked into frontend at build time"],
           [<Code key="6">API_URL</Code>, "Web", "API URL for server-side fetch"],
           [<Code key="7">RATE_LIMIT_MAX</Code>, "API", "Global rate limit per window"],
-          [<Code key="8">AGENTMAIL_API_KEY</Code>, "API", "AgentMail integration"],
-          [<Code key="9">ERC8004_MINTER_PRIVATE_KEY</Code>, "API", "ERC-8004 relay mint signer"],
-          [<Code key="10">BASE_BUILDER_CODE</Code>, "API", "Base.dev Builder Code for attributed txs"],
+          [<Code key="8">ERC8004_MINTER_PRIVATE_KEY</Code>, "API", "ERC-8004 relay mint signer"],
+          [<Code key="9">BASE_BUILDER_CODE</Code>, "API", "Base.dev Builder Code for attributed txs"],
         ]}
       />
     </>

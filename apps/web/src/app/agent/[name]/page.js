@@ -134,17 +134,15 @@ export default async function AgentProfilePage({ params }) {
   }
 
   const erc8004 = agent.metadata?.integrations?.erc8004 || null;
-  const agentmail = agent.metadata?.integrations?.agentmail || null;
   const bankr = agent.metadata?.integrations?.bankr || null;
   const joined = formatDate(agent.created_at);
 
   const isOnchainVerified = erc8004?.verification_status === "verified";
-  const hasEmail = Boolean(agentmail?.address);
   const hasBankr = bankr?.connection_status === "connected_active";
   const hasWallet = Boolean(erc8004?.owner_wallet || bankr?.wallet_address || bankr?.evm_wallet);
   const walletAddr = erc8004?.owner_wallet || bankr?.evm_wallet || bankr?.wallet_address || null;
 
-  const integrationCount = [isOnchainVerified, hasEmail, hasBankr, hasWallet].filter(Boolean).length;
+  const integrationCount = [isOnchainVerified, hasBankr, hasWallet].filter(Boolean).length;
 
   const artifactTypeLabel = {
     report: "Report",
@@ -195,12 +193,6 @@ export default async function AgentProfilePage({ params }) {
                       On-chain verified
                     </Badge>
                   )}
-                  {hasEmail && (
-                    <Badge variant="active">
-                      <StatusDot active />
-                      Email
-                    </Badge>
-                  )}
                   {agent.metadata?.verification_level && (
                     <Badge variant="accent">Verified</Badge>
                   )}
@@ -216,18 +208,6 @@ export default async function AgentProfilePage({ params }) {
                 {/* Actions */}
                 <div className="mt-5 flex flex-wrap items-center justify-center gap-3 sm:justify-start">
                   <ShareProfileButton agentName={agent.name} />
-                  {hasEmail && agentmail?.address && (
-                    <a
-                      href={`mailto:${agentmail.address}`}
-                      className="inline-flex items-center gap-1.5 border border-zinc-700 bg-zinc-900/50 px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-zinc-300 transition-all hover:border-zinc-500 hover:text-white"
-                    >
-                      <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none">
-                        <rect x="1" y="3" width="14" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
-                        <path d="M1 4.5l7 4.5 7-4.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-                      </svg>
-                      Message
-                    </a>
-                  )}
                 </div>
               </div>
             </div>
@@ -245,7 +225,7 @@ export default async function AgentProfilePage({ params }) {
         </div>
 
         {/* ═══════ CONNECTED SERVICES STRIP ═══════ */}
-        {(isOnchainVerified || hasEmail || hasBankr || hasWallet) && (
+        {(isOnchainVerified || hasBankr || hasWallet) && (
           <div className="mt-4 rounded-lg border border-zinc-800/60 bg-[#0a0a0a]/70 px-5 py-4 sm:px-6">
             <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
               <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Connected</span>
@@ -258,16 +238,6 @@ export default async function AgentProfilePage({ params }) {
                     <span className="text-xs font-medium text-zinc-200">ERC-8004 Identity</span>
                     <span className="ml-2 font-mono text-[10px] text-zinc-500">#{erc8004.token_id}</span>
                     <span className="ml-1 text-[10px] text-zinc-600">on {erc8004.chain || "Base"}</span>
-                  </div>
-                </div>
-              )}
-
-              {hasEmail && agentmail && (
-                <div className="flex items-center gap-2">
-                  <StatusDot active />
-                  <div>
-                    <span className="text-xs font-medium text-zinc-200">AgentMail</span>
-                    <span className="ml-2 font-mono text-[10px] text-zinc-500">{agentmail.address}</span>
                   </div>
                 </div>
               )}
@@ -365,7 +335,7 @@ export default async function AgentProfilePage({ params }) {
         {/* ═══════ ON-CHAIN IDENTITY (interactive) ═══════ */}
         <div className="mt-8">
           <SectionHeader title="On-chain Identity" />
-          <OnchainIdentityCard initialConfig={erc8004} agentmailConfig={agentmail} />
+          <OnchainIdentityCard initialConfig={erc8004} />
         </div>
 
         {/* ═══════ ARTIFACTS ═══════ */}
@@ -402,7 +372,7 @@ export default async function AgentProfilePage({ params }) {
         )}
 
         {/* ═══════ INTEGRATIONS DETAIL ═══════ */}
-        {(isOnchainVerified || hasEmail || hasBankr) && (
+        {(isOnchainVerified || hasBankr) && (
           <div className="mt-8">
             <SectionHeader title="Integrations" count={integrationCount} />
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -436,33 +406,6 @@ export default async function AgentProfilePage({ params }) {
                     <div className="flex justify-between text-[10px]">
                       <span className="text-zinc-500">Contract</span>
                       <span className="font-mono text-zinc-300">{truncateAddress(erc8004.contract_address)}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {hasEmail && agentmail && (
-                <div className="rounded-lg border border-zinc-800/60 bg-[#0a0a0a]/70 p-5">
-                  <div className="flex items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#E53935]/10">
-                      <svg className="h-4 w-4 text-[#ff9e9c]" viewBox="0 0 16 16" fill="none">
-                        <rect x="1" y="3" width="14" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
-                        <path d="M1 4.5l7 4.5 7-4.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-                      </svg>
-                    </div>
-                    <div>
-                      <div className="text-xs font-semibold text-white">AgentMail</div>
-                      <div className="text-[10px] text-zinc-500">Email reachable</div>
-                    </div>
-                  </div>
-                  <div className="mt-3 space-y-1">
-                    <div className="flex justify-between text-[10px]">
-                      <span className="text-zinc-500">Address</span>
-                      <span className="font-mono text-zinc-300">{agentmail.address}</span>
-                    </div>
-                    <div className="flex justify-between text-[10px]">
-                      <span className="text-zinc-500">Status</span>
-                      <span className="text-emerald-400">{agentmail.status || "active"}</span>
                     </div>
                   </div>
                 </div>

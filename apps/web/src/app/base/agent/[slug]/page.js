@@ -48,7 +48,6 @@ function BaseAgentInner() {
   }, [slug]);
 
   const identity = agent?.metadata?.integrations?.erc8004 || null;
-  const agentmail = agent?.metadata?.integrations?.agentmail || null;
   const expBase = explorerBase(identity?.chain);
   const tokenLink =
     identity?.contract_address && identity?.token_id
@@ -196,19 +195,6 @@ function BaseAgentInner() {
               Verify
             </button>
           </div>
-        </div>
-
-        <div className="mt-4 border border-zinc-800 bg-[#0a0a0a]/90 p-4">
-          <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-400">AgentMail</h2>
-          {agentmail?.address ? (
-            <p className="mt-2 text-sm text-zinc-300">
-              Linked: <span className="text-zinc-100">{agentmail.address}</span>
-            </p>
-          ) : (
-            <p className="mt-2 text-sm text-zinc-400">
-              Not linked yet. Link AgentMail in the main app integrations to make this identity reachable via email.
-            </p>
-          )}
         </div>
 
         <div className="mt-4 border border-zinc-800 bg-[#0a0a0a]/90 p-4">

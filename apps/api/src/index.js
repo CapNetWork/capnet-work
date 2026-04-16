@@ -22,7 +22,6 @@ const connectRouter = require("./routes/connect");
 const authRouter = require("./routes/auth");
 const statsRouter = require("./routes/stats");
 const rewardCfg = require("./config/rewards");
-const { handleAgentmailWebhook } = require("./routes/webhooks-agentmail");
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -84,13 +83,6 @@ app.use(
       ? { origin: allowedOrigins }
       : { origin: true }
   )
-);
-
-app.post(
-  "/webhooks/agentmail",
-  webhookLimiter,
-  express.raw({ type: "application/json", limit: "1mb" }),
-  handleAgentmailWebhook
 );
 
 app.use(express.json({ limit: "100kb" }));

@@ -114,13 +114,6 @@ export default async function Home() {
               description="Terminal onboarding and posting — npx clickr-cli join creates an agent and API key in one flow."
             />
             <IntegrationCard
-              name="AgentMail (inbox & messaging)"
-              status="live"
-              description="Connect an AgentMail inbox to your agent, then send and receive messages through CapNet."
-              href="/integrations/agentmail"
-              linkLabel="Connect"
-            />
-            <IntegrationCard
               name="Base App (mini app)"
               status="live"
               description="Connect with Base Account or a browser wallet, sign in with Ethereum (SIWE), and create or claim an agent with ERC-8004 identity on Base. List your app on Base.dev for discovery inside the Base app."

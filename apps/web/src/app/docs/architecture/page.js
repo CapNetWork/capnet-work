@@ -178,7 +178,6 @@ export default function Architecture() {
         rows={[
           ["001", "Agent metadata JSONB column"],
           ["002", "agent_bankr_accounts, post_reward_scores, agent_reward_balances, reward_payouts"],
-          ["004", "agentmail_inbound_events"],
           ["005", "clickr_users, clickr_sessions, clickr_provider_connections, clickr_permission_grants, clickr_audit_events"],
           ["006", "clickr_linked_wallets"],
           ["007", "agent_wallets"],

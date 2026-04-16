@@ -10,7 +10,6 @@ const {
   deleteProviderConfig,
 } = require("../integrations/store");
 const bankrAdapter = require("../integrations/providers/bankr");
-const agentmailAdapter = require("../integrations/providers/agentmail");
 const erc8004Adapter = require("../integrations/providers/erc8004");
 const privyWalletAdapter = require("../integrations/providers/privy-wallet");
 const worldIdAdapter = require("../integrations/providers/world-id");
@@ -20,7 +19,6 @@ const rateLimit = require("express-rate-limit");
 /** Providers with custom persistence (DB, external APIs). Keys must match registry ids. */
 const ADAPTERS = {
   bankr: bankrAdapter,
-  agentmail: agentmailAdapter,
   erc8004: erc8004Adapter,
   privy_wallet: privyWalletAdapter,
   world_id: worldIdAdapter,
@@ -104,31 +102,6 @@ router.post("/:providerId/connect", authenticateBySessionOrKey, sanitizeBody([])
   }
 });
 
-router.post("/agentmail/link", authenticateBySessionOrKey, async (req, res, next) => {
-  try {
-    const { username, display_name } = req.body || {};
-    const body = await agentmailAdapter.link(req.agent.id, { username, display_name });
-    res.status(201).json(body);
-  } catch (err) {
-    if (err.code === "AGENTMAIL_NOT_CONFIGURED") {
-      return res.status(503).json({ error: "AgentMail is not configured (AGENTMAIL_API_KEY)" });
-    }
-    if (err.code === "AGENTMAIL_BAD_RESPONSE") {
-      return res.status(400).json({ error: err.message });
-    }
-    if (typeof err.status === "number" && err.status >= 400) {
-      const body = err.body && typeof err.body === "object" ? err.body : {};
-      return res.status(502).json({
-        error: err.message || "AgentMail request failed",
-        upstream_status: err.status,
-        upstream_detail: body.errors || body.message || undefined,
-      });
-    }
-    console.error("[integrations/agentmail/link]", err.message, err.stack);
-    next(err);
-  }
-});
-
 router.post("/erc8004/verify", authenticateBySessionOrKey, async (req, res, next) => {
   try {
     const out = await erc8004Adapter.verify(req.agent.id);
@@ -142,57 +115,6 @@ router.post("/erc8004/verify", authenticateBySessionOrKey, async (req, res, next
     }
     if (err.code === "ERC8004_INVALID_OWNER") {
       return res.status(422).json({ error: err.message });
-    }
-    next(err);
-  }
-});
-
-router.post("/agentmail/send", authenticateBySessionOrKey, sanitizeBody(["to", "subject", "text"]), async (req, res, next) => {
-  const { to, subject, text, html } = req.body || {};
-  if (!to || typeof to !== "string") {
-    return res.status(400).json({ error: "to is required" });
-  }
-  if (!subject || typeof subject !== "string") {
-    return res.status(400).json({ error: "subject is required" });
-  }
-  if ((text == null || text === "") && (html == null || html === "")) {
-    return res.status(400).json({ error: "text or html is required" });
-  }
-  try {
-    const out = await agentmailAdapter.send(req.agent.id, { to, subject, text, html });
-    res.json(out);
-  } catch (err) {
-    if (err.code === "AGENTMAIL_NOT_CONFIGURED") {
-      return res.status(503).json({ error: "AgentMail is not configured (AGENTMAIL_API_KEY)" });
-    }
-    if (err.code === "AGENTMAIL_NOT_LINKED") {
-      return res.status(400).json({ error: err.message });
-    }
-    if (typeof err.status === "number" && err.status >= 400) {
-      return res.status(502).json({
-        error: err.message || "AgentMail request failed",
-        upstream_status: err.status,
-      });
-    }
-    console.error("[integrations/agentmail/send]", err.message, err.stack);
-    next(err);
-  }
-});
-
-router.get("/agentmail/inbox", authenticateBySessionOrKey, async (req, res, next) => {
-  try {
-    const status = await agentmailAdapter.getIntegrationStatus(req.agent.id);
-    if (!status.connected) {
-      return res.status(400).json({ error: "AgentMail not linked; POST /integrations/agentmail/link first" });
-    }
-    const limit = parseInt(req.query.limit, 10);
-    const messages = await agentmailAdapter.listInbound(req.agent.id, limit);
-    res.json({ provider: "agentmail", messages });
-  } catch (err) {
-    if (err.code === "42P01") {
-      return res.status(503).json({
-        error: "Inbound table missing; run npm run db:migrate (includes 004_agentmail_inbound_events.sql)",
-      });
     }
     next(err);
   }
@@ -409,7 +331,7 @@ router.put("/:providerId/config", authenticateBySessionOrKey, sanitizeBody([]), 
   if (adapter?.forbidDirectConfigPut?.()) {
     return res.status(400).json({
       error:
-        "This provider cannot be linked by editing config here. Use the provider connect flow (e.g. POST /integrations/bankr/connect or POST /integrations/agentmail/link).",
+        "This provider cannot be linked by editing config here. Use the provider connect flow (e.g. POST /integrations/bankr/connect).",
     });
   }
 

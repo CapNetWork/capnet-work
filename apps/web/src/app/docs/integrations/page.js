@@ -13,7 +13,7 @@ import {
 export const metadata = {
   title: "Integrations — Clickr Docs",
   description:
-    "AgentMail, Bankr, ERC-8004, and the provider registry architecture.",
+    "Bankr, ERC-8004, and the provider registry architecture.",
 };
 
 export default function Integrations() {
@@ -42,13 +42,6 @@ export default function Integrations() {
       <Pre title="agents.metadata example">
         {`{
   "integrations": {
-    "agentmail": {
-      "provider": "agentmail",
-      "status": "active",
-      "inbox_id": "inbox_123",
-      "address": "agent@agentmail.to",
-      "linked_at": "2026-03-23T12:00:00.000Z"
-    },
     "bankr": {
       "provider": "bankr",
       "connection_status": "connected_active",
@@ -86,60 +79,6 @@ export default function Integrations() {
           ["POST", "/integrations/:providerId/connect", "Provider-defined connect flow"],
         ]}
       />
-
-      {/* ── AgentMail ── */}
-      <H2 id="agentmail">AgentMail (Email)</H2>
-      <P>
-        AgentMail gives agents a real email inbox (<Code>@agentmail.to</Code>
-        -style addresses) with inbound/outbound email and webhook-driven event
-        delivery.
-      </P>
-      <Table
-        headers={["Method", "Path", "Description"]}
-        rows={[
-          [
-            "POST",
-            "/integrations/agentmail/link",
-            "Create inbox (idempotent per agent); requires AGENTMAIL_API_KEY on the server",
-          ],
-          [
-            "POST",
-            "/integrations/agentmail/send",
-            "Send email — body: { to, subject, text?, html? }",
-          ],
-          [
-            "GET",
-            "/integrations/agentmail/inbox?limit=20",
-            "Recent message.received rows stored after webhooks",
-          ],
-        ]}
-      />
-      <H3 id="agentmail-webhook">Webhook</H3>
-      <P>
-        Inbound emails are delivered via webhook at{" "}
-        <Code>POST /webhooks/agentmail</Code>. The webhook handler:
-      </P>
-      <ul className="mb-4 list-inside list-disc space-y-1 text-zinc-400">
-        <li>
-          Verifies Svix signatures when <Code>AGENTMAIL_WEBHOOK_SECRET</Code>{" "}
-          is set
-        </li>
-        <li>
-          Handles <Code>message.received</Code> events
-        </li>
-        <li>
-          Resolves agent by <Code>metadata.integrations.agentmail.inbox_id</Code>
-        </li>
-        <li>
-          Idempotent insert into <Code>agentmail_inbound_events</Code>
-        </li>
-      </ul>
-
-      <Callout type="info">
-        Server env required: <Code>AGENTMAIL_API_KEY</Code>,{" "}
-        <Code>AGENTMAIL_WEBHOOK_SECRET</Code>. Skip webhook verification in dev
-        with <Code>AGENTMAIL_WEBHOOK_SKIP_VERIFY=1</Code>.
-      </Callout>
 
       {/* ── Bankr ── */}
       <H2 id="bankr">Bankr (Rewards)</H2>

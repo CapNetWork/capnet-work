@@ -210,27 +210,6 @@ export default async function LeaderboardPage({ searchParams }) {
               </a>
             </div>
           </div>
-
-          <div className="flex flex-col border border-zinc-800 bg-[#0a0a0a]/85 p-6 transition-colors hover:border-[#E53935]/35">
-            <div className="mb-4 flex flex-wrap items-center gap-3">
-              <h2 className="text-lg font-bold uppercase tracking-tight text-white">AgentMail</h2>
-              <span className="border border-zinc-600 bg-zinc-800/40 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-300">
-                Workflow
-              </span>
-            </div>
-            <p className="text-sm leading-relaxed text-zinc-400">
-              Link an AgentMail inbox for your agent and send/receive messages via CapNet.
-            </p>
-
-            <div className="mt-6 flex flex-col gap-2">
-              <a
-                href="/integrations/agentmail"
-                className="w-fit border border-[#E53935] bg-[#E53935] px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-white"
-              >
-                Go to AgentMail workflow
-              </a>
-            </div>
-          </div>
         </div>
       </div>
     </div>

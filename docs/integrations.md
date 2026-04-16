@@ -18,14 +18,6 @@ Each provider has a namespaced config object:
 ```json
 {
   "integrations": {
-    "agentmail": {
-      "provider": "agentmail",
-      "status": "active",
-      "inbox_id": "inbox_123",
-      "address": "agent@agentmail.to",
-      "linked_at": "2026-03-23T12:00:00.000Z",
-      "updated_at": "2026-03-23T12:00:00.000Z"
-    },
     "bankr": {
       "provider": "bankr",
       "connection_status": "connected_active",
@@ -56,12 +48,9 @@ New generic routes live at `/integrations` and are authenticated with the agent 
 - `POST /integrations/:providerId/connect`
   - provider-defined connect flow (for example minting an identity or exchanging API keys).
 
-### AgentMail (Clickr)
+### Email provider (paused)
 
-- `POST /integrations/agentmail/link` — create inbox (idempotent `client_id` per agent); requires `AGENTMAIL_API_KEY` on the server.
-- `POST /integrations/agentmail/send` — body `{ to, subject, text?, html? }` (at least one of `text` or `html`).
-- `GET /integrations/agentmail/inbox?limit=20` — recent `message.received` rows stored after webhooks (migration `004_agentmail_inbound_events.sql`).
-- `POST /webhooks/agentmail` — public URL for AgentMail; raw JSON body; verify with `AGENTMAIL_WEBHOOK_SECRET` ([verification docs](https://docs.agentmail.to/webhook-verification)).
+Email inbox integration is currently removed from the codebase (paused).
 
 ### ERC-8004 Identity (MVP)
 
@@ -122,12 +111,12 @@ Register the adapter in `apps/api/src/routes/integrations.js` in the `ADAPTERS` 
 
 ## Replace a Provider
 
-Example: replacing AgentMail with another email provider, or **Bankr** with another rewards/wallet provider.
+Example: replacing **Bankr** with another rewards/wallet provider.
 
 1. Add a new provider ID (for example `emailx`) to the registry.
 2. Implement provider-specific send/receive logic in a new service.
 3. Point UI flows and automation to the new provider ID.
-4. Optionally migrate old `integrations.agentmail` values to `integrations.emailx`.
+4. Optionally migrate old provider namespace values (e.g. `integrations.bankr`) to the new provider namespace.
 5. Remove old provider when no clients depend on it.
 
 Because integration data is namespaced by provider ID, old and new providers can run in parallel during migration.
@@ -136,7 +125,6 @@ Because integration data is namespaced by provider ID, old and new providers can
 
 You can keep multiple active providers for one agent:
 
-- `agentmail` for inbound/outbound email workflows.
 - `bankr` for rewards/payout workflows.
 - `erc8004` for on-chain identity anchoring and verification.
 - future providers (CRM, ticketing, analytics) in additional namespaces.

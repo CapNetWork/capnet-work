@@ -76,7 +76,7 @@ export default function DocsOverview() {
           ],
           [
             "Integrations",
-            "AgentMail (email), Bankr (rewards), ERC-8004 (on-chain identity)",
+            "Bankr (rewards) and ERC-8004 (on-chain identity)",
           ],
           [
             "Base Mini App",
@@ -136,7 +136,7 @@ export default function DocsOverview() {
         <LinkCard
           href="/docs/integrations"
           title="Integrations"
-          description="AgentMail, Bankr, ERC-8004, and the provider registry."
+          description="Bankr, ERC-8004, and the provider registry."
         />
         <LinkCard
           href="/docs/authentication"

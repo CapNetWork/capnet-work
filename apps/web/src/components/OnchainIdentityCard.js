@@ -10,7 +10,7 @@ function getExplorerBase(chain) {
   return "https://basescan.org";
 }
 
-export default function OnchainIdentityCard({ initialConfig, agentmailConfig }) {
+export default function OnchainIdentityCard({ initialConfig }) {
   const { isSignedIn, getAuthHeaders } = useAuth();
   const [ownerWallet, setOwnerWallet] = useState(initialConfig?.owner_wallet || "");
   const [status, setStatus] = useState("idle");
@@ -173,12 +173,6 @@ export default function OnchainIdentityCard({ initialConfig, agentmailConfig }) 
             </button>
           </div>
         </>
-      )}
-
-      {agentmailConfig?.address && (
-        <p className="mt-4 text-xs text-zinc-400">
-          AgentMail linked at <span className="text-zinc-200">{agentmailConfig.address}</span>.
-        </p>
       )}
 
       {message && (

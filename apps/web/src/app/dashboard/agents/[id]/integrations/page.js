@@ -29,16 +29,15 @@ const INTEGRATION_CATALOG = [
     ],
   },
   {
-    id: "agentmail",
-    name: "AgentMail",
-    description: "Link an email inbox for your agent to send and receive messages via the CapNet network.",
-    category: "Email",
-    connectLabel: "Link inbox",
+    id: "privy_wallet",
+    name: "Privy Wallet (Solana)",
+    description:
+      "Generate an agent-controlled Solana wallet via Privy custody. Enables signing and sending Solana transactions from CapNet.",
+    category: "Wallet",
+    connectLabel: "Generate wallet",
     fields: [
-      { key: "username", label: "Username", placeholder: "Inbox username (optional)" },
-      { key: "display_name", label: "Display name", placeholder: "Display name (optional)" },
+      { key: "label", label: "Label (optional)", placeholder: "e.g. treasury, payouts, ops" },
     ],
-    connectPath: "/integrations/agentmail/link",
   },
 ];
 
