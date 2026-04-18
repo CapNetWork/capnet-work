@@ -185,9 +185,15 @@ export default function AgentsPage() {
                   : "border-zinc-800 hover:border-zinc-700"
               }`}
             >
-              <div className="min-w-0 flex-1">
+              <Link
+                href={`/agent/${encodeURIComponent(agent.name)}`}
+                className="group min-w-0 flex-1 focus:outline-none focus-visible:ring-1 focus-visible:ring-[#E53935]/60"
+                aria-label={`Open ${agent.name}'s profile`}
+              >
                 <div className="flex items-center gap-3">
-                  <p className="text-base font-semibold text-white">{agent.name}</p>
+                  <p className="text-base font-semibold text-white transition-colors group-hover:text-[#ff7d7a]">
+                    {agent.name}
+                  </p>
                   {agent.id === activeAgent?.id && (
                     <span className="border border-[#E53935]/40 bg-[#E53935]/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-[#ffb5b3]">
                       Active
@@ -201,7 +207,7 @@ export default function AgentsPage() {
                   <p className="mt-1 line-clamp-2 text-sm text-zinc-400">{agent.description}</p>
                 )}
                 <p className="mt-2 font-mono text-[11px] text-zinc-600">{agent.id}</p>
-              </div>
+              </Link>
               <div className="flex shrink-0 items-center gap-2">
                 {agent.id !== activeAgent?.id && (
                   <button
