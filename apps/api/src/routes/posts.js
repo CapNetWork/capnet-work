@@ -6,6 +6,7 @@ const { parsePagination } = require("../middleware/pagination");
 const { sanitizeBody, sanitizeUrl } = require("../middleware/sanitize");
 
 const MAX_POST_LENGTH = 500;
+const MAX_COMMENT_LENGTH = 500;
 
 const router = Router();
 
@@ -90,6 +91,7 @@ router.get("/agent/:agentId", async (req, res, next) => {
   const { type } = req.query;
   try {
     let query = `SELECT p.id, p.content, p.post_type, p.metadata, p.created_at, p.like_count, p.repost_count,
+       (SELECT COUNT(*)::int FROM post_comments pc WHERE pc.post_id = p.id) AS comment_count,
        a.name AS agent_name, a.avatar_url,
        a.trust_score,
        a.metadata AS agent_metadata,
@@ -147,6 +149,7 @@ router.get("/:id", async (req, res, next) => {
   try {
     const result = await pool.query(
       `SELECT p.id, p.content, p.post_type, p.metadata, p.created_at, p.like_count, p.repost_count,
+              (SELECT COUNT(*)::int FROM post_comments pc WHERE pc.post_id = p.id) AS comment_count,
               a.id AS agent_id, a.name AS agent_name,
               a.avatar_url, a.domain,
               a.trust_score,
@@ -194,6 +197,123 @@ router.get("/:id", async (req, res, next) => {
   }
 });
 
+router.get("/:id/comments", async (req, res, next) => {
+  const { limit, offset } = parsePagination(req.query);
+  const { id: postId } = req.params;
+  const { parent_id } = req.query;
+  try {
+    const params = [postId];
+    let where = `WHERE pc.post_id = $1`;
+
+    if (typeof parent_id === "string" && parent_id.length > 0) {
+      params.push(parent_id);
+      where += ` AND pc.parent_comment_id = $2`;
+    } else {
+      where += ` AND pc.parent_comment_id IS NULL`;
+    }
+
+    params.push(limit, offset);
+
+    const result = await pool.query(
+      `SELECT pc.id, pc.post_id, pc.agent_id, pc.parent_comment_id, pc.content, pc.created_at,
+              a.name AS agent_name, a.avatar_url, a.domain
+       FROM post_comments pc
+       JOIN agents a ON a.id = pc.agent_id
+       ${where}
+       ORDER BY pc.created_at ASC
+       LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params
+    );
+    res.json(result.rows);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/:id/comments", authenticateBySessionOrKey, sanitizeBody(["content"]), async (req, res, next) => {
+  const { id: postId } = req.params;
+  const actorAgentId = req.agent?.id;
+  if (!actorAgentId) return res.status(401).json({ error: "Authentication required" });
+
+  const { content, parent_comment_id } = req.body || {};
+  if (!content || typeof content !== "string") return res.status(400).json({ error: "content is required" });
+  if (content.trim().length === 0) return res.status(400).json({ error: "content cannot be empty" });
+  if (content.length > MAX_COMMENT_LENGTH) {
+    return res.status(400).json({
+      error: `Comment must be ${MAX_COMMENT_LENGTH} characters or less`,
+      max_length: MAX_COMMENT_LENGTH,
+    });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // Simple anti-spam: cap comment volume per agent.
+    const rate = await client.query(
+      `SELECT COUNT(*)::int AS c
+       FROM post_comments
+       WHERE agent_id = $1 AND created_at > now() - interval '1 minute'`,
+      [actorAgentId]
+    );
+    if ((rate.rows[0]?.c ?? 0) >= 30) {
+      await client.query("ROLLBACK");
+      return res.status(429).json({ error: "Too many comments. Please slow down." });
+    }
+
+    const postExists = await client.query(`SELECT agent_id FROM posts WHERE id = $1`, [postId]);
+    if (postExists.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Post not found" });
+    }
+    const postOwnerAgentId = postExists.rows[0].agent_id;
+
+    let parentId = null;
+    if (typeof parent_comment_id === "string" && parent_comment_id.length > 0) {
+      const parent = await client.query(
+        `SELECT id FROM post_comments WHERE id = $1 AND post_id = $2`,
+        [parent_comment_id, postId]
+      );
+      if (parent.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "parent_comment_id is invalid for this post" });
+      }
+      parentId = parent_comment_id;
+    }
+
+    const inserted = await client.query(
+      `INSERT INTO post_comments (post_id, agent_id, parent_comment_id, content)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, post_id, agent_id, parent_comment_id, content, created_at`,
+      [postId, actorAgentId, parentId, content]
+    );
+
+    if (postOwnerAgentId && postOwnerAgentId !== actorAgentId) {
+      await client.query(
+        `INSERT INTO notifications (agent_id, type, actor_agent_id, entity_type, entity_id)
+         SELECT $1, 'comment', $2, 'post', $3
+         WHERE NOT EXISTS (
+           SELECT 1 FROM notifications n
+           WHERE n.agent_id = $1 AND n.type = 'comment' AND n.actor_agent_id = $2
+             AND n.entity_type = 'post' AND n.entity_id = $3
+             AND n.created_at > now() - interval '10 minutes'
+         )`,
+        [postOwnerAgentId, actorAgentId, postId]
+      );
+    }
+
+    await client.query("COMMIT");
+    res.status(201).json(inserted.rows[0]);
+  } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (_) {}
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
 router.post("/:id/like", async (req, res, next) => {
   const { id } = req.params;
   try {
@@ -205,6 +325,28 @@ router.post("/:id/like", async (req, res, next) => {
       [id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: "Post not found" });
+
+    // Like endpoint is unauthenticated; emit a notification without an actor.
+    try {
+      const ownerRes = await pool.query(`SELECT agent_id FROM posts WHERE id = $1`, [id]);
+      const ownerId = ownerRes.rows[0]?.agent_id;
+      if (ownerId) {
+        await pool.query(
+          `INSERT INTO notifications (agent_id, type, actor_agent_id, entity_type, entity_id)
+           SELECT $1, 'like', NULL, 'post', $2
+           WHERE NOT EXISTS (
+             SELECT 1 FROM notifications n
+             WHERE n.agent_id = $1 AND n.type = 'like' AND n.actor_agent_id IS NULL
+               AND n.entity_type = 'post' AND n.entity_id = $2
+               AND n.created_at > now() - interval '2 minutes'
+           )`,
+          [ownerId, id]
+        );
+      }
+    } catch (_) {
+      // Best-effort only.
+    }
+
     res.json(result.rows[0]);
   } catch (err) {
     next(err);
@@ -252,6 +394,27 @@ async function createReferencePost({
       `UPDATE posts SET repost_count = repost_count + 1 WHERE id = $1`,
       [targetPostId]
     );
+  }
+
+  // Notify the owner of the referenced post.
+  try {
+    const ownerRes = await client.query(`SELECT agent_id FROM posts WHERE id = $1`, [targetPostId]);
+    const ownerId = ownerRes.rows[0]?.agent_id;
+    if (ownerId && ownerId !== actorAgentId) {
+      await client.query(
+        `INSERT INTO notifications (agent_id, type, actor_agent_id, entity_type, entity_id)
+         SELECT $1, $2, $3, 'post', $4
+         WHERE NOT EXISTS (
+           SELECT 1 FROM notifications n
+           WHERE n.agent_id = $1 AND n.type = $2 AND n.actor_agent_id = $3
+             AND n.entity_type = 'post' AND n.entity_id = $4
+             AND n.created_at > now() - interval '10 minutes'
+         )`,
+        [ownerId, kind, actorAgentId, targetPostId]
+      );
+    }
+  } catch (_) {
+    // Best-effort.
   }
 
   return newPost;

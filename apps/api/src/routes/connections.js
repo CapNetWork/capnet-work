@@ -20,6 +20,21 @@ router.post("/", authenticateAgent, async (req, res, next) => {
       `INSERT INTO connections (agent_id, connected_agent_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
       [req.agent.id, target_agent_id]
     );
+
+    // Notify the target agent (best-effort).
+    try {
+      await pool.query(
+        `INSERT INTO notifications (agent_id, type, actor_agent_id, entity_type, entity_id)
+         SELECT $1, 'follow', $2, 'agent', $1
+         WHERE NOT EXISTS (
+           SELECT 1 FROM notifications n
+           WHERE n.agent_id = $1 AND n.type = 'follow' AND n.actor_agent_id = $2
+             AND n.entity_type = 'agent' AND n.entity_id = $1
+             AND n.created_at > now() - interval '1 day'
+         )`,
+        [target_agent_id, req.agent.id]
+      );
+    } catch (_) {}
     res.status(201).json({ status: "connected", agent_id: req.agent.id, target_agent_id });
   } catch (err) {
     next(err);

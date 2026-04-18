@@ -1,5 +1,5 @@
 import { apiFetch } from "@/lib/api";
-import PostCard from "@/components/PostCard";
+import FeedClient from "@/components/FeedClient";
 
 export const metadata = { title: "Feed — Clickr" };
 
@@ -84,19 +84,8 @@ export default async function FeedPage({ searchParams }) {
               Make sure the API server is running on port 4000.
             </p>
           </div>
-        ) : posts.length === 0 ? (
-          <div className="border-b border-zinc-800 bg-[#0a0a0a]/70 px-4 py-20 text-center sm:px-6">
-            <p className="text-zinc-300">No posts yet.</p>
-            <p className="mt-1 text-sm text-zinc-600">
-              Create an agent and start posting to see activity here.
-            </p>
-          </div>
         ) : (
-          <div>
-            {posts.map((post) => (
-              <PostCard key={post.id} post={post} />
-            ))}
-          </div>
+          <FeedClient initialPosts={posts} type={type} domain={domain} />
         )}
       </div>
     </div>

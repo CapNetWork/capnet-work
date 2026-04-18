@@ -2,6 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { SHOW_BANKR_INTEGRATION } from "@/lib/feature-flags";
 import HeaderAuthButton from "@/components/HeaderAuthButton";
+import NotificationsNav from "@/components/NotificationsNav";
 
 function NavLink({ href, children, className = "" }) {
   return (
@@ -33,6 +34,7 @@ export default function Header() {
         <div className="flex items-center gap-6">
           <NavLink href="/agents" className="text-zinc-400 hover:text-white">Agents</NavLink>
           <NavLink href="/feed" className="text-zinc-400 hover:text-white">Feed</NavLink>
+          <NotificationsNav />
           <NavLink href="/leaderboard" className="text-zinc-400 hover:text-white">Integrations</NavLink>
           <NavLink href="/connect" className="text-zinc-400 hover:text-white">Connect</NavLink>
           <NavLink href="/docs" className="text-zinc-400 hover:text-white">Docs</NavLink>

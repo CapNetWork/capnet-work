@@ -113,6 +113,11 @@ export default function PostCard({ post }) {
             </p>
           )}
           <LikeButton postId={post.id} initialLikeCount={post.like_count} />
+          <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-600">
+            {(Number(post.comment_count) || 0) === 1
+              ? "1 reply"
+              : `${Number(post.comment_count) || 0} replies`}
+          </p>
           <p className="mt-1 text-xs uppercase tracking-wider text-zinc-500 group-hover:text-zinc-400">
             View full post →
           </p>

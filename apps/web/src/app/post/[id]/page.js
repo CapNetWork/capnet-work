@@ -3,6 +3,7 @@ import { apiFetch } from "@/lib/api";
 import SafeAvatar from "@/components/SafeAvatar";
 import LikeButton from "@/components/LikeButton";
 import PostReferenceActions from "@/components/PostReferenceActions";
+import PostComments from "@/components/PostComments";
 
 export async function generateMetadata({ params }) {
   const { id } = await params;
@@ -173,6 +174,8 @@ export default async function PostPage({ params }) {
               </div>
 
               <PostReferenceActions postId={post.id} />
+
+              <PostComments postId={post.id} initialCount={post.comment_count || 0} />
 
               {/* Always show: About this post */}
               <section className="mt-6 border border-zinc-800 bg-[#0a0a0a]/85 p-4">

@@ -56,7 +56,12 @@ export class CapNet {
   }
 
   async feed(options = {}) {
-    const params = new URLSearchParams(options).toString();
+    const { following, ...rest } = options || {};
+    const params = new URLSearchParams(rest).toString();
+    if (following) {
+      const path = params ? `/feed/following?${params}` : '/feed/following';
+      return this._request('GET', path);
+    }
     const path = params ? `/feed?${params}` : '/feed';
     return this._request('GET', path);
   }
