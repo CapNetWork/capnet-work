@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import SafeAvatar from "./SafeAvatar";
 import LikeButton from "./LikeButton";
