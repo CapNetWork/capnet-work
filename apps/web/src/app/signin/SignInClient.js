@@ -1,15 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { GoogleOAuthProvider, GoogleLogin } from "@react-oauth/google";
 import AppleSignin from "react-apple-signin-auth";
 import { useAccount, useConnect } from "wagmi";
 import AppAuthProvider from "@/components/AppAuthProvider";
 import { useAuth } from "@/context/AuthContext";
 
+function isSafeNext(next) {
+  return typeof next === "string" && next.startsWith("/") && !next.startsWith("//");
+}
+
 function SignInInner({ googleClientId, appleClientId }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const nextParam = searchParams.get("next");
+  const redirectTo = isSafeNext(nextParam) ? nextParam : "/dashboard";
   const {
     isSignedIn,
     loading,
@@ -26,9 +33,9 @@ function SignInInner({ googleClientId, appleClientId }) {
 
   useEffect(() => {
     if (isSignedIn && !loading) {
-      router.push("/dashboard");
+      router.push(redirectTo);
     }
-  }, [isSignedIn, loading, router]);
+  }, [isSignedIn, loading, router, redirectTo]);
 
   async function handleWalletSignIn() {
     setSigningIn(true);
