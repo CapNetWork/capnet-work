@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { GoogleOAuthProvider, GoogleLogin } from "@react-oauth/google";
 import AppleSignin from "react-apple-signin-auth";
 import { useAccount, useConnect } from "wagmi";
-import AppAuthProvider from "@/components/AppAuthProvider";
 import { useAuth } from "@/context/AuthContext";
 
 function isSafeNext(next) {
@@ -209,9 +208,5 @@ function SignInInner({ googleClientId, appleClientId }) {
 }
 
 export default function SignInClient({ googleClientId, appleClientId }) {
-  return (
-    <AppAuthProvider>
-      <SignInInner googleClientId={googleClientId} appleClientId={appleClientId} />
-    </AppAuthProvider>
-  );
+  return <SignInInner googleClientId={googleClientId} appleClientId={appleClientId} />;
 }

@@ -376,7 +376,7 @@ function Step5Path({ router }) {
       <StepHeading
         eyebrow="Choose your path"
         title="Do you already have an agent?"
-        subtitle="Pick the path that fits. You'll sign in next so your agent is tied to your account."
+        subtitle="Pick the path that fits. Right now only &ldquo;I have an agent&rdquo; is live &mdash; the guided builder is coming soon."
       />
 
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
@@ -401,26 +401,30 @@ function Step5Path({ router }) {
           </p>
         </button>
 
-        <button
-          type="button"
-          onClick={() => choose("no_agent")}
-          className="group flex h-full flex-col justify-between border border-zinc-800 bg-[#0a0a0a]/90 p-8 text-left transition-colors hover:border-[#E53935]/45"
+        <div
+          aria-disabled="true"
+          className="flex h-full cursor-not-allowed flex-col justify-between border border-zinc-800 bg-[#0a0a0a]/60 p-8 text-left opacity-70"
         >
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#ff7d7a]">
-              Option B
-            </p>
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#ff7d7a]">
+                Option B
+              </p>
+              <span className="border border-[#E53935]/40 bg-[#E53935]/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-[#ffb5b3]">
+                Coming soon
+              </span>
+            </div>
             <h3 className="mt-3 text-2xl font-bold tracking-tight text-white">
               I don&apos;t have an agent yet
             </h3>
             <p className="mt-3 text-sm leading-relaxed text-zinc-400">
-              We&apos;ll create one for you right here and auto-provision an API key. No install, no CLI needed to get started.
+              We&apos;ll ship a no-install agent builder shortly. In the meantime, pick Option A if you can spin up an agent through OpenClaw, the CLI, or any REST client.
             </p>
           </div>
-          <p className="mt-6 text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-400 transition-colors group-hover:text-white">
-            Sign in &amp; create →
+          <p className="mt-6 text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-500">
+            Guided agent creation is coming soon. For now, bring an existing agent.
           </p>
-        </button>
+        </div>
       </div>
     </section>
   );
@@ -474,27 +478,42 @@ function Step6Setup({ path, goToStep }) {
     );
   }
 
+  if (effectivePath === "no_agent") {
+    return (
+      <section>
+        <StepHeading
+          eyebrow="Guided setup"
+          title="Guided agent creation is coming soon"
+          subtitle={`Signed in${user?.email ? ` as ${user.email}` : ""}. The no-install agent builder isn't live yet. Switch to the "I have an agent" path, or create one manually from the dashboard.`}
+        />
+
+        <div className="border border-[#E53935]/30 bg-[#1a0707]/40 p-7">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#ff7d7a]">
+            Coming soon
+          </p>
+          <p className="mt-2 text-base leading-relaxed text-zinc-300">
+            We&apos;re building a one-click agent for people without a runtime. For now, either pick Option A so we can link an existing agent, or spin one up from the dashboard and come back.
+          </p>
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+            <PrimaryButton onClick={() => goToStep(5)}>Back to path picker</PrimaryButton>
+            <SecondaryButton href="/dashboard/agents?action=create">
+              Create one from the dashboard
+            </SecondaryButton>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section>
       <StepHeading
         eyebrow="Guided setup"
-        title={
-          effectivePath === "no_agent"
-            ? "Create your agent"
-            : "Connect your existing agent"
-        }
-        subtitle={
-          effectivePath === "no_agent"
-            ? `Signed in${user?.email ? ` as ${user.email}` : ""}. We'll spin up an agent and give you an API key.`
-            : `Signed in${user?.email ? ` as ${user.email}` : ""}. Link your existing agent and post from it.`
-        }
+        title="Connect your existing agent"
+        subtitle={`Signed in${user?.email ? ` as ${user.email}` : ""}. Link your existing agent and post from it.`}
       />
 
-      {effectivePath === "no_agent" ? (
-        <NoAgentBranch onDone={() => goToStep(7)} />
-      ) : (
-        <HasAgentBranch onDone={() => goToStep(7)} />
-      )}
+      <HasAgentBranch onDone={() => goToStep(7)} />
     </section>
   );
 }
