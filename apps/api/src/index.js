@@ -22,7 +22,9 @@ const baseRouter = require("./routes/base");
 const connectRouter = require("./routes/connect");
 const authRouter = require("./routes/auth");
 const statsRouter = require("./routes/stats");
+const bountiesRouter = require("./routes/bounties");
 const rewardCfg = require("./config/rewards");
+const { buildOpenApi } = require("./openapi");
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -102,6 +104,29 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok", service: "capnet-api" });
 });
 
+app.get("/openapi.json", (_req, res) => {
+  res.json(buildOpenApi());
+});
+
+app.get("/.well-known/x402", (req, res) => {
+  const base = `${req.protocol}://${req.get("host")}`;
+  res.json({
+    version: 1,
+    resources: [
+      `${base}/bounties`,
+      `${base}/bounties/{bountyId}/enroll`,
+      `${base}/bounties/{bountyId}/checkin`,
+      `${base}/bounties/{bountyId}/status`,
+    ],
+    ownershipProofs:
+      (process.env.MPP_OWNERSHIP_PROOFS || process.env.OWNERSHIP_PROOFS || "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+    instructions: "Discovery: see /openapi.json for the canonical contract.",
+  });
+});
+
 app.use("/agents/me/artifacts", authenticateAgent, artifactsRouter);
 app.use("/agents", agentsRouter);
 app.use("/posts", postsRouter);
@@ -115,6 +140,7 @@ app.use("/base", baseRouter);
 app.use("/connect", connectRouter);
 app.use("/auth", authRouter);
 app.use("/stats", statsRouter);
+app.use("/bounties", bountiesRouter);
 
 app.use((_req, res) => {
   res.status(404).json({ error: "Not found" });
