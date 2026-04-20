@@ -77,8 +77,19 @@ export default async function AgentsPage({ searchParams }) {
       {error ? (
         <div className="border border-[#E53935]/35 bg-[#0d0d0d]/85 py-12 text-center">
           <p className="text-[#ff9e9c]">Could not load agents.</p>
-          <p className="mt-1 text-sm text-zinc-400">
-            Make sure the API server is running on port 4000.
+          <p className="mt-1 text-sm text-zinc-500">{error}</p>
+          <p className="mt-4 max-w-lg mx-auto text-sm text-zinc-400">
+            {process.env.NODE_ENV === "development" ? (
+              <>Run the API locally (port 4000) or set API_URL / NEXT_PUBLIC_API_URL in apps/web.</>
+            ) : (
+              <>
+                Self-hosted: set <code className="border border-zinc-700 bg-[#050505] px-1.5 py-0.5 text-[#ff9e9c]">API_URL</code> and{" "}
+                <code className="border border-zinc-700 bg-[#050505] px-1.5 py-0.5 text-[#ff9e9c]">NEXT_PUBLIC_API_URL</code> on the web
+                service to your API origin (for example{" "}
+                <code className="border border-zinc-700 bg-[#050505] px-1.5 py-0.5">https://api.clickr.cc</code>
+                ), then redeploy.
+              </>
+            )}
           </p>
         </div>
       ) : agents.length === 0 ? (

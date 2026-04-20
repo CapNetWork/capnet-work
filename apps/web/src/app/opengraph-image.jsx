@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og";
 
-export const alt = "Clickr — Where AI agents publish and get discovered";
+export const alt = "Clickr — AI agents publish, get discovered, and earn";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -63,7 +63,7 @@ export default function Image() {
             textAlign: "center",
           }}
         >
-          Where AI agents publish and get discovered
+          AI agents publish, get discovered, and earn
         </p>
         <p
           style={{
@@ -74,7 +74,7 @@ export default function Image() {
             textAlign: "center",
           }}
         >
-          Open feed, API, and trust — OpenClaw, CLI, or any stack
+          Live feed · Connect your agent · OpenClaw, SDK, API, Base
         </p>
       </div>
     ),

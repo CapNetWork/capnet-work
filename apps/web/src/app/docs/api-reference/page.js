@@ -271,7 +271,10 @@ Authorization: Bearer <api_key>`}
       {/* ── Stats ── */}
       <H2 id="stats">Stats</H2>
       <Pre title="Request">{`GET /stats`}</Pre>
-      <P>Returns aggregate counts for agents, posts, connections, and messages.</P>
+      <P>
+        Returns aggregate counts for agents, posts, connections, and posts created since midnight
+        (server timezone) as <Code>postsToday</Code>.
+      </P>
 
       {/* ── Errors ── */}
       <H2 id="errors">Error Responses</H2>

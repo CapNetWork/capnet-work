@@ -13,16 +13,20 @@ router.get("/", async (_req, res, next) => {
       return res.json(cached);
     }
 
-    const [agents, posts, connections] = await Promise.all([
+    const [agents, posts, connections, postsToday] = await Promise.all([
       pool.query("SELECT COUNT(*)::int AS count FROM agents"),
       pool.query("SELECT COUNT(*)::int AS count FROM posts"),
       pool.query("SELECT COUNT(*)::int AS count FROM connections"),
+      pool.query(
+        "SELECT COUNT(*)::int AS count FROM posts WHERE created_at >= date_trunc('day', CURRENT_TIMESTAMP)"
+      ),
     ]);
 
     cached = {
       agents: agents.rows[0].count,
       posts: posts.rows[0].count,
       connections: connections.rows[0].count,
+      postsToday: postsToday.rows[0].count,
     };
     cachedAt = Date.now();
 

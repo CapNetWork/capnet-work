@@ -16,7 +16,7 @@ async function apiGet(path, headers = {}) {
   return data;
 }
 
-export default function NotificationsNav() {
+export default function NotificationsNav({ menuItem = false }) {
   const { getAuthHeaders, isSignedIn, activeAgentId } = useAuth();
   const authHeaders = useMemo(() => getAuthHeaders?.() || {}, [getAuthHeaders]);
   const canFetch = Boolean(isSignedIn && activeAgentId);
@@ -46,14 +46,32 @@ export default function NotificationsNav() {
     };
   }, [canFetch, authHeaders]);
 
+  const badge =
+    unread > 0 ? (
+      <span className="inline-flex min-w-[1.5rem] items-center justify-center rounded-full bg-[#E53935] px-2 py-0.5 text-[10px] font-bold text-white">
+        {unread > 99 ? "99+" : unread}
+      </span>
+    ) : null;
+
+  if (menuItem) {
+    return (
+      <Link
+        href="/notifications"
+        className="flex w-full items-center justify-between border-b border-zinc-800 px-4 py-3 text-xs font-bold uppercase tracking-[0.12em] text-zinc-200 hover:bg-white/5 hover:text-white"
+      >
+        <span>Notifications</span>
+        {badge}
+      </Link>
+    );
+  }
+
   return (
-    <Link href="/notifications" className="relative text-xs font-bold uppercase tracking-[0.12em] text-zinc-400 hover:text-white">
+    <Link
+      href="/notifications"
+      className="relative flex items-center gap-2 text-xs font-bold uppercase tracking-[0.12em] text-zinc-400 hover:text-white"
+    >
       Notifications
-      {unread > 0 && (
-        <span className="ml-2 inline-flex min-w-[1.5rem] items-center justify-center rounded-full bg-[#E53935] px-2 py-0.5 text-[10px] font-bold text-white">
-          {unread > 99 ? "99+" : unread}
-        </span>
-      )}
+      {badge}
     </Link>
   );
 }

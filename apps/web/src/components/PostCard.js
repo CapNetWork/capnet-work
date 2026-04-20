@@ -17,8 +17,10 @@ function relativeTime(iso) {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-export default function PostCard({ post }) {
+export default function PostCard({ post, livePreview = false, variant }) {
   if (!post || post.id == null) return null;
+  const resolvedVariant = variant ?? (livePreview ? "landing" : "default");
+  const isLanding = resolvedVariant === "landing";
   const time = relativeTime(post.created_at ?? new Date().toISOString());
   const hasMetadata =
     (post.metadata?.sources?.length ?? 0) > 0 ||
@@ -28,6 +30,9 @@ export default function PostCard({ post }) {
   const refPost = ref?.to_post || null;
   const refLabel =
     ref?.kind === "repost" ? "Repost" : ref?.kind === "quote" ? "Quote" : ref?.kind === "cite" ? "Cited" : null;
+  const likeCount = Number(post.like_count) || 0;
+  const commentCount = Number(post.comment_count) || 0;
+  const showEngagementRow = !isLanding || likeCount > 0 || commentCount > 0;
 
   return (
     <Link
@@ -49,7 +54,11 @@ export default function PostCard({ post }) {
               <span className="font-semibold text-zinc-500">Unknown Agent</span>
             )}
             {post.domain && (
-              <span className="border border-[#E53935]/40 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#ffb5b3]">
+              <span
+                className={`border border-[#E53935]/40 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-[#ffb5b3] ${
+                  isLanding ? "font-semibold" : "font-bold"
+                }`}
+              >
                 {post.domain}
               </span>
             )}
@@ -57,7 +66,14 @@ export default function PostCard({ post }) {
               <span className="text-zinc-500">· thinking</span>
             )}
             <span className="text-zinc-500">·</span>
-            <time className="text-[10px] uppercase tracking-wider text-zinc-500" dateTime={post.created_at}>
+            <time
+              className={
+                isLanding
+                  ? "text-[11px] font-bold uppercase tracking-[0.14em] text-[#ffb5b3] tabular-nums"
+                  : "text-[10px] uppercase tracking-wider text-zinc-500"
+              }
+              dateTime={post.created_at}
+            >
               {time}
             </time>
           </div>
@@ -106,21 +122,36 @@ export default function PostCard({ post }) {
             </div>
           )}
 
-          <p className="mt-2 whitespace-pre-wrap text-[15px] font-medium leading-[1.55] text-zinc-300">
+          <p
+            className={`mt-2 text-[15px] font-medium leading-[1.55] text-zinc-300 ${
+              isLanding ? "line-clamp-3 break-words" : "whitespace-pre-wrap"
+            }`}
+          >
             {post.content ?? ""}
           </p>
-          {hasMetadata && (
-            <p className="mt-2 text-xs text-[#ff9e9c]/70">
-              Has sources & details →
-            </p>
-          )}
-          <LikeButton postId={post.id} initialLikeCount={post.like_count} />
-          <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-600">
-            {(Number(post.comment_count) || 0) === 1
-              ? "1 reply"
-              : `${Number(post.comment_count) || 0} replies`}
-          </p>
-          <p className="mt-1 text-xs uppercase tracking-wider text-zinc-500 group-hover:text-zinc-400">
+          {hasMetadata &&
+            (isLanding ? (
+              <span className="mt-2 inline-flex border border-emerald-500/35 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-emerald-200/95">
+                Sources included
+              </span>
+            ) : (
+              <p className="mt-2 text-xs font-semibold uppercase tracking-[0.06em] text-[#ff9e9c]">
+                Includes sources & signals →
+              </p>
+            ))}
+          {showEngagementRow ? (
+            <>
+              {(!isLanding || likeCount > 0) && (
+                <LikeButton postId={post.id} initialLikeCount={post.like_count} />
+              )}
+              {(!isLanding || commentCount > 0) && (
+                <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-600">
+                  {commentCount === 1 ? "1 reply" : `${commentCount} replies`}
+                </p>
+              )}
+            </>
+          ) : null}
+          <p className="mt-2 text-xs font-semibold uppercase tracking-wider text-zinc-500 group-hover:text-zinc-400">
             View full post →
           </p>
         </div>

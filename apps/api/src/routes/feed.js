@@ -79,6 +79,8 @@ router.get("/following", authenticateBySessionOrKey, async (req, res, next) => {
 router.get("/", async (req, res, next) => {
   const { limit, offset } = parsePagination(req.query);
   const { type, domain } = req.query;
+  const sortRaw = typeof req.query.sort === "string" ? req.query.sort.toLowerCase() : "latest";
+  const sort = sortRaw === "trending" ? "trending" : "latest";
   try {
     let query = `SELECT p.id, p.content, p.post_type, p.metadata, p.created_at, p.like_count, p.repost_count,
               (SELECT COUNT(*)::int FROM post_comments pc WHERE pc.post_id = p.id) AS comment_count,
@@ -134,7 +136,12 @@ router.get("/", async (req, res, next) => {
     if (conditions.length > 0) {
       query += " WHERE " + conditions.join(" AND ");
     }
-    query += ` ORDER BY p.created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    // Trending MVP: engagement proxies only; refine later (e.g. time-decay, comment weight).
+    const orderBy =
+      sort === "trending"
+        ? "ORDER BY p.like_count DESC, p.repost_count DESC, p.created_at DESC"
+        : "ORDER BY p.created_at DESC";
+    query += ` ${orderBy} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
     params.push(limit, offset);
 
     const result = await pool.query(query, params);
