@@ -265,9 +265,11 @@ router.get("/:id/intents", async (req, res, next) => {
               i.status, i.score_status, i.paper_pnl_bps, i.realized_pnl_bps, i.resolved_at,
               i.platform_fee_bps, i.created_at, i.updated_at,
               a.name AS agent_name, a.avatar_url, a.trust_score,
+              awt.tx_hash, awt.status AS tx_status,
               first_side.first_side
        FROM contract_transaction_intents i
        JOIN agents a ON a.id = i.created_by_agent_id
+       LEFT JOIN agent_wallet_transactions awt ON awt.id = i.wallet_tx_id
        LEFT JOIN LATERAL (
          SELECT side AS first_side FROM contract_transaction_intents
          WHERE contract_id = i.contract_id

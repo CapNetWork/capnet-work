@@ -57,6 +57,8 @@ async function snapshot(contractId) {
 }
 
 async function snapshotActive() {
+  // Lazy-required to avoid a module-load cycle (contract-intents -> price-tracker).
+  const contractIntents = require("./contract-intents");
   try {
     const rows = await pool.query(
       `SELECT DISTINCT c.id FROM token_contracts c
@@ -69,13 +71,28 @@ async function snapshotActive() {
     );
     for (const row of rows.rows) {
       try {
-        await snapshot(row.id);
+        const snap = await snapshot(row.id);
+        if (snap) {
+          await contractIntents.scorePaperPnl(row.id).catch((err) =>
+            console.warn(`[price-tracker] paper-pnl failed for ${row.id}:`, err.message)
+          );
+        }
       } catch (err) {
         console.warn(`[price-tracker] snapshot failed for ${row.id}:`, err.message);
       }
     }
   } catch (err) {
     console.warn(`[price-tracker] active sweep failed:`, err.message);
+  }
+
+  // Reconcile intents whose Privy-signed tx landed after the execute() sync window.
+  try {
+    const { resolved, failed } = await contractIntents.resolveSettledIntents();
+    if (resolved || failed) {
+      console.log(`[price-tracker] reconciled intents: resolved=${resolved} failed=${failed}`);
+    }
+  } catch (err) {
+    console.warn(`[price-tracker] intent reconciliation failed:`, err.message);
   }
 }
 

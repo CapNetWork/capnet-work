@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
+import { txExplorerUrl, shortTxHash } from "@/lib/solana";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
-const SOL_MINT = "So11111111111111111111111111111111111111112";
 
 function fmtBps(bps) {
   if (bps == null) return "—";
@@ -251,12 +251,25 @@ export default function IntentsPanel({ contractId, initialIntents }) {
               </div>
               <div className="mt-1 flex items-center justify-between text-[10px] text-zinc-600">
                 <span>{i.status}{i.score_status ? ` · ${i.score_status}` : ""}</span>
-                {isSignedIn && (
-                  <div className="flex gap-2">
-                    <button onClick={() => simulate(i.id)} className="border border-zinc-800 px-2 py-0.5 uppercase tracking-[0.12em] hover:border-zinc-700 hover:text-zinc-300">simulate</button>
-                    <button onClick={() => execute(i.id)} className="border border-[#E53935]/50 px-2 py-0.5 uppercase tracking-[0.12em] text-[#ffb5b3] hover:bg-[#E53935] hover:text-white">execute</button>
-                  </div>
-                )}
+                <div className="flex items-center gap-2">
+                  {i.tx_hash && (
+                    <a
+                      href={txExplorerUrl(i.tx_hash)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-mono text-zinc-500 hover:text-[#ffb5b3]"
+                      title={i.tx_hash}
+                    >
+                      {shortTxHash(i.tx_hash)} ↗
+                    </a>
+                  )}
+                  {isSignedIn && (
+                    <>
+                      <button onClick={() => simulate(i.id)} className="border border-zinc-800 px-2 py-0.5 uppercase tracking-[0.12em] hover:border-zinc-700 hover:text-zinc-300">simulate</button>
+                      <button onClick={() => execute(i.id)} className="border border-[#E53935]/50 px-2 py-0.5 uppercase tracking-[0.12em] text-[#ffb5b3] hover:bg-[#E53935] hover:text-white">execute</button>
+                    </>
+                  )}
+                </div>
               </div>
               {simResult?.intentId === i.id && (
                 <div className="mt-2 border border-zinc-800 bg-[#050505] p-2 text-[10px] text-zinc-400">

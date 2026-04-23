@@ -479,11 +479,81 @@ async function computeRealizedPnlBps({ intent, quote }) {
   }
 }
 
+/**
+ * Reconciliation pass for intents whose Privy-signed tx landed after the 15s
+ * synchronous window in executeIntent(). Scans unresolved intents with a
+ * linked wallet_tx and flips their state based on the tx outcome:
+ *
+ *   agent_wallet_transactions.status = 'confirmed'  -> status='done',
+ *     score_status='resolved', realized_pnl_bps from stored quote_json
+ *   agent_wallet_transactions.status = 'failed'     -> status='failed',
+ *     error_message carried from the tx row
+ *
+ * Intended to be called from the price-tracker tick so it runs on the same
+ * cadence as snapshots. Cheap: bounded by `limit` (default 50) per tick.
+ */
+async function resolveSettledIntents({ limit = 50 } = {}) {
+  const rows = await pool.query(
+    `SELECT i.id, i.side, i.quoted_price_usd, i.quote_json,
+            c.decimals AS contract_decimals,
+            awt.status AS tx_status, awt.error_message AS tx_error
+     FROM contract_transaction_intents i
+     JOIN agent_wallet_transactions awt ON awt.id = i.wallet_tx_id
+     JOIN token_contracts c ON c.id = i.contract_id
+     WHERE i.wallet_tx_id IS NOT NULL
+       AND i.score_status != 'resolved'
+       AND i.status NOT IN ('done', 'failed', 'canceled')
+       AND awt.status IN ('confirmed', 'failed')
+     ORDER BY awt.completed_at ASC NULLS LAST
+     LIMIT $1`,
+    [limit]
+  );
+
+  let resolved = 0;
+  let failed = 0;
+  for (const row of rows.rows) {
+    if (row.tx_status === "confirmed") {
+      const quote = row.quote_json || null;
+      const realizedBps = await computeRealizedPnlBps({
+        intent: {
+          side: row.side,
+          quoted_price_usd: row.quoted_price_usd,
+          contract_decimals: row.contract_decimals,
+        },
+        quote,
+      });
+      await pool.query(
+        `UPDATE contract_transaction_intents
+         SET status           = 'done',
+             score_status     = 'resolved',
+             realized_pnl_bps = $2,
+             resolved_at      = COALESCE(resolved_at, now()),
+             updated_at       = now()
+         WHERE id = $1`,
+        [row.id, realizedBps]
+      );
+      resolved += 1;
+    } else if (row.tx_status === "failed") {
+      await pool.query(
+        `UPDATE contract_transaction_intents
+         SET status        = 'failed',
+             error_message = COALESCE(error_message, $2),
+             updated_at    = now()
+         WHERE id = $1`,
+        [row.id, row.tx_error ? `tx_failed: ${String(row.tx_error).slice(0, 400)}` : "tx_failed"]
+      );
+      failed += 1;
+    }
+  }
+  return { resolved, failed };
+}
+
 module.exports = {
   createIntent,
   scorePaperPnl,
   simulateIntent,
   executeIntent,
+  resolveSettledIntents,
   computePaperPnlBps,
   isBase58Mint,
   executeEnabled,

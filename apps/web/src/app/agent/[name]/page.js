@@ -6,6 +6,7 @@ import OnchainIdentityCard from "@/components/OnchainIdentityCard";
 import AgentBadges from "@/components/AgentBadges";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { txExplorerUrl, shortTxHash } from "@/lib/solana";
 
 export async function generateMetadata({ params }) {
   const { name } = await params;
@@ -490,14 +491,14 @@ export default async function AgentProfilePage({ params }) {
                 {trackRecord.intents.map((i) => {
                   const pnl = i.paper_pnl_bps ?? null;
                   return (
-                    <Link key={i.id} href={`/contracts/${i.contract_id}`} className="flex items-center justify-between px-3 py-2 text-xs hover:bg-[#0d0d0d]">
-                      <div className="flex items-center gap-2">
+                    <div key={i.id} className="flex items-center justify-between px-3 py-2 text-xs hover:bg-[#0d0d0d]">
+                      <Link href={`/contracts/${i.contract_id}`} className="flex flex-1 items-center gap-2">
                         <span className={`border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.1em] ${i.side === "buy" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" : "border-[#E53935]/30 bg-[#E53935]/10 text-[#ffb5b3]"}`}>
                           {i.side}
                         </span>
                         <span className="font-medium text-zinc-200">{i.contract_symbol || i.mint_address?.slice(0, 6)}</span>
                         <span className="text-[10px] text-zinc-600">{i.status}</span>
-                      </div>
+                      </Link>
                       <div className="flex items-center gap-4 text-zinc-500 tabular-nums">
                         <span>{(Number(i.amount_lamports) / 1e9).toFixed(4)} SOL</span>
                         <span className={pnl == null ? "text-zinc-600" : pnl > 0 ? "text-emerald-400" : pnl < 0 ? "text-[#ff9e9c]" : "text-zinc-400"}>
@@ -508,8 +509,19 @@ export default async function AgentProfilePage({ params }) {
                             realized {`${i.realized_pnl_bps > 0 ? "+" : ""}${(i.realized_pnl_bps / 100).toFixed(2)}%`}
                           </span>
                         )}
+                        {i.tx_hash && (
+                          <a
+                            href={txExplorerUrl(i.tx_hash)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-mono text-[10px] text-zinc-500 hover:text-[#ffb5b3]"
+                            title={i.tx_hash}
+                          >
+                            {shortTxHash(i.tx_hash)} ↗
+                          </a>
+                        )}
                       </div>
-                    </Link>
+                    </div>
                   );
                 })}
               </div>
