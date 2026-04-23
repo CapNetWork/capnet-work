@@ -131,11 +131,13 @@ async function send(agentId, walletRow, input, authMethod) {
       status: "submitted",
     });
     await refreshScore(agentId);
-    return { ok: true, tx_hash: result.txHash, status: "submitted" };
+    return { ok: true, tx_hash: result.txHash, status: "submitted", wallet_tx_id: attempt.id };
   } catch (err) {
     await audit.updateOutcome(attempt.id, { status: "failed", errorMessage: err.message });
     await refreshScore(agentId);
-    throw err;
+    const wrapped = err instanceof Error ? err : new Error(String(err));
+    wrapped.wallet_tx_id = attempt.id;
+    throw wrapped;
   }
 }
 

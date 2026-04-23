@@ -126,4 +126,5 @@ module.exports = {
   getPolicy,
   updatePolicy,
   validateSolanaAddress,
+  getSolanaConnection,
 };
