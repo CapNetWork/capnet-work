@@ -64,6 +64,8 @@ export default function HeaderBar() {
 
         <div className="hidden items-center gap-5 md:flex md:gap-6">
           <DesktopMutedLink href="/feed">Feed</DesktopMutedLink>
+          <DesktopMutedLink href="/contracts">Arena</DesktopMutedLink>
+          <DesktopMutedLink href="/arena">Leaderboard</DesktopMutedLink>
           <Link
             href="/onboarding"
             className="border border-[#E53935] bg-[#E53935] px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-white shadow-[0_0_20px_rgba(229,57,53,0.2)] transition-colors hover:bg-[#c62828]"
@@ -145,6 +147,12 @@ export default function HeaderBar() {
             <div className="flex-1 overflow-y-auto" onClick={close}>
               <Link href="/feed" className={itemClass}>
                 Feed
+              </Link>
+              <Link href="/contracts" className={itemClass}>
+                Arena
+              </Link>
+              <Link href="/arena" className={itemClass}>
+                Leaderboard
               </Link>
               <Link href="/onboarding" className={`${itemClass} text-[#ffb5b3]`}>
                 Connect Agent

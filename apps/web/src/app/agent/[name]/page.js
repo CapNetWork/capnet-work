@@ -123,12 +123,14 @@ export default async function AgentProfilePage({ params }) {
   let followers = [];
   let following = [];
   let artifacts = [];
+  let trackRecord = null;
   try {
-    [posts, followers, following, artifacts] = await Promise.all([
+    [posts, followers, following, artifacts, trackRecord] = await Promise.all([
       apiFetch(`/posts/agent/${agent.id}`),
       apiFetch(`/connections/${agent.id}/followers`),
       apiFetch(`/connections/${agent.id}/following`),
       apiFetch(`/agents/${encodeURIComponent(decodedName)}/artifacts`).catch(() => []),
+      apiFetch(`/agents/${agent.id}/track-record?limit=20`).catch(() => null),
     ]);
   } catch {
     /* partial data is acceptable */
@@ -447,6 +449,70 @@ export default async function AgentProfilePage({ params }) {
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* ═══════ TRACK RECORD ═══════ */}
+        {trackRecord?.intents?.length > 0 && (
+          <div className="mt-8">
+            <SectionHeader title="Arena track record" count={trackRecord.intents.length} />
+            <div className="rounded-lg border border-zinc-800/60 bg-[#0a0a0a]/70 p-5">
+              <div className="mb-4 flex flex-wrap items-center gap-4 text-xs">
+                <div>
+                  <span className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Score </span>
+                  <span className="text-lg font-semibold text-[#ffb5b3]">{trackRecord.score ?? 0}</span>
+                </div>
+                {trackRecord.components?.win_rate_pct != null && (
+                  <div>
+                    <span className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Win rate </span>
+                    <span className="text-sm text-white">{Number(trackRecord.components.win_rate_pct).toFixed(0)}%</span>
+                  </div>
+                )}
+                {trackRecord.components?.avg_paper_pnl_pct != null && (
+                  <div>
+                    <span className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Avg paper </span>
+                    <span className={`text-sm ${Number(trackRecord.components.avg_paper_pnl_pct) >= 0 ? "text-emerald-400" : "text-[#ff9e9c]"}`}>
+                      {Number(trackRecord.components.avg_paper_pnl_pct).toFixed(2)}%
+                    </span>
+                  </div>
+                )}
+                {trackRecord.components?.avg_realized_pnl_pct != null && (
+                  <div>
+                    <span className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Avg realized </span>
+                    <span className={`text-sm ${Number(trackRecord.components.avg_realized_pnl_pct) >= 0 ? "text-emerald-400" : "text-[#ff9e9c]"}`}>
+                      {Number(trackRecord.components.avg_realized_pnl_pct).toFixed(2)}%
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div className="divide-y divide-zinc-900 border border-zinc-900">
+                {trackRecord.intents.map((i) => {
+                  const pnl = i.paper_pnl_bps ?? null;
+                  return (
+                    <Link key={i.id} href={`/contracts/${i.contract_id}`} className="flex items-center justify-between px-3 py-2 text-xs hover:bg-[#0d0d0d]">
+                      <div className="flex items-center gap-2">
+                        <span className={`border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.1em] ${i.side === "buy" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" : "border-[#E53935]/30 bg-[#E53935]/10 text-[#ffb5b3]"}`}>
+                          {i.side}
+                        </span>
+                        <span className="font-medium text-zinc-200">{i.contract_symbol || i.mint_address?.slice(0, 6)}</span>
+                        <span className="text-[10px] text-zinc-600">{i.status}</span>
+                      </div>
+                      <div className="flex items-center gap-4 text-zinc-500 tabular-nums">
+                        <span>{(Number(i.amount_lamports) / 1e9).toFixed(4)} SOL</span>
+                        <span className={pnl == null ? "text-zinc-600" : pnl > 0 ? "text-emerald-400" : pnl < 0 ? "text-[#ff9e9c]" : "text-zinc-400"}>
+                          paper {pnl == null ? "—" : `${pnl > 0 ? "+" : ""}${(pnl / 100).toFixed(2)}%`}
+                        </span>
+                        {i.realized_pnl_bps != null && (
+                          <span className={i.realized_pnl_bps > 0 ? "text-emerald-400" : i.realized_pnl_bps < 0 ? "text-[#ff9e9c]" : "text-zinc-400"}>
+                            realized {`${i.realized_pnl_bps > 0 ? "+" : ""}${(i.realized_pnl_bps / 100).toFixed(2)}%`}
+                          </span>
+                        )}
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}
