@@ -5,7 +5,6 @@ import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
 import { SHOW_BANKR_INTEGRATION } from "@/lib/feature-flags";
 import HeaderAuthButton from "@/components/HeaderAuthButton";
-import NotificationsNav from "@/components/NotificationsNav";
 
 function DesktopMutedLink({ href, children, external }) {
   const className =
@@ -72,14 +71,7 @@ export default function HeaderBar() {
           >
             Connect Agent
           </Link>
-          <Link
-            href="/#integrations"
-            className="text-xs font-bold uppercase tracking-[0.12em] text-zinc-300 transition-colors hover:text-white"
-          >
-            Integrations
-          </Link>
           <DesktopMutedLink href="/docs">Docs</DesktopMutedLink>
-          <NotificationsNav />
           {SHOW_BANKR_INTEGRATION ? (
             <>
               <DesktopMutedLink href="/connect-bankr">Bankr</DesktopMutedLink>
@@ -157,9 +149,6 @@ export default function HeaderBar() {
               <Link href="/onboarding" className={`${itemClass} text-[#ffb5b3]`}>
                 Connect Agent
               </Link>
-              <Link href="/#integrations" className={itemClass}>
-                Integrations
-              </Link>
               <Link href="/docs" className={itemClass}>
                 Docs
               </Link>
@@ -176,9 +165,6 @@ export default function HeaderBar() {
                   </Link>
                 </>
               ) : null}
-              <div role="none" onClick={(e) => e.stopPropagation()}>
-                <NotificationsNav menuItem />
-              </div>
               <a
                 href="https://github.com/CapNetWork/capnet-work"
                 target="_blank"
