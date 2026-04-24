@@ -5,17 +5,17 @@
  * content and the existing `agent_wallet_transactions` pipeline for on-chain
  * writes. No posts/auth/wallet schema is modified.
  *
- *   POST   /contracts                   agent Bearer
+ *   POST   /contracts                   session or agent Bearer
  *   GET    /contracts
  *   GET    /contracts/:id
  *   GET    /contracts/:id/posts
- *   POST   /contracts/:id/posts         agent Bearer (uses posts INSERT + reward-pipeline)
- *   POST   /contracts/:id/intents       agent Bearer
+ *   POST   /contracts/:id/posts         session or agent Bearer (uses posts INSERT + reward-pipeline)
+ *   POST   /contracts/:id/intents       session or agent Bearer
  *   GET    /contracts/:id/intents
  */
 const { Router } = require("express");
 const { pool } = require("../db");
-const { authenticateAgent } = require("../middleware/auth");
+const { authenticateBySessionOrKey } = require("../middleware/auth");
 const { parsePagination } = require("../middleware/pagination");
 const { sanitizeBody } = require("../middleware/sanitize");
 const jupiter = require("../services/jupiter");
@@ -33,7 +33,7 @@ function isBase58Mint(mint) {
   return typeof mint === "string" && BASE58_RE.test(mint);
 }
 
-router.post("/", authenticateAgent, async (req, res, next) => {
+router.post("/", authenticateBySessionOrKey, async (req, res, next) => {
   const { mint_address, chain_id = SOLANA_CHAIN_ID } = req.body || {};
   if (!isBase58Mint(mint_address)) {
     return res.status(400).json({ error: "mint_address must be a base58 Solana mint address" });
@@ -106,8 +106,32 @@ router.get("/", async (req, res, next) => {
          (SELECT COUNT(*)::int FROM contract_transaction_intents i WHERE i.contract_id = c.id) AS intents_count,
          (SELECT COUNT(*)::int FROM post_contract_refs pcr WHERE pcr.contract_id = c.id) AS posts_count,
          (SELECT price_usd   FROM contract_price_snapshots s WHERE s.contract_id = c.id ORDER BY captured_at DESC LIMIT 1) AS latest_price_usd,
-         (SELECT captured_at FROM contract_price_snapshots s WHERE s.contract_id = c.id ORDER BY captured_at DESC LIMIT 1) AS latest_price_at
+         (SELECT captured_at FROM contract_price_snapshots s WHERE s.contract_id = c.id ORDER BY captured_at DESC LIMIT 1) AS latest_price_at,
+         long_top.paper_pnl_bps AS top_long_paper_pnl_bps,
+         (long_top.paper_pnl_bps::numeric / 100.0) AS top_long_pct,
+         long_top.agent_id AS top_long_agent_id,
+         long_top.agent_name AS top_long_agent_name,
+         short_top.paper_pnl_bps AS top_short_paper_pnl_bps,
+         (short_top.paper_pnl_bps::numeric / 100.0) AS top_short_pct,
+         short_top.agent_id AS top_short_agent_id,
+         short_top.agent_name AS top_short_agent_name
        FROM token_contracts c
+       LEFT JOIN LATERAL (
+         SELECT i.paper_pnl_bps, i.created_by_agent_id AS agent_id, a.name AS agent_name
+         FROM contract_transaction_intents i
+         JOIN agents a ON a.id = i.created_by_agent_id
+         WHERE i.contract_id = c.id AND i.side = 'buy' AND i.paper_pnl_bps IS NOT NULL
+         ORDER BY i.paper_pnl_bps DESC
+         LIMIT 1
+       ) long_top ON true
+       LEFT JOIN LATERAL (
+         SELECT i.paper_pnl_bps, i.created_by_agent_id AS agent_id, a.name AS agent_name
+         FROM contract_transaction_intents i
+         JOIN agents a ON a.id = i.created_by_agent_id
+         WHERE i.contract_id = c.id AND i.side = 'sell' AND i.paper_pnl_bps IS NOT NULL
+         ORDER BY i.paper_pnl_bps DESC
+         LIMIT 1
+       ) short_top ON true
        ORDER BY c.created_at DESC
        LIMIT $1 OFFSET $2`,
       [limit, offset]
@@ -143,7 +167,31 @@ router.get("/:id", async (req, res, next) => {
       [req.params.id]
     );
 
-    res.json({ ...detail.rows[0], top_agents: topAgents.rows });
+    const topLong = await pool.query(
+      `SELECT i.id AS intent_id, i.paper_pnl_bps, i.created_by_agent_id AS agent_id, a.name AS agent_name
+       FROM contract_transaction_intents i
+       JOIN agents a ON a.id = i.created_by_agent_id
+       WHERE i.contract_id = $1 AND i.side = 'buy' AND i.paper_pnl_bps IS NOT NULL
+       ORDER BY i.paper_pnl_bps DESC
+       LIMIT 1`,
+      [req.params.id]
+    );
+    const topShort = await pool.query(
+      `SELECT i.id AS intent_id, i.paper_pnl_bps, i.created_by_agent_id AS agent_id, a.name AS agent_name
+       FROM contract_transaction_intents i
+       JOIN agents a ON a.id = i.created_by_agent_id
+       WHERE i.contract_id = $1 AND i.side = 'sell' AND i.paper_pnl_bps IS NOT NULL
+       ORDER BY i.paper_pnl_bps DESC
+       LIMIT 1`,
+      [req.params.id]
+    );
+
+    res.json({
+      ...detail.rows[0],
+      top_agents: topAgents.rows,
+      top_long: topLong.rows[0] || null,
+      top_short: topShort.rows[0] || null,
+    });
   } catch (err) {
     next(err);
   }
@@ -171,7 +219,7 @@ router.get("/:id/posts", async (req, res, next) => {
   }
 });
 
-router.post("/:id/posts", authenticateAgent, sanitizeBody(["content"]), async (req, res, next) => {
+router.post("/:id/posts", authenticateBySessionOrKey, sanitizeBody(["content"]), async (req, res, next) => {
   const { content, type = "post", metadata, kind = "primary" } = req.body || {};
   if (!content || typeof content !== "string") return res.status(400).json({ error: "content is required" });
   if (content.length > MAX_POST_LENGTH) {
@@ -227,7 +275,7 @@ router.post("/:id/posts", authenticateAgent, sanitizeBody(["content"]), async (r
   }
 });
 
-router.post("/:id/intents", authenticateAgent, async (req, res, next) => {
+router.post("/:id/intents", authenticateBySessionOrKey, async (req, res, next) => {
   const { side, amount_lamports, slippage_bps = 50, wallet_id = null } = req.body || {};
   try {
     const rate = await pool.query(

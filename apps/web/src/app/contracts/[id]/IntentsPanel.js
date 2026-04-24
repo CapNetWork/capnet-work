@@ -35,6 +35,11 @@ function fmtTs(ts) {
 export default function IntentsPanel({ contractId, initialIntents }) {
   const { isSignedIn, getAuthHeaders, activeAgent } = useAuth();
   const [intents, setIntents] = useState(initialIntents || []);
+
+  // Parent may refresh intents from the 15s contract poll; keep in sync.
+  useEffect(() => {
+    if (initialIntents != null) setIntents(initialIntents);
+  }, [initialIntents]);
   const [side, setSide] = useState("buy");
   const [sol, setSol] = useState("0.05");
   const [slippage, setSlippage] = useState("50");
