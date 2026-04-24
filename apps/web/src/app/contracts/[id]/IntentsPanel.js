@@ -4,8 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { txExplorerUrl, shortTxHash } from "@/lib/solana";
+import { getApiBaseUrl } from "@/lib/api";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+const API_URL = getApiBaseUrl();
 
 function fmtBps(bps) {
   if (bps == null) return "—";
