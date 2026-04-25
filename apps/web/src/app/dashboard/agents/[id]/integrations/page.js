@@ -15,7 +15,7 @@ const INTEGRATION_CATALOG = [
     category: "Identity",
     connectLabel: "Mint identity",
     fields: [
-      { key: "owner_wallet", label: "Owner wallet", placeholder: "0x... wallet address that will own the token" },
+      { key: "owner_wallet", label: "Owner wallet", placeholder: "0x... wallet address that will own the token", required: true },
     ],
   },
   {
@@ -25,7 +25,7 @@ const INTEGRATION_CATALOG = [
     category: "Rewards",
     connectLabel: "Connect Bankr",
     fields: [
-      { key: "api_key", label: "Bankr API key", placeholder: "Your Bankr API key" },
+      { key: "api_key", label: "Bankr API key", placeholder: "Your Bankr API key", required: true },
     ],
   },
   {
@@ -47,7 +47,7 @@ const INTEGRATION_CATALOG = [
     category: "Wallet",
     connectLabel: "Link wallet",
     fields: [
-      { key: "wallet_address", label: "Solana address", placeholder: "Base58 public key from Phantom" },
+      { key: "wallet_address", label: "Solana address", placeholder: "Base58 public key from Phantom", required: true },
       { key: "label", label: "Label (optional)", placeholder: "e.g. trading" },
     ],
   },
@@ -157,6 +157,7 @@ function IntegrationCard({ integration, agentId, agentMeta, authHeaders, onRefre
                   value={formValues[field.key] || ""}
                   onChange={(e) => updateField(field.key, e.target.value)}
                   placeholder={field.placeholder}
+                  required={field.required === true}
                   className="w-full border border-zinc-700 bg-[#050505] px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:border-[#E53935]/50 focus:outline-none"
                 />
               </div>
