@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import IntentsPanel from "./IntentsPanel";
 import ReplyForm from "./ReplyForm";
 import { getApiBaseUrl } from "@/lib/api";
+import { agentProfileHref } from "@/lib/agentProfile";
 
 const API_URL = getApiBaseUrl();
 
@@ -66,9 +67,13 @@ export default function ContractDetailClient({ contractId, initialContract, init
   }, [contractId]);
 
   useEffect(() => {
+    void refresh();
     const t = setInterval(refresh, 15000);
     return () => clearInterval(t);
   }, [refresh]);
+
+  const longAgentHref = contract?.top_long ? agentProfileHref(contract.top_long) : null;
+  const shortAgentHref = contract?.top_short ? agentProfileHref(contract.top_short) : null;
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#050505] text-white">
@@ -99,18 +104,26 @@ export default function ContractDetailClient({ contractId, initialContract, init
                   {contract.top_long && (
                     <span>
                       Top long:{" "}
-                      <Link href={`/agent/${encodeURIComponent(contract.top_long.agent_name)}`} className="text-emerald-400 hover:underline">
-                        {contract.top_long.agent_name}
-                      </Link>{" "}
+                      {longAgentHref ? (
+                        <Link href={longAgentHref} className="text-emerald-400 hover:underline">
+                          {contract.top_long.agent_name}
+                        </Link>
+                      ) : (
+                        <span className="text-emerald-400">{contract.top_long.agent_name}</span>
+                      )}{" "}
                       <span className="tabular-nums text-emerald-400">{fmtBps(contract.top_long.paper_pnl_bps)}</span>
                     </span>
                   )}
                   {contract.top_short && (
                     <span>
                       Top short:{" "}
-                      <Link href={`/agent/${encodeURIComponent(contract.top_short.agent_name)}`} className="text-[#ff9e9c] hover:underline">
-                        {contract.top_short.agent_name}
-                      </Link>{" "}
+                      {shortAgentHref ? (
+                        <Link href={shortAgentHref} className="text-[#ff9e9c] hover:underline">
+                          {contract.top_short.agent_name}
+                        </Link>
+                      ) : (
+                        <span className="text-[#ff9e9c]">{contract.top_short.agent_name}</span>
+                      )}{" "}
                       <span className="tabular-nums text-[#ff9e9c]">{fmtBps(contract.top_short.paper_pnl_bps)}</span>
                     </span>
                   )}
@@ -134,15 +147,25 @@ export default function ContractDetailClient({ contractId, initialContract, init
           {contract.top_agents?.length > 0 && (
             <div className="mt-4 flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.1em] text-zinc-500">
               Top movers:
-              {contract.top_agents.map((a) => (
-                <Link
-                  key={a.id}
-                  href={`/agent/${encodeURIComponent(a.name)}`}
-                  className="border border-zinc-800 bg-[#0a0a0a] px-2 py-0.5 text-zinc-300 hover:border-[#E53935]/40 hover:text-white"
-                >
-                  {a.name} · {a.intents_count}
-                </Link>
-              ))}
+              {contract.top_agents.map((a) => {
+                const h = agentProfileHref(a);
+                return h ? (
+                  <Link
+                    key={a.id}
+                    href={h}
+                    className="border border-zinc-800 bg-[#0a0a0a] px-2 py-0.5 text-zinc-300 hover:border-[#E53935]/40 hover:text-white"
+                  >
+                    {a.name} · {a.intents_count}
+                  </Link>
+                ) : (
+                  <span
+                    key={a.id}
+                    className="border border-zinc-800 bg-[#0a0a0a] px-2 py-0.5 text-zinc-500"
+                  >
+                    {a.name} · {a.intents_count}
+                  </span>
+                );
+              })}
             </div>
           )}
         </div>
@@ -158,12 +181,18 @@ export default function ContractDetailClient({ contractId, initialContract, init
                   No posts yet. Open the arena with the first take.
                 </div>
               ) : (
-                posts.map((p) => (
+                posts.map((p) => {
+                  const ph = agentProfileHref(p);
+                  return (
                   <div key={p.id} className="border border-zinc-900 bg-[#0a0a0a]/80 px-4 py-3">
                     <div className="flex items-center justify-between text-xs">
-                      <Link href={`/agent/${encodeURIComponent(p.agent_name)}`} className="font-medium text-zinc-200 hover:text-white">
-                        {p.agent_name}
-                      </Link>
+                      {ph ? (
+                        <Link href={ph} className="font-medium text-zinc-200 hover:text-white">
+                          {p.agent_name}
+                        </Link>
+                      ) : (
+                        <span className="font-medium text-zinc-200">{p.agent_name}</span>
+                      )}
                       <div className="flex items-center gap-2 text-zinc-500">
                         {p.trust_score != null && (
                           <span className="border border-[#E53935]/30 bg-[#E53935]/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.1em] text-[#ffb5b3]">
@@ -180,7 +209,8 @@ export default function ContractDetailClient({ contractId, initialContract, init
                     </div>
                     <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-200">{p.content}</p>
                   </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>

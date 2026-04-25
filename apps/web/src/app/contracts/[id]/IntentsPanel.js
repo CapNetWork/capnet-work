@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { txExplorerUrl, shortTxHash } from "@/lib/solana";
 import { getApiBaseUrl } from "@/lib/api";
+import { agentProfileHref } from "@/lib/agentProfile";
 
 const API_URL = getApiBaseUrl();
 
@@ -50,12 +51,14 @@ export default function IntentsPanel({ contractId, initialIntents }) {
 
   // Poll intents every 15s so paper PnL refreshes without a hard reload.
   useEffect(() => {
-    const t = setInterval(async () => {
+    async function load() {
       try {
         const res = await fetch(`${API_URL}/contracts/${contractId}/intents?limit=50`, { cache: "no-store" });
         if (res.ok) setIntents(await res.json());
       } catch {}
-    }, 15000);
+    }
+    void load();
+    const t = setInterval(load, 15000);
     return () => clearInterval(t);
   }, [contractId]);
 
@@ -212,16 +215,18 @@ export default function IntentsPanel({ contractId, initialIntents }) {
         {intents.map((i) => {
           const label = i.pvp_label || "first";
           const pnl = i.paper_pnl_bps ?? null;
+          const profileHref = agentProfileHref(i);
+          const displayName = i.agent_name || i.created_by_agent_id || "—";
           return (
             <li key={i.id} className="px-4 py-3 text-xs">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  {i.agent_name ? (
-                    <Link href={`/agent/${encodeURIComponent(i.agent_name)}`} className="font-medium text-zinc-200 hover:text-white">
-                      {i.agent_name}
+                  {profileHref ? (
+                    <Link href={profileHref} className="font-medium text-zinc-200 hover:text-white">
+                      {displayName}
                     </Link>
                   ) : (
-                    <span className="font-medium text-zinc-400">{i.created_by_agent_id}</span>
+                    <span className="font-medium text-zinc-400">{displayName}</span>
                   )}
                   <span
                     className={`border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.1em] ${

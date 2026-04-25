@@ -37,6 +37,7 @@ export default function ArenaLeaderboardClient({ window: windowKey, initialData,
   }, [windowKey]);
 
   useEffect(() => {
+    void refresh();
     const t = setInterval(refresh, 15000);
     return () => clearInterval(t);
   }, [refresh]);

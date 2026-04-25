@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { getApiBaseUrl } from "@/lib/api";
+import { agentProfileHref } from "@/lib/agentProfile";
 import { shortTxHash, txExplorerUrl } from "@/lib/solana";
 
 const API_URL = getApiBaseUrl();
@@ -72,13 +73,18 @@ export default function ActivityFeed() {
           <li className="px-4 py-6 text-center text-xs text-zinc-500">No arena activity yet — open a contract or reply in a thread.</li>
         )}
         {items.map((row) => {
+          const agentHref = agentProfileHref(row);
           if (row.type === "post") {
             return (
               <li key={`post-${row.source_id || row.created_at}`} className="px-4 py-2.5 text-xs">
                 <span className="text-zinc-500">{rel(row.created_at)}</span>{" "}
-                <Link href={`/agent/${encodeURIComponent(row.agent_name)}`} className="font-medium text-zinc-200 hover:text-white">
-                  {row.agent_name}
-                </Link>
+                {agentHref ? (
+                  <Link href={agentHref} className="font-medium text-zinc-200 hover:text-white">
+                    {row.agent_name}
+                  </Link>
+                ) : (
+                  <span className="font-medium text-zinc-200">{row.agent_name || "—"}</span>
+                )}
                 <span className="text-zinc-500"> replied on </span>
                 <Link href={`/contracts/${row.contract_id}`} className="text-[#ffb5b3] hover:underline">
                   {row.contract_symbol || "?"}
@@ -96,9 +102,13 @@ export default function ActivityFeed() {
           return (
             <li key={`intent-${i.id}`} className="px-4 py-2.5 text-xs">
               <span className="text-zinc-500">{rel(i.created_at)}</span>{" "}
-              <Link href={`/agent/${encodeURIComponent(i.agent_name)}`} className="font-medium text-zinc-200 hover:text-white">
-                {i.agent_name}
-              </Link>
+              {agentHref ? (
+                <Link href={agentHref} className="font-medium text-zinc-200 hover:text-white">
+                  {i.agent_name}
+                </Link>
+              ) : (
+                <span className="font-medium text-zinc-200">{i.agent_name || "—"}</span>
+              )}
               <span className="text-zinc-500"> · </span>
               <span className={i.side === "buy" ? "text-emerald-400" : "text-[#ff9e9c]"}>{i.side?.toUpperCase()}</span>
               <span className="text-zinc-500"> {fmtLamports(i.amount_lamports)} </span>

@@ -13,6 +13,26 @@
 import assert from "node:assert/strict";
 import { mergeIntegrationMetadata } from "../apps/api/src/integrations/merge.js";
 
+function testAgentProfileHrefPrefersId() {
+  // Keep in sync with apps/web/src/lib/agentProfile.js
+  function agentProfileHref(partial) {
+    if (!partial || typeof partial !== "object") return null;
+    const id = partial.id ?? partial.agent_id ?? partial.created_by_agent_id;
+    const name = partial.name ?? partial.agent_name;
+    const seg = id || name;
+    if (seg == null || seg === "") return null;
+    return `/agent/${encodeURIComponent(String(seg))}`;
+  }
+  const id = "agt_test123";
+  assert.equal(agentProfileHref({ id, name: "Other" }), `/agent/${encodeURIComponent(id)}`);
+  assert.equal(
+    agentProfileHref({ created_by_agent_id: id, agent_name: "N" }),
+    `/agent/${encodeURIComponent(id)}`
+  );
+  assert.equal(agentProfileHref({ agent_name: "OnlyName" }), "/agent/OnlyName");
+  assert.equal(agentProfileHref({}), null);
+}
+
 function testMergePreservesSiblings() {
   const meta = {
     skills: ["trading"],
@@ -42,8 +62,10 @@ async function testAgentsResolveByIdOrName() {
 }
 
 async function main() {
+  testAgentProfileHrefPrefersId();
   testMergePreservesSiblings();
   const live = await testAgentsResolveByIdOrName();
+  console.log("ok: agentProfileHref prefers agent id");
   console.log("ok: mergeIntegrationMetadata preserves siblings");
   console.log(live.skipped ? "ok: live agents route test skipped (set BASE_URL/AGENT_ID/AGENT_NAME)" : "ok: agents resolve by id or name");
 }
