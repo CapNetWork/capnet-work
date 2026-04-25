@@ -7,6 +7,7 @@ import AgentBadges from "@/components/AgentBadges";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { txExplorerUrl, shortTxHash } from "@/lib/solana";
+import { agentProfileHref } from "@/lib/agentProfile";
 
 export async function generateMetadata({ params }) {
   const { name } = await params;
@@ -565,7 +566,7 @@ export default async function AgentProfilePage({ params }) {
                     {followers.slice(0, 12).map((f) => (
                       <Link
                         key={f.id || f.agent_id}
-                        href={`/agent/${encodeURIComponent(f.name)}`}
+                        href={agentProfileHref({ id: f.id || f.agent_id, name: f.name }) || "/agents"}
                         className="group flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900/40 px-2.5 py-1.5 transition-colors hover:border-[#E53935]/30"
                         title={f.name}
                       >
@@ -593,7 +594,7 @@ export default async function AgentProfilePage({ params }) {
                     {following.slice(0, 12).map((f) => (
                       <Link
                         key={f.id || f.connected_agent_id}
-                        href={`/agent/${encodeURIComponent(f.name)}`}
+                        href={agentProfileHref({ id: f.id || f.connected_agent_id, name: f.name }) || "/agents"}
                         className="group flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900/40 px-2.5 py-1.5 transition-colors hover:border-[#E53935]/30"
                         title={f.name}
                       >

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { getApiBaseUrl } from "@/lib/api";
+import { agentProfileHref } from "@/lib/agentProfile";
 
 const API_URL = getApiBaseUrl();
 
@@ -82,48 +83,60 @@ export default function ArenaLeaderboardClient({ window: windowKey, initialData,
             <div className="px-4 py-10 text-center text-sm text-zinc-500">No activity in this window yet.</div>
           )}
           {data.agents.map((row, idx) => {
+            const agent = row.agent || {};
             const c = row.components || {};
-            return (
-              <Link
-                key={row.agent.id}
-                href={`/agent/${encodeURIComponent(row.agent.name)}`}
-                className="block px-4 py-3 hover:bg-[#0d0d0d]"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <span className="w-6 text-right text-sm font-semibold text-white tabular-nums">#{idx + 1}</span>
-                    <div>
-                      <div className="font-medium text-white">{row.agent.name}</div>
-                      <div className="text-[10px] text-zinc-500">{row.agent.domain || row.agent.id}</div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-6 text-right text-xs tabular-nums">
-                    <div>
-                      <div className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Score</div>
-                      <div className="text-lg font-semibold text-[#ffb5b3]">{row.score}</div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Paper PnL</div>
-                      <div className={`text-sm font-semibold ${(c.avg_paper_pnl_pct ?? 0) >= 0 ? "text-emerald-400" : "text-[#ff9e9c]"}`}>
-                        {fmtPct(c.avg_paper_pnl_pct)}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Realized</div>
-                      <div className={`text-sm font-semibold ${(c.avg_realized_pnl_pct ?? 0) >= 0 ? "text-emerald-400" : "text-[#ff9e9c]"}`}>
-                        {fmtPct(c.avg_realized_pnl_pct)}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Win rate</div>
-                      <div className="text-sm font-semibold text-white">{c.win_rate_pct != null ? `${Number(c.win_rate_pct).toFixed(0)}%` : "—"}</div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Intents</div>
-                      <div className="text-sm font-semibold text-white">{c.intents_created ?? 0}</div>
-                    </div>
+            const href = agentProfileHref(agent);
+            const content = (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="w-6 text-right text-sm font-semibold text-white tabular-nums">#{idx + 1}</span>
+                  <div>
+                    <div className="font-medium text-white">{agent.name || agent.id || "Unknown agent"}</div>
+                    <div className="text-[10px] text-zinc-500">{agent.domain || agent.id}</div>
                   </div>
                 </div>
+                <div className="flex items-center gap-6 text-right text-xs tabular-nums">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Score</div>
+                    <div className="text-lg font-semibold text-[#ffb5b3]">{row.score}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Paper PnL</div>
+                    <div className={`text-sm font-semibold ${(c.avg_paper_pnl_pct ?? 0) >= 0 ? "text-emerald-400" : "text-[#ff9e9c]"}`}>
+                      {fmtPct(c.avg_paper_pnl_pct)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Realized</div>
+                    <div className={`text-sm font-semibold ${(c.avg_realized_pnl_pct ?? 0) >= 0 ? "text-emerald-400" : "text-[#ff9e9c]"}`}>
+                      {fmtPct(c.avg_realized_pnl_pct)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Win rate</div>
+                    <div className="text-sm font-semibold text-white">{c.win_rate_pct != null ? `${Number(c.win_rate_pct).toFixed(0)}%` : "—"}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Intents</div>
+                    <div className="text-sm font-semibold text-white">{c.intents_created ?? 0}</div>
+                  </div>
+                </div>
+              </div>
+            );
+            if (!href) {
+              return (
+                <div key={agent.id || idx} className="block px-4 py-3">
+                  {content}
+                </div>
+              );
+            }
+            return (
+              <Link
+                key={agent.id || href}
+                href={href}
+                className="block px-4 py-3 hover:bg-[#0d0d0d]"
+              >
+                {content}
               </Link>
             );
           })}

@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { INTEGRATION_CATALOG, IntegrationCard } from "../IntegrationCards";
+import { agentProfileHref } from "@/lib/agentProfile";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || "http://localhost:4000";
 
@@ -143,7 +144,7 @@ export default function AgentDetailPage() {
             Integrations{connectedIntegrationCount > 0 ? ` (${connectedIntegrationCount})` : ""}
           </Link>
           <Link
-            href={`/agent/${encodeURIComponent(agent.name)}`}
+            href={agentProfileHref(agent) || "/agents"}
             className="border border-zinc-700 px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-zinc-300 transition-colors hover:border-[#E53935]/50 hover:text-white"
           >
             Public profile

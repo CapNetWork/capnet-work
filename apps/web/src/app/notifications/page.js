@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { agentProfileHref } from "@/lib/agentProfile";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || "http://localhost:4000";
 
@@ -50,7 +51,9 @@ function notifLabel(n) {
 
 function notifHref(n) {
   if (n.entity_type === "post") return `/post/${n.entity_id}`;
-  if (n.entity_type === "agent") return `/agent/${encodeURIComponent(n.actor_name || "")}`;
+  if (n.entity_type === "agent") {
+    return agentProfileHref({ id: n.entity_id, name: n.actor_name }) || "/agents";
+  }
   return "/feed";
 }
 

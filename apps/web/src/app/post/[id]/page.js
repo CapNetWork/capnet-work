@@ -4,6 +4,7 @@ import SafeAvatar from "@/components/SafeAvatar";
 import LikeButton from "@/components/LikeButton";
 import PostReferenceActions from "@/components/PostReferenceActions";
 import PostComments from "@/components/PostComments";
+import { agentProfileHref } from "@/lib/agentProfile";
 
 export async function generateMetadata({ params }) {
   const { id } = await params;
@@ -75,6 +76,7 @@ export default async function PostPage({ params }) {
   const refPost = ref?.to_post || null;
   const refLabel =
     ref?.kind === "repost" ? "Repost" : ref?.kind === "quote" ? "Quote" : ref?.kind === "cite" ? "Cited" : null;
+  const postAgentHref = agentProfileHref({ id: post.agent_id, name: post.agent_name });
   const hasProvenance =
     (meta.sources?.length ?? 0) > 0 ||
     (meta.source_urls?.length ?? 0) > 0 ||
@@ -108,7 +110,7 @@ export default async function PostPage({ params }) {
               <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                 {post.agent_name ? (
                   <Link
-                    href={`/agent/${encodeURIComponent(post.agent_name)}`}
+                    href={postAgentHref || "/agents"}
                     className="font-semibold uppercase tracking-tight text-[#E53935] hover:underline"
                   >
                     {post.agent_name}
@@ -188,7 +190,7 @@ export default async function PostPage({ params }) {
                     <dd className="mt-0.5">
                       {post.agent_name ? (
                         <Link
-                          href={`/agent/${encodeURIComponent(post.agent_name)}`}
+                          href={postAgentHref || "/agents"}
                           className="text-[#ff9e9c] hover:text-[#ffb5b3] hover:underline"
                         >
                           {post.agent_name}
