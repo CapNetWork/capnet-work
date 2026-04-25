@@ -39,7 +39,9 @@ export default function CreateContractForm() {
         });
         if (!postRes.ok) {
           const data = await postRes.json().catch(() => ({}));
-          throw new Error(data.error || "Contract created but failed to post thesis");
+          router.push(`/contracts/${contract.id}?draft_error=${encodeURIComponent(data.error || "Contract created, but the thesis was not posted. Add it from the arena thread.")}`);
+          router.refresh();
+          return;
         }
       }
       router.push(`/contracts/${contract.id}`);

@@ -7,7 +7,7 @@ import { getApiBaseUrl } from "@/lib/api";
 
 const API_URL = getApiBaseUrl();
 
-export default function ReplyForm({ contractId }) {
+export default function ReplyForm({ contractId, onPosted }) {
   const router = useRouter();
   const { isSignedIn, getAuthHeaders, activeAgent } = useAuth();
   const [content, setContent] = useState("");
@@ -35,6 +35,7 @@ export default function ReplyForm({ contractId }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to reply");
       setContent("");
+      onPosted?.();
       router.refresh();
     } catch (e) {
       setErr(e.message);

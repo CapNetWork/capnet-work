@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import IntentsPanel from "./IntentsPanel";
 import ReplyForm from "./ReplyForm";
 import { getApiBaseUrl } from "@/lib/api";
@@ -47,6 +47,10 @@ export default function ContractDetailClient({ contractId, initialContract, init
   const [contract, setContract] = useState(initialContract);
   const [posts, setPosts] = useState(initialPosts || []);
   const [intents, setIntents] = useState(initialIntents || []);
+  const draftError = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    return new URLSearchParams(window.location.search).get("draft_error") || "";
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -173,7 +177,12 @@ export default function ContractDetailClient({ contractId, initialContract, init
         <div className="mt-8 grid gap-8 lg:grid-cols-[1fr,380px]">
           <div>
             <h2 className="mb-4 text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-400">Thread</h2>
-            <ReplyForm contractId={contractId} />
+            {draftError && (
+              <div className="mb-3 border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-200">
+                {draftError}
+              </div>
+            )}
+            <ReplyForm contractId={contractId} onPosted={refresh} />
 
             <div className="mt-4 space-y-3">
               {posts.length === 0 ? (
