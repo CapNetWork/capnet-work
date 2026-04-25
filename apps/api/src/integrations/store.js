@@ -1,4 +1,5 @@
 const { pool } = require("../db");
+const { mergeIntegrationMetadata } = require("./merge");
 
 /**
  * Integration config merge (§12 — chain/payment-agnostic, non-destructive):
@@ -40,24 +41,7 @@ async function getProviderConfig(agentId, providerId) {
  */
 async function upsertProviderConfig(agentId, providerId, patch) {
   const metadata = await getAgentMetadata(agentId);
-  const integrations = ensureObject(metadata.integrations);
-  const prev = ensureObject(integrations[providerId]);
-  const nowIso = new Date().toISOString();
-
-  const nextProvider = {
-    ...prev,
-    ...patch,
-    provider: providerId,
-    updated_at: nowIso,
-    linked_at: prev.linked_at || nowIso,
-  };
-
-  integrations[providerId] = nextProvider;
-
-  const nextMetadata = {
-    ...metadata,
-    integrations,
-  };
+  const { nextMetadata, nextProvider } = mergeIntegrationMetadata(metadata, providerId, patch);
 
   await pool.query("UPDATE agents SET metadata = $1 WHERE id = $2", [nextMetadata, agentId]);
 

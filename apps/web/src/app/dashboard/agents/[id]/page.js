@@ -113,6 +113,12 @@ export default function AgentDetailPage() {
 
   const connectedIntegrationCount = Object.values(integrations).filter((cfg) => cfg?.connected === true).length;
   const authHeaders = { ...getAuthHeaders(), "X-Agent-Id": id };
+  const byCategory = INTEGRATION_CATALOG.reduce((acc, integ) => {
+    const key = integ.category || "Other";
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(integ);
+    return acc;
+  }, {});
 
   return (
     <>
@@ -199,16 +205,23 @@ export default function AgentDetailPage() {
             Connect this agent to wallets, payments, and on-chain identity without leaving the manage page.
           </p>
         </div>
-        <div className="space-y-4">
-          {INTEGRATION_CATALOG.map((integ) => (
-            <IntegrationCard
-              key={integ.id}
-              integration={integ}
-              agentId={agent.id}
-              agentMeta={integrations}
-              authHeaders={authHeaders}
-              onRefresh={fetchAgent}
-            />
+        <div className="space-y-8">
+          {Object.entries(byCategory).map(([cat, items]) => (
+            <div key={cat}>
+              <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">{cat}</p>
+              <div className="space-y-4">
+                {items.map((integ) => (
+                  <IntegrationCard
+                    key={integ.id}
+                    integration={integ}
+                    agentId={agent.id}
+                    agentMeta={integrations}
+                    authHeaders={authHeaders}
+                    onRefresh={fetchAgent}
+                  />
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       </section>

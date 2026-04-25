@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || "http://localhost:4000";
+const SHOW_LEGACY_BANKR = process.env.NEXT_PUBLIC_SHOW_LEGACY_BANKR === "1";
 
 export const INTEGRATION_CATALOG = [
   {
@@ -15,16 +16,18 @@ export const INTEGRATION_CATALOG = [
       { key: "owner_wallet", label: "Owner wallet", placeholder: "0x... wallet address that will own the token" },
     ],
   },
-  {
-    id: "bankr",
-    name: "Bankr",
-    description: "Connect a Bankr API key to unlock rewards scoring and payout workflows for quality posts.",
-    category: "Rewards",
-    connectLabel: "Connect Bankr",
-    fields: [
-      { key: "api_key", label: "Bankr API key", placeholder: "Your Bankr API key" },
-    ],
-  },
+  ...(SHOW_LEGACY_BANKR
+    ? [
+        {
+          id: "bankr",
+          name: "Bankr",
+          description: "Connect a Bankr API key to unlock rewards scoring and payout workflows for quality posts.",
+          category: "Rewards",
+          connectLabel: "Connect Bankr",
+          fields: [{ key: "api_key", label: "Bankr API key", placeholder: "Your Bankr API key" }],
+        },
+      ]
+    : []),
   {
     id: "privy_wallet",
     name: "Privy Wallet (Solana)",
@@ -67,6 +70,8 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
   const [error, setError] = useState("");
   const [formValues, setFormValues] = useState({});
   const [showForm, setShowForm] = useState(false);
+  const [moonpayBusy, setMoonpayBusy] = useState(false);
+  const [moonpayWidgetParams, setMoonpayWidgetParams] = useState({ currencyCode: "", walletAddress: "" });
 
   const currentStatus = agentMeta?.[integration.id];
   const isConnected = currentStatus?.connected === true;
@@ -102,6 +107,36 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
     }
   }
 
+  async function handleMoonpayOpen() {
+    setMoonpayBusy(true);
+    setError("");
+    try {
+      const currencyCode =
+        moonpayWidgetParams.currencyCode ||
+        currentStatus?.default_currency_code ||
+        "";
+      if (!String(currencyCode).trim()) {
+        throw new Error("Set a currencyCode (e.g. sol, eth, usdc) to open MoonPay.");
+      }
+      const res = await fetch(`${API_URL}/integrations/moonpay/widget-url`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify({
+          currencyCode: String(currencyCode).trim(),
+          walletAddress: moonpayWidgetParams.walletAddress || currentStatus?.default_wallet_address || undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      if (!data?.url) throw new Error("MoonPay widget URL missing from response");
+      window.open(data.url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setMoonpayBusy(false);
+    }
+  }
+
   return (
     <div className="border border-zinc-800 bg-[#0a0a0a]/85 p-6 transition-colors hover:border-zinc-700">
       <div className="flex items-start justify-between gap-3">
@@ -133,6 +168,44 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
       )}
 
       <div className="mt-4">
+        {isConnected && integration.id === "moonpay" && (
+          <div className="mb-3 border-t border-zinc-800/50 pt-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
+                  Currency (required)
+                </label>
+                <input
+                  value={moonpayWidgetParams.currencyCode}
+                  onChange={(e) => setMoonpayWidgetParams((p) => ({ ...p, currencyCode: e.target.value }))}
+                  placeholder={currentStatus?.default_currency_code || "e.g. sol, eth, usdc"}
+                  className="w-full border border-zinc-700 bg-[#050505] px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:border-[#E53935]/50 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
+                  Wallet (optional)
+                </label>
+                <input
+                  value={moonpayWidgetParams.walletAddress}
+                  onChange={(e) => setMoonpayWidgetParams((p) => ({ ...p, walletAddress: e.target.value }))}
+                  placeholder={currentStatus?.default_wallet_address || "Address to receive crypto"}
+                  className="w-full border border-zinc-700 bg-[#050505] px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:border-[#E53935]/50 focus:outline-none"
+                />
+              </div>
+            </div>
+            <div className="mt-3">
+              <button
+                type="button"
+                onClick={handleMoonpayOpen}
+                disabled={moonpayBusy}
+                className="border border-zinc-700 px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-zinc-300 transition-colors hover:border-[#E53935]/50 hover:text-white disabled:opacity-50"
+              >
+                {moonpayBusy ? "Opening..." : "Open MoonPay"}
+              </button>
+            </div>
+          </div>
+        )}
         {!isConnected && !showForm && (
           <button
             type="button"
