@@ -43,11 +43,6 @@ export default function OnchainIdentityCard({ initialConfig }) {
   }
 
   async function onMint() {
-    if (!ownerWallet.trim()) {
-      setStatus("error");
-      setMessage("Owner wallet is required.");
-      return;
-    }
     setStatus("loading");
     setMessage("");
     try {
@@ -154,7 +149,6 @@ export default function OnchainIdentityCard({ initialConfig }) {
               type="text"
               value={ownerWallet}
               onChange={(e) => setOwnerWallet(e.target.value)}
-              required
               className="w-full rounded-md border border-zinc-700 bg-[#050505] px-3 py-2 text-xs text-white placeholder:text-zinc-500 focus:border-[#E53935] focus:outline-none"
               placeholder="Owner wallet (0x...)"
             />

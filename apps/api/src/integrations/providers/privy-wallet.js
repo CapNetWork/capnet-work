@@ -57,31 +57,18 @@ async function getIntegrationStatus(agentId) {
   }
   const wallet = r.rows[0];
   let balance = null;
-  let policy_summary = null;
   try {
     balance = await privyDriver.getBalance(wallet.wallet_address);
   } catch {
     /* RPC may be unavailable */
-  }
-  try {
-    const pol = await privyDriver.getPolicy(wallet);
-    if (pol && typeof pol === "object") {
-      policy_summary = Object.keys(pol).length ? { keys: Object.keys(pol).slice(0, 12) } : null;
-    } else if (pol != null) {
-      policy_summary = { raw: String(pol).slice(0, 200) };
-    }
-  } catch {
-    /* policy API optional */
   }
   return {
     connected: true,
     provider: PROVIDER_ID,
     config: {
       wallet_address: wallet.wallet_address,
-      chain_type: wallet.chain_type,
       custody_type: wallet.custody_type,
       balance_sol: balance ? balance.sol : null,
-      policy_summary,
       linked_at: wallet.linked_at,
     },
   };
@@ -144,13 +131,11 @@ async function send(agentId, walletRow, input, authMethod) {
       status: "submitted",
     });
     await refreshScore(agentId);
-    return { ok: true, tx_hash: result.txHash, status: "submitted", wallet_tx_id: attempt.id };
+    return { ok: true, tx_hash: result.txHash, status: "submitted" };
   } catch (err) {
     await audit.updateOutcome(attempt.id, { status: "failed", errorMessage: err.message });
     await refreshScore(agentId);
-    const wrapped = err instanceof Error ? err : new Error(String(err));
-    wrapped.wallet_tx_id = attempt.id;
-    throw wrapped;
+    throw err;
   }
 }
 

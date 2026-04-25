@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
-import { INTEGRATION_CATALOG, IntegrationCard } from "../IntegrationCards";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || "http://localhost:4000";
 
@@ -51,38 +50,17 @@ export default function AgentDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showApiKey, setShowApiKey] = useState(false);
-  const [integrations, setIntegrations] = useState({});
 
   const fetchAgent = useCallback(async () => {
     try {
-      const baseHeaders = getAuthHeaders();
-      const headers = { ...baseHeaders, "X-Agent-Id": id };
-      const [agentRes, integRes] = await Promise.all([
-        fetch(`${API_URL}/auth/me/agents/${id}`, {
-          headers: { "Content-Type": "application/json", ...headers },
-          cache: "no-store",
-        }),
-        fetch(`${API_URL}/integrations`, {
-          headers: { "Content-Type": "application/json", ...headers },
-          cache: "no-store",
-        }),
-      ]);
-
-      const agentData = await agentRes.json().catch(() => ({}));
-      if (!agentRes.ok) throw new Error(agentData.error || agentRes.statusText);
-      setAgent(agentData.agent);
-
-      const integData = await integRes.json().catch(() => ({}));
-      if (!integRes.ok) throw new Error(integData.error || integRes.statusText);
-      const byId = {};
-      for (const p of Array.isArray(integData.providers) ? integData.providers : []) {
-        if (!p?.id) continue;
-        byId[p.id] = {
-          connected: Boolean(p.enabled),
-          ...(p.config && typeof p.config === "object" ? p.config : {}),
-        };
-      }
-      setIntegrations(byId);
+      const headers = getAuthHeaders();
+      const res = await fetch(`${API_URL}/auth/me/agents/${id}`, {
+        headers: { "Content-Type": "application/json", ...headers },
+        cache: "no-store",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      setAgent(data.agent);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -111,14 +89,8 @@ export default function AgentDetailPage() {
 
   if (!agent) return null;
 
-  const connectedIntegrationCount = Object.values(integrations).filter((cfg) => cfg?.connected === true).length;
-  const authHeaders = { ...getAuthHeaders(), "X-Agent-Id": id };
-  const byCategory = INTEGRATION_CATALOG.reduce((acc, integ) => {
-    const key = integ.category || "Other";
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(integ);
-    return acc;
-  }, {});
+  const integrations = agent.metadata?.integrations || {};
+  const integrationCount = Object.keys(integrations).length;
 
   return (
     <>
@@ -137,10 +109,10 @@ export default function AgentDetailPage() {
         </div>
         <div className="flex gap-2">
           <Link
-            href="#integrations"
+            href={`/dashboard/agents/${agent.id}/integrations`}
             className="border border-[#E53935] bg-[#E53935] px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-white transition-colors hover:bg-[#c62828]"
           >
-            Integrations{connectedIntegrationCount > 0 ? ` (${connectedIntegrationCount})` : ""}
+            Integrations{integrationCount > 0 ? ` (${integrationCount})` : ""}
           </Link>
           <Link
             href={`/agent/${encodeURIComponent(agent.name)}`}
@@ -198,33 +170,35 @@ export default function AgentDetailPage() {
         )}
       </div>
 
-      <section id="integrations" className="mt-6">
-        <div className="mb-4">
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Integrations</p>
-          <p className="mt-1 text-sm text-zinc-400">
-            Connect this agent to wallets, payments, and on-chain identity without leaving the manage page.
-          </p>
-        </div>
-        <div className="space-y-8">
-          {Object.entries(byCategory).map(([cat, items]) => (
-            <div key={cat}>
-              <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">{cat}</p>
-              <div className="space-y-4">
-                {items.map((integ) => (
-                  <IntegrationCard
-                    key={integ.id}
-                    integration={integ}
-                    agentId={agent.id}
-                    agentMeta={integrations}
-                    authHeaders={authHeaders}
-                    onRefresh={fetchAgent}
-                  />
-                ))}
+      {integrationCount > 0 && (
+        <div className="mt-6 border border-zinc-800 bg-[#0a0a0a]/85 p-6">
+          <div className="mb-4 flex items-center justify-between">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Connected integrations</p>
+            <Link
+              href={`/dashboard/agents/${agent.id}/integrations`}
+              className="text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-400 hover:text-white"
+            >
+              Manage all
+            </Link>
+          </div>
+          <div className="space-y-2">
+            {Object.entries(integrations).map(([key, val]) => (
+              <div key={key} className="flex items-center justify-between border-b border-zinc-800/50 py-2 last:border-0">
+                <span className="text-sm font-medium text-white">{key.toUpperCase()}</span>
+                <span
+                  className={`text-[10px] font-bold uppercase tracking-[0.14em] ${
+                    val?.verification_status === "verified"
+                      ? "text-emerald-400"
+                      : "text-zinc-500"
+                  }`}
+                >
+                  {val?.verification_status || "connected"}
+                </span>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </section>
+      )}
     </>
   );
 }

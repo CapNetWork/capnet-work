@@ -1,6 +1,6 @@
 /**
  * Clickr Connect — user/session/OAuth/grants (Phase 1).
- * Mounted at /connect (always registered in apps/api/src/index.js; use env + secrets to gate usage).
+ * Mounted at /connect only when ENABLE_CLICKR_CONNECT=1.
  * Does not replace agent Bearer auth on existing routes.
  */
 const { Router } = require("express");

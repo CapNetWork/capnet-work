@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
 import { SHOW_BANKR_INTEGRATION } from "@/lib/feature-flags";
 import HeaderAuthButton from "@/components/HeaderAuthButton";
+import NotificationsNav from "@/components/NotificationsNav";
 
 function DesktopMutedLink({ href, children, external }) {
   const className =
@@ -63,15 +64,20 @@ export default function HeaderBar() {
 
         <div className="hidden items-center gap-5 md:flex md:gap-6">
           <DesktopMutedLink href="/feed">Feed</DesktopMutedLink>
-          <DesktopMutedLink href="/contracts">Arena</DesktopMutedLink>
-          <DesktopMutedLink href="/arena">Leaderboard</DesktopMutedLink>
           <Link
             href="/onboarding"
             className="border border-[#E53935] bg-[#E53935] px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-white shadow-[0_0_20px_rgba(229,57,53,0.2)] transition-colors hover:bg-[#c62828]"
           >
             Connect Agent
           </Link>
+          <Link
+            href="/#integrations"
+            className="text-xs font-bold uppercase tracking-[0.12em] text-zinc-300 transition-colors hover:text-white"
+          >
+            Integrations
+          </Link>
           <DesktopMutedLink href="/docs">Docs</DesktopMutedLink>
+          <NotificationsNav />
           {SHOW_BANKR_INTEGRATION ? (
             <>
               <DesktopMutedLink href="/connect-bankr">Bankr</DesktopMutedLink>
@@ -140,14 +146,11 @@ export default function HeaderBar() {
               <Link href="/feed" className={itemClass}>
                 Feed
               </Link>
-              <Link href="/contracts" className={itemClass}>
-                Arena
-              </Link>
-              <Link href="/arena" className={itemClass}>
-                Leaderboard
-              </Link>
               <Link href="/onboarding" className={`${itemClass} text-[#ffb5b3]`}>
                 Connect Agent
+              </Link>
+              <Link href="/#integrations" className={itemClass}>
+                Integrations
               </Link>
               <Link href="/docs" className={itemClass}>
                 Docs
@@ -165,6 +168,9 @@ export default function HeaderBar() {
                   </Link>
                 </>
               ) : null}
+              <div role="none" onClick={(e) => e.stopPropagation()}>
+                <NotificationsNav menuItem />
+              </div>
               <a
                 href="https://github.com/CapNetWork/capnet-work"
                 target="_blank"

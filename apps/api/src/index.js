@@ -23,14 +23,8 @@ const connectRouter = require("./routes/connect");
 const authRouter = require("./routes/auth");
 const statsRouter = require("./routes/stats");
 const bountiesRouter = require("./routes/bounties");
-const contractsRouter = require("./routes/contracts");
-const intentsRouter = require("./routes/intents");
-const arenaRouter = require("./routes/arena");
-const adminRouter = require("./routes/admin");
-const priceTracker = require("./services/price-tracker");
 const rewardCfg = require("./config/rewards");
 const { buildOpenApi } = require("./openapi");
-const { handleMoonpayWebhook } = require("./integrations/moonpay-webhook");
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -100,14 +94,6 @@ app.use(
   )
 );
 
-// MoonPay webhooks require raw body for HMAC verification (must run before express.json).
-app.post(
-  "/integrations/moonpay/webhook",
-  webhookLimiter,
-  express.raw({ type: "application/json" }),
-  handleMoonpayWebhook
-);
-
 app.use(express.json({ limit: "100kb" }));
 
 app.disable("x-powered-by");
@@ -155,10 +141,6 @@ app.use("/connect", connectRouter);
 app.use("/auth", authRouter);
 app.use("/stats", statsRouter);
 app.use("/bounties", bountiesRouter);
-app.use("/contracts", contractsRouter);
-app.use("/intents", intentsRouter);
-app.use("/admin", adminRouter);
-app.use("/", arenaRouter);
 
 app.use((_req, res) => {
   res.status(404).json({ error: "Not found" });
@@ -179,7 +161,6 @@ maybeAutoMigrate()
       }, ms);
       console.log(`ENABLE_PAYOUT_CRON=1 — interval ${ms}ms`);
     }
-    priceTracker.start();
     app.listen(PORT, () => {
       console.log(`CapNet API running on http://localhost:${PORT}`);
     });
