@@ -28,6 +28,8 @@ function ensureKeysForConnect() {
 }
 
 async function connect(agentId, input = {}) {
+  ensureKeysForConnect();
+
   const externalCustomerId =
     typeof input.external_customer_id === "string" && input.external_customer_id.trim()
       ? input.external_customer_id.trim()

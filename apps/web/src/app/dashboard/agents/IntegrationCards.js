@@ -72,8 +72,12 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
   const [showForm, setShowForm] = useState(false);
   const [moonpayBusy, setMoonpayBusy] = useState(false);
   const [moonpayWidgetParams, setMoonpayWidgetParams] = useState({ currencyCode: "", walletAddress: "" });
+  const [fundingBusy, setFundingBusy] = useState(false);
+  const [copiedWallet, setCopiedWallet] = useState(false);
 
   const currentStatus = agentMeta?.[integration.id];
+  const privyStatus = agentMeta?.privy_wallet;
+  const privyWalletAddress = privyStatus?.wallet_address || "";
   const isConnected = currentStatus?.connected === true;
   const statusRows =
     isConnected && currentStatus && typeof currentStatus === "object"
@@ -107,6 +111,13 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
     }
   }
 
+  async function handleCopyWallet() {
+    if (!privyWalletAddress) return;
+    await navigator.clipboard.writeText(privyWalletAddress);
+    setCopiedWallet(true);
+    setTimeout(() => setCopiedWallet(false), 2000);
+  }
+
   async function handleMoonpayOpen() {
     setMoonpayBusy(true);
     setError("");
@@ -134,6 +145,27 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
       setError(err.message);
     } finally {
       setMoonpayBusy(false);
+    }
+  }
+
+  async function handleFundPrivyWallet() {
+    setFundingBusy(true);
+    setError("");
+    try {
+      const res = await fetch(`${API_URL}/integrations/moonpay/fund-privy-wallet`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify({ redirectUrl: window.location.href }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      if (!data?.url) throw new Error("MoonPay widget URL missing from response");
+      window.open(data.url, "_blank", "noopener,noreferrer");
+      onRefresh?.();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setFundingBusy(false);
     }
   }
 
@@ -168,6 +200,37 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
       )}
 
       <div className="mt-4">
+        {isConnected && integration.id === "privy_wallet" && (
+          <div className="mb-3 border-t border-zinc-800/50 pt-4">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
+              Fund for Clickr trades
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-zinc-400">
+              Buy SOL with MoonPay or send SOL manually to this wallet. Clickr execution spends from this Privy wallet.
+            </p>
+            {privyWalletAddress && (
+              <div className="mt-3 flex flex-col gap-2 border border-zinc-800 bg-[#050505] p-3 sm:flex-row sm:items-center sm:justify-between">
+                <code className="break-all text-[11px] text-zinc-300">{privyWalletAddress}</code>
+                <button
+                  type="button"
+                  onClick={handleCopyWallet}
+                  className="shrink-0 border border-zinc-700 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-400 hover:border-zinc-500 hover:text-white"
+                >
+                  {copiedWallet ? "Copied" : "Copy"}
+                </button>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={handleFundPrivyWallet}
+              disabled={fundingBusy}
+              className="mt-3 border border-[#E53935] bg-[#E53935] px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#c62828] disabled:opacity-50"
+            >
+              {fundingBusy ? "Opening..." : "Fund SOL with MoonPay"}
+            </button>
+          </div>
+        )}
+
         {isConnected && integration.id === "moonpay" && (
           <div className="mb-3 border-t border-zinc-800/50 pt-4">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

@@ -232,6 +232,40 @@ router.post("/moonpay/widget-url", authenticateBySessionOrKey, sanitizeBody([]),
   }
 });
 
+router.post("/moonpay/fund-privy-wallet", authenticateBySessionOrKey, sanitizeBody([]), async (req, res, next) => {
+  const walletRow = await requirePrivyWallet(req, res);
+  if (!walletRow) return;
+  try {
+    let status = await moonpayAdapter.getIntegrationStatus(req.agent.id);
+    let cfg = status.config;
+    if (!status.connected) {
+      const connected = await moonpayAdapter.connect(req.agent.id, {
+        default_currency_code: "sol",
+        default_wallet_address: walletRow.wallet_address,
+      });
+      cfg = connected.config;
+      status = { connected: true, config: cfg };
+    }
+
+    const out = moonpayAdapter.buildWidgetUrlForAgent(req.agent.id, cfg, {
+      ...req.body,
+      currencyCode: "sol",
+      walletAddress: walletRow.wallet_address,
+    });
+    res.json({
+      ...out,
+      wallet_address: walletRow.wallet_address,
+      provider: "moonpay",
+      target_provider: "privy_wallet",
+      moonpay_connected: status.connected,
+    });
+  } catch (err) {
+    const mapped = moonpayAdapter.mapConnectError(err);
+    if (mapped) return res.status(mapped.status).json({ error: mapped.error });
+    next(err);
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Phantom Wallet — linked pubkey; server-side sign/send not available (501)
 // ---------------------------------------------------------------------------

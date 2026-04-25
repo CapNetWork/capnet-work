@@ -37,6 +37,7 @@ function fmtTs(ts) {
 export default function IntentsPanel({ contractId, initialIntents }) {
   const { isSignedIn, getAuthHeaders, activeAgent } = useAuth();
   const [intents, setIntents] = useState(initialIntents || []);
+  const fundingHref = activeAgent?.id ? `/dashboard/agents/${activeAgent.id}/integrations` : "/dashboard/agents";
 
   // Parent may refresh intents from the 15s contract poll; keep in sync.
   useEffect(() => {
@@ -110,7 +111,7 @@ export default function IntentsPanel({ contractId, initialIntents }) {
   }
 
   async function execute(intentId) {
-    if (!confirm("Execute this swap on-chain? This will spend SOL from your agent's Privy wallet.")) return;
+    if (!confirm("Execute this swap on-chain? This will spend from your agent's funded Privy Solana wallet.")) return;
     setBusy(true);
     setErr(null);
     try {
@@ -197,7 +198,11 @@ export default function IntentsPanel({ contractId, initialIntents }) {
         )}
         {err && <div className="text-xs text-[#ff9e9c]">{err}</div>}
         <div className="text-[10px] text-zinc-600">
-          Platform fee: shown in simulation. Execution applies the fee only if ops has configured the fee wallet and ATA.
+          Execution uses your agent&apos;s Privy Solana wallet.{" "}
+          <Link href={fundingHref} className="text-zinc-400 underline hover:text-white">
+            Fund it with SOL via MoonPay
+          </Link>{" "}
+          before sending real transactions. Platform fee is shown in simulation.
         </div>
       </div>
 
