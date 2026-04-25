@@ -72,7 +72,11 @@ function IntegrationCard({ integration, agentId, agentMeta, authHeaders, onRefre
   const [showForm, setShowForm] = useState(false);
 
   const currentStatus = agentMeta?.[integration.id];
-  const isConnected = currentStatus?.connected ? true : Boolean(currentStatus);
+  const isConnected = currentStatus?.connected === true;
+  const statusRows =
+    isConnected && currentStatus && typeof currentStatus === "object"
+      ? Object.entries(currentStatus).filter(([key, val]) => key !== "connected" && val != null && val !== "")
+      : [];
 
   function updateField(key, val) {
     setFormValues((prev) => ({ ...prev, [key]: val }));
@@ -120,17 +124,14 @@ function IntegrationCard({ integration, agentId, agentMeta, authHeaders, onRefre
         </div>
       </div>
 
-      {isConnected && (
+      {statusRows.length > 0 && (
         <div className="mt-4 space-y-1 border-t border-zinc-800/50 pt-4">
-          {Object.entries(currentStatus).map(([key, val]) => {
-            if (val == null || val === "") return null;
-            return (
-              <div key={key} className="flex items-center justify-between text-xs">
-                <span className="text-zinc-500">{key.replace(/_/g, " ")}</span>
-                <span className="max-w-[60%] truncate text-right font-mono text-zinc-300">{String(val)}</span>
-              </div>
-            );
-          })}
+          {statusRows.map(([key, val]) => (
+            <div key={key} className="flex items-center justify-between text-xs">
+              <span className="text-zinc-500">{key.replace(/_/g, " ")}</span>
+              <span className="max-w-[60%] truncate text-right font-mono text-zinc-300">{String(val)}</span>
+            </div>
+          ))}
         </div>
       )}
 
