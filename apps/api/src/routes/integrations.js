@@ -12,6 +12,8 @@ const {
 const bankrAdapter = require("../integrations/providers/bankr");
 const erc8004Adapter = require("../integrations/providers/erc8004");
 const privyWalletAdapter = require("../integrations/providers/privy-wallet");
+const phantomWalletAdapter = require("../integrations/providers/phantom-wallet");
+const moonpayAdapter = require("../integrations/providers/moonpay");
 const worldIdAdapter = require("../integrations/providers/world-id");
 const x402Adapter = require("../integrations/providers/x402");
 const rateLimit = require("express-rate-limit");
@@ -21,6 +23,8 @@ const ADAPTERS = {
   bankr: bankrAdapter,
   erc8004: erc8004Adapter,
   privy_wallet: privyWalletAdapter,
+  phantom_wallet: phantomWalletAdapter,
+  moonpay: moonpayAdapter,
   world_id: worldIdAdapter,
   x402: x402Adapter,
 };
@@ -89,7 +93,9 @@ router.post("/:providerId/connect", authenticateBySessionOrKey, sanitizeBody([])
     });
   }
 
-  const input = typeof adapter.readConnectInput === "function" ? adapter.readConnectInput(req.body) : req.body;
+  const authMethod = req.clickrUser ? "session" : "api_key";
+  const baseInput = typeof adapter.readConnectInput === "function" ? adapter.readConnectInput(req.body) : req.body;
+  const input = { ...baseInput, _authMethod: authMethod };
   try {
     const out = await adapter.connect(req.agent.id, input);
     res.json(out);
@@ -200,6 +206,60 @@ router.get("/privy_wallet/transactions", authenticateBySessionOrKey, async (req,
     const history = await walletAudit.getHistory(req.agent.id, { limit, offset });
     res.json({ transactions: history });
   } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// MoonPay — signed widget URL (agent must POST /integrations/moonpay/connect first)
+// ---------------------------------------------------------------------------
+
+router.post("/moonpay/widget-url", authenticateBySessionOrKey, sanitizeBody([]), async (req, res, next) => {
+  try {
+    const status = await moonpayAdapter.getIntegrationStatus(req.agent.id);
+    if (!status.connected) {
+      return res.status(400).json({
+        error: "MoonPay is not linked for this agent. POST /integrations/moonpay/connect first.",
+      });
+    }
+    const cfg = status.config;
+    const out = moonpayAdapter.buildWidgetUrlForAgent(req.agent.id, cfg, req.body || {});
+    res.json(out);
+  } catch (err) {
+    const mapped = moonpayAdapter.mapConnectError(err);
+    if (mapped) return res.status(mapped.status).json({ error: mapped.error });
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Phantom Wallet — linked pubkey; server-side sign/send not available (501)
+// ---------------------------------------------------------------------------
+
+router.post("/phantom_wallet/sign", authenticateBySessionOrKey, walletSignLimiter, async (req, res, next) => {
+  const walletRow = await phantomWalletAdapter.requirePhantomWallet(req, res);
+  if (!walletRow) return;
+  try {
+    const authMethod = req.clickrUser ? "session" : "api_key";
+    const result = await phantomWalletAdapter.sign(req.agent.id, walletRow, req.body || {}, authMethod);
+    res.json(result);
+  } catch (err) {
+    const mapped = phantomWalletAdapter.mapConnectError(err);
+    if (mapped) return res.status(mapped.status).json({ error: mapped.error });
+    next(err);
+  }
+});
+
+router.post("/phantom_wallet/send", authenticateBySessionOrKey, walletSendLimiter, async (req, res, next) => {
+  const walletRow = await phantomWalletAdapter.requirePhantomWallet(req, res);
+  if (!walletRow) return;
+  try {
+    const authMethod = req.clickrUser ? "session" : "api_key";
+    const result = await phantomWalletAdapter.send(req.agent.id, walletRow, req.body || {}, authMethod);
+    res.json(result);
+  } catch (err) {
+    const mapped = phantomWalletAdapter.mapConnectError(err);
+    if (mapped) return res.status(mapped.status).json({ error: mapped.error });
     next(err);
   }
 });

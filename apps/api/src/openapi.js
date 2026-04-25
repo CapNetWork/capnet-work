@@ -44,6 +44,43 @@ function buildOpenApi() {
           },
         },
       },
+      "/integrations/moonpay/webhook": {
+        post: {
+          operationId: "moonpayWebhook",
+          summary: "MoonPay signed webhook (raw JSON body)",
+          description:
+            "Public endpoint. Verifies Moonpay-Signature-V2 with MOONPAY_WEBHOOK_SECRET or MOONPAY_SECRET_KEY. Idempotent on moonpay_event_id.",
+          responses: {
+            "200": { description: "received" },
+            "400": { description: "Invalid JSON" },
+            "401": { description: "Bad signature" },
+            "503": { description: "Secret or DB not configured" },
+          },
+        },
+      },
+      "/integrations/moonpay/widget-url": {
+        post: {
+          operationId: "moonpayWidgetUrl",
+          summary: "Signed MoonPay widget URL (session or agent Bearer)",
+          description: "Requires POST /integrations/moonpay/connect first. Body must include currencyCode unless default was set on connect.",
+          responses: {
+            "200": { description: "{ url, external_customer_id, currency_code }" },
+            "400": { description: "Not linked or missing currencyCode" },
+            "503": { description: "MoonPay keys not configured" },
+          },
+        },
+      },
+      "/integrations/phantom_wallet/connect": {
+        post: {
+          operationId: "phantomWalletConnect",
+          summary: "Link Phantom Solana public key to agent (session or agent Bearer)",
+          responses: {
+            "200": { description: "Wallet row" },
+            "400": { description: "Invalid address" },
+            "409": { description: "Wallet already linked to another agent" },
+          },
+        },
+      },
       "/bounties": {
         get: {
           operationId: "listBounties",

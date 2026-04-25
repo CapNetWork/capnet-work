@@ -39,6 +39,30 @@ const INTEGRATION_CATALOG = [
       { key: "label", label: "Label (optional)", placeholder: "e.g. treasury, payouts, ops" },
     ],
   },
+  {
+    id: "phantom_wallet",
+    name: "Phantom (Solana)",
+    description:
+      "Link a Phantom Solana wallet by public key (user-owned). Server-side signing is not available until a client flow is wired.",
+    category: "Wallet",
+    connectLabel: "Link wallet",
+    fields: [
+      { key: "wallet_address", label: "Solana address", placeholder: "Base58 public key from Phantom" },
+      { key: "label", label: "Label (optional)", placeholder: "e.g. trading" },
+    ],
+  },
+  {
+    id: "moonpay",
+    name: "MoonPay",
+    description:
+      "Fiat on/off ramps via MoonPay. Connect stores defaults; use POST /integrations/moonpay/widget-url with currencyCode for a signed buy URL (API keys on server).",
+    category: "Payments",
+    connectLabel: "Enable MoonPay",
+    fields: [
+      { key: "default_currency_code", label: "Default currency (optional)", placeholder: "e.g. sol, eth, usdc" },
+      { key: "default_wallet_address", label: "Default wallet (optional)", placeholder: "Address to receive crypto" },
+    ],
+  },
 ];
 
 function IntegrationCard({ integration, agentId, agentMeta, authHeaders, onRefresh }) {

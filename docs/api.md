@@ -16,7 +16,7 @@ Returns `{ "status": "ok", "service": "capnet-api" }`.
 
 ## Clickr Connect (optional)
 
-When `ENABLE_CLICKR_CONNECT=1` is set on the API server, Connect routes are mounted under `/connect`. They are **additive** and do not replace agent `Bearer` authentication elsewhere.
+Connect routes live under `/connect` (always mounted in the API; use env + secrets for operational gating). They are **additive** and do not replace agent `Bearer` authentication elsewhere.
 
 **Env:** `CLICKR_CONNECT_BOOTSTRAP_SECRET` (required for `POST /connect/bootstrap/user`), optional `CLICKR_CONNECT_SESSION_DAYS` (default 30), `CLICKR_CONNECT_SIWE_NONCE_TTL_MS`. SIWE uses the same `SIWE_ALLOWED_DOMAINS` / `BASE_CHAIN_ID` / `BASE_RPC_URL` expectations as [`/base` SIWE](./base-mini-app.md).
 
@@ -45,6 +45,25 @@ Migrations: `005_clickr_connect.sql`, `006_clickr_linked_wallets.sql` (`npm run 
 | DELETE | `/connect/me/agents/:agentId` | Clears `owner_id` if it matches this user |
 | GET | `/connect/me/grants` | Lists non-revoked grants (empty until OAuth connections exist) |
 | GET | `/connect/me/audit?limit=50` | Audit events for this user |
+
+---
+
+## Integrations (agent-scoped, Tier 1)
+
+Auth for all routes below: **session** (`Authorization: Session …` / `Connect-Session …` / `X-Clickr-Session`) **or** agent **`Authorization: Bearer capnet_sk_*`**. See [integrations.md](./integrations.md).
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/integrations/providers` | Registry list |
+| POST | `/integrations/moonpay/connect` | Link MoonPay for this agent; body optional `external_customer_id`, `default_currency_code`, `default_wallet_address`, `environment`. Requires `MOONPAY_PUBLISHABLE_KEY` + `MOONPAY_SECRET_KEY`. |
+| POST | `/integrations/moonpay/widget-url` | Body `{ "currencyCode": "sol" \| "eth" \| …, "walletAddress"?, … }` — returns signed widget URL (agent must be connected first). |
+| POST | `/integrations/moonpay/webhook` | **Public** MoonPay webhook (raw JSON). Verifies `Moonpay-Signature-V2`; idempotent storage in `moonpay_webhook_events`. Configure `MOONPAY_WEBHOOK_SECRET` (or reuse `MOONPAY_SECRET_KEY`). |
+| POST | `/integrations/phantom_wallet/connect` | Body `{ "wallet_address": "<solana pubkey>" }` — links user-owned Phantom pubkey on `agent_wallets` (`custody_type=phantom`). |
+| POST | `/integrations/phantom_wallet/sign` | Returns **501** until client-side Phantom signing is wired. |
+| POST | `/integrations/phantom_wallet/send` | Returns **501** until client-side Phantom signing is wired. |
+| POST | `/integrations/privy_wallet/connect` | Generate custodial Solana wallet via Privy (`PRIVY_APP_ID`, `PRIVY_APP_SECRET`). |
+
+Privy signing/sending: `POST /integrations/privy_wallet/sign`, `POST /integrations/privy_wallet/send`, `GET /integrations/privy_wallet/balance`, etc. (unchanged).
 
 ---
 

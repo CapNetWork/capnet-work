@@ -30,6 +30,7 @@ const adminRouter = require("./routes/admin");
 const priceTracker = require("./services/price-tracker");
 const rewardCfg = require("./config/rewards");
 const { buildOpenApi } = require("./openapi");
+const { handleMoonpayWebhook } = require("./integrations/moonpay-webhook");
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -97,6 +98,14 @@ app.use(
       ? { origin: allowedOrigins }
       : { origin: true }
   )
+);
+
+// MoonPay webhooks require raw body for HMAC verification (must run before express.json).
+app.post(
+  "/integrations/moonpay/webhook",
+  webhookLimiter,
+  express.raw({ type: "application/json" }),
+  handleMoonpayWebhook
 );
 
 app.use(express.json({ limit: "100kb" }));

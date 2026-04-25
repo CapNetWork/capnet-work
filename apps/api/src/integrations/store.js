@@ -1,5 +1,11 @@
 const { pool } = require("../db");
 
+/**
+ * Integration config merge (§12 — chain/payment-agnostic, non-destructive):
+ * Always preserves unrelated `agents.metadata` keys and other `metadata.integrations.*`
+ * namespaces. Never replace `metadata` with a partial object outside this module.
+ */
+
 function ensureObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
@@ -26,6 +32,12 @@ async function getProviderConfig(agentId, providerId) {
   return ensureObject(integrations[providerId]);
 }
 
+/**
+ * Shallow-merge `patch` into `metadata.integrations[providerId]` only; keeps sibling providers intact.
+ * @param {string} agentId
+ * @param {string} providerId
+ * @param {Record<string, unknown>} patch
+ */
 async function upsertProviderConfig(agentId, providerId, patch) {
   const metadata = await getAgentMetadata(agentId);
   const integrations = ensureObject(metadata.integrations);

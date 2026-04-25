@@ -43,6 +43,27 @@ const CONNECT_PROVIDERS = [
     storage: "agent_wallets",
   },
   {
+    id: "phantom_wallet",
+    kind: "web3",
+    implementation: "live_agent_scoped",
+    display_name: "Phantom (Solana, user-owned)",
+    description:
+      "Link a Phantom Solana wallet by public key for attribution and future client-side signing flows. Server-side sign/send return not-implemented until wired to Phantom.",
+    chains: [{ cluster: "mainnet-beta", name: "Solana" }],
+    storage: "agent_wallets",
+    api_surfaces: ["/integrations/phantom_wallet"],
+  },
+  {
+    id: "moonpay",
+    kind: "payments",
+    implementation: "live_agent_scoped",
+    display_name: "MoonPay (fiat ramps)",
+    description:
+      "Agent-scoped MoonPay link: signed buy/sell widget URLs and webhooks stored in moonpay_webhook_events. Chain-agnostic via currencyCode + walletAddress parameters.",
+    storage: "agents.metadata.integrations.moonpay + moonpay_webhook_events",
+    api_surfaces: ["/integrations/moonpay", "/integrations/moonpay/webhook"],
+  },
+  {
     id: "world_id",
     kind: "verification",
     implementation: "live_agent_scoped",

@@ -109,6 +109,30 @@ Register the adapter in `apps/api/src/routes/integrations.js` in the `ADAPTERS` 
 
 **Bankr** uses `agent_bankr_accounts` for the encrypted API key and mirrors public fields into `integrations.bankr` on connect (`POST /integrations/bankr/connect`). Unlink with `DELETE /integrations/bankr/config`.
 
+## Tier 1: Privy, Phantom, MoonPay (current product focus)
+
+These providers are **additive** (unique registry ids, namespaced `metadata.integrations.*`, no overwrites of sibling keys). Base and other chains should follow the same pattern.
+
+### Privy Wallet (`privy_wallet`)
+
+- **Storage:** `agent_wallets` with `chain_type = 'solana'`, `custody_type = 'privy'`.
+- **Connect:** `POST /integrations/privy_wallet/connect` — generates a custodial wallet (`PRIVY_APP_ID`, `PRIVY_APP_SECRET`).
+- **Custom routes:** sign, send, balance, policy, transactions under `/integrations/privy_wallet/*`.
+
+### Phantom (`phantom_wallet`)
+
+- **Storage:** `agent_wallets` with `chain_type = 'solana'`, `custody_type = 'phantom'` — **public key only** (user-owned).
+- **Connect:** `POST /integrations/phantom_wallet/connect` with `{ "wallet_address": "..." }`.
+- **Signing:** server routes return **501** until a client-side or MCP flow approves in Phantom; operations are audit-logged when attempted.
+
+### MoonPay (`moonpay`)
+
+- **Metadata:** `agents.metadata.integrations.moonpay` — connection flags, optional defaults, `external_customer_id` (defaults to agent id for webhook correlation).
+- **Secrets:** `MOONPAY_PUBLISHABLE_KEY`, `MOONPAY_SECRET_KEY` (URL signing); `MOONPAY_WEBHOOK_SECRET` recommended for webhook HMAC (falls back to secret key if unset).
+- **Connect:** `POST /integrations/moonpay/connect`.
+- **Widget:** `POST /integrations/moonpay/widget-url` with `currencyCode` (chain-agnostic: pass the asset MoonPay should use).
+- **Webhooks:** `POST /integrations/moonpay/webhook` — raw body, signature header `Moonpay-Signature-V2`; events in **`moonpay_webhook_events`** (idempotent on `moonpay_event_id`).
+
 ## Replace a Provider
 
 Example: replacing **Bankr** with another rewards/wallet provider.
@@ -125,9 +149,10 @@ Because integration data is namespaced by provider ID, old and new providers can
 
 You can keep multiple active providers for one agent:
 
-- `bankr` for rewards/payout workflows.
+- `privy_wallet`, `phantom_wallet`, and `moonpay` for Tier 1 wallet + fiat ramp flows.
+- `bankr` for rewards/payout workflows (legacy; optional).
 - `erc8004` for on-chain identity anchoring and verification.
-- future providers (CRM, ticketing, analytics) in additional namespaces.
+- future providers (Base ecosystem, CRM, ticketing, analytics) in additional namespaces.
 
 No table changes are required as long as provider state fits in JSON metadata.
 
@@ -153,8 +178,14 @@ Core CapNet features continue working because integrations are optional.
 - `apps/api/src/integrations/registry.js`
 - `apps/api/src/integrations/store.js`
 - `apps/api/src/routes/integrations.js`
-- `apps/api/src/index.js`
+- `apps/api/src/index.js` (MoonPay webhook mounted before `express.json()`)
+- `apps/api/src/integrations/moonpay-crypto.js`
+- `apps/api/src/integrations/moonpay-webhook.js`
+- `apps/api/src/integrations/providers/moonpay.js`
+- `apps/api/src/integrations/providers/phantom-wallet.js`
+- `apps/api/src/integrations/providers/privy-wallet.js`
 - `apps/api/src/integrations/providers/erc8004.js`
+- `infra/database/migrations/024_moonpay_webhook_events.sql`
 
 ## Future: user-scoped connections (Clickr Connect)
 
