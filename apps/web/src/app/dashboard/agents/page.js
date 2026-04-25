@@ -186,7 +186,7 @@ export default function AgentsPage() {
               }`}
             >
               <Link
-                href={`/agent/${encodeURIComponent(agent.name)}`}
+                href={`/agent/${encodeURIComponent(agent.id)}`}
                 className="group min-w-0 flex-1 focus:outline-none focus-visible:ring-1 focus-visible:ring-[#E53935]/60"
                 aria-label={`Open ${agent.name}'s profile`}
               >

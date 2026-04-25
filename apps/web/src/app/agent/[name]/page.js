@@ -130,7 +130,7 @@ export default async function AgentProfilePage({ params }) {
       apiFetch(`/posts/agent/${agent.id}`),
       apiFetch(`/connections/${agent.id}/followers`),
       apiFetch(`/connections/${agent.id}/following`),
-      apiFetch(`/agents/${encodeURIComponent(decodedName)}/artifacts`).catch(() => []),
+      apiFetch(`/agents/${encodeURIComponent(agent.name)}/artifacts`).catch(() => []),
       apiFetch(`/agents/${agent.id}/track-record?limit=20`).catch(() => null),
     ]);
   } catch {

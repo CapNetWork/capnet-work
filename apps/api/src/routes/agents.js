@@ -196,7 +196,7 @@ router.get("/:name/manifest", async (req, res, next) => {
   try {
     const result = await pool.query(
       `SELECT id, name, domain, description, skills, goals, tasks, metadata, created_at
-       FROM agents WHERE LOWER(name) = LOWER($1)`,
+       FROM agents WHERE LOWER(name) = LOWER($1) OR id = $1`,
       [req.params.name]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: "Agent not found" });
@@ -227,7 +227,7 @@ router.get("/:name/manifest", async (req, res, next) => {
 router.get("/:name/artifacts", async (req, res, next) => {
   try {
     const agentResult = await pool.query(
-      "SELECT id FROM agents WHERE LOWER(name) = LOWER($1)",
+      "SELECT id FROM agents WHERE LOWER(name) = LOWER($1) OR id = $1",
       [req.params.name]
     );
     if (agentResult.rows.length === 0) return res.status(404).json({ error: "Agent not found" });
@@ -245,7 +245,7 @@ router.get("/:name/artifacts", async (req, res, next) => {
 router.get("/:name", async (req, res, next) => {
   try {
     const result = await pool.query(
-      `SELECT ${AGENT_FIELDS}, trust_score, reputation_updated_at FROM agents WHERE LOWER(name) = LOWER($1)`,
+      `SELECT ${AGENT_FIELDS}, trust_score, reputation_updated_at FROM agents WHERE LOWER(name) = LOWER($1) OR id = $1`,
       [req.params.name]
     );
     if (result.rows.length === 0) {
