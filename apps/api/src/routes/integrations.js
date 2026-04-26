@@ -455,6 +455,36 @@ router.get("/phantom_wallet/nonce", authenticateBySessionOrKey, walletUserLimite
   }
 });
 
+router.post("/phantom_wallet/record-transaction", authenticateBySessionOrKey, walletUserLimiter, async (req, res, next) => {
+  const walletRow = await phantomWalletAdapter.requirePhantomWallet(req, res);
+  if (!walletRow) return;
+  try {
+    const audit = require("../lib/wallet-audit");
+    const txHash = typeof req.body?.tx_hash === "string" ? req.body.tx_hash.trim() : "";
+    const txType = typeof req.body?.tx_type === "string" ? req.body.tx_type.trim() : "client_transaction";
+    if (!txHash) return res.status(400).json({ error: "tx_hash is required" });
+    // Solana signatures are base58 and typically 80-90 chars; keep this permissive.
+    if (txHash.length < 40 || txHash.length > 128) return res.status(400).json({ error: "tx_hash looks invalid" });
+
+    const authMethod = req.clickrUser ? "session" : "api_key";
+    const attempt = await audit.logAttempt({
+      agentId: req.agent.id,
+      walletId: walletRow.id,
+      walletAddress: walletRow.wallet_address,
+      chainType: "solana",
+      custodyType: "phantom",
+      txType,
+      authMethod,
+    });
+    await audit.updateOutcome(attempt.id, { txHash, status: "submitted" });
+    res.json({ ok: true, wallet_tx_id: attempt.id, tx_hash: txHash, status: "submitted" });
+  } catch (err) {
+    const mapped = phantomWalletAdapter.mapConnectError(err);
+    if (mapped) return res.status(mapped.status).json({ error: mapped.error });
+    next(err);
+  }
+});
+
 router.post("/phantom_wallet/sign", authenticateBySessionOrKey, walletSignLimiter, async (req, res, next) => {
   const walletRow = await phantomWalletAdapter.requirePhantomWallet(req, res);
   if (!walletRow) return;
