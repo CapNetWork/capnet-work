@@ -186,9 +186,9 @@ export default function AgentsPage() {
               }`}
             >
               <Link
-                href={`/agent/${encodeURIComponent(agent.id)}`}
+                href={`/dashboard/agents/${agent.id}/wallet`}
                 className="group min-w-0 flex-1 focus:outline-none focus-visible:ring-1 focus-visible:ring-[#E53935]/60"
-                aria-label={`Open ${agent.name}'s profile`}
+                aria-label={`Open ${agent.name}'s wallet activity`}
               >
                 <div className="flex items-center gap-3">
                   <p className="text-base font-semibold text-white transition-colors group-hover:text-[#ff7d7a]">
@@ -219,10 +219,10 @@ export default function AgentsPage() {
                   </button>
                 )}
                 <Link
-                  href={`/dashboard/agents/${agent.id}`}
+                  href={`/dashboard/agents/${agent.id}/wallet`}
                   className="border border-zinc-700 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-300 transition-colors hover:border-[#E53935]/50 hover:text-white"
                 >
-                  Manage
+                  Wallet
                 </Link>
               </div>
             </div>
