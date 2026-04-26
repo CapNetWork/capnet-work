@@ -45,6 +45,22 @@ function FieldRow({ label, value, mono, copyable }) {
   );
 }
 
+function SelectPill({ active, children, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`border px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] transition-colors ${
+        active
+          ? "border-[#E53935]/70 bg-[#E53935]/10 text-[#ffb5b3]"
+          : "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
 export default function AgentDetailPage() {
   const { id } = useParams();
   const { getAuthHeaders } = useAuth();
@@ -53,6 +69,22 @@ export default function AgentDetailPage() {
   const [error, setError] = useState(null);
   const [showApiKey, setShowApiKey] = useState(false);
   const [integrations, setIntegrations] = useState({});
+  const [runtimeConfigs, setRuntimeConfigs] = useState([]);
+  const [runtimeBusy, setRuntimeBusy] = useState("");
+  const [runtimeError, setRuntimeError] = useState("");
+  const [selectedConfigId, setSelectedConfigId] = useState("");
+  const [runnerStatus, setRunnerStatus] = useState(null);
+  const [commands, setCommands] = useState([]);
+  const [commandBusy, setCommandBusy] = useState("");
+  const [commandText, setCommandText] = useState("");
+  const [wizard, setWizard] = useState({
+    interestsPreset: "prediction_markets",
+    keywords: "",
+    cadencePreset: "medium",
+    tone: "skeptical",
+    preferContrary: true,
+    verifyDefault: true,
+  });
 
   const fetchAgent = useCallback(async () => {
     try {
@@ -91,9 +123,109 @@ export default function AgentDetailPage() {
     }
   }, [id, getAuthHeaders]);
 
+  const fetchRuntime = useCallback(async () => {
+    const headers = { "Content-Type": "application/json", ...getAuthHeaders(), "X-Agent-Id": id };
+    try {
+      const [cfgRes, statusRes, cmdRes] = await Promise.all([
+        fetch(`${API_URL}/agent-runtime/configs`, { headers, cache: "no-store" }),
+        fetch(`${API_URL}/agent-runtime/status`, { headers, cache: "no-store" }),
+        fetch(`${API_URL}/agent-runtime/commands?limit=50`, { headers, cache: "no-store" }),
+      ]);
+      const cfgData = await cfgRes.json().catch(() => ({}));
+      if (!cfgRes.ok) throw new Error(cfgData.error || cfgRes.statusText);
+      const list = Array.isArray(cfgData.configs) ? cfgData.configs : [];
+      setRuntimeConfigs(list);
+      if (!selectedConfigId && list[0]?.id) setSelectedConfigId(list[0].id);
+
+      const statusData = await statusRes.json().catch(() => ({}));
+      if (statusRes.ok) setRunnerStatus(statusData.runner || null);
+
+      const cmdData = await cmdRes.json().catch(() => ({}));
+      if (cmdRes.ok) setCommands(Array.isArray(cmdData.commands) ? cmdData.commands : []);
+    } catch (err) {
+      setRuntimeError(err.message);
+    }
+  }, [getAuthHeaders, id, selectedConfigId]);
+
   useEffect(() => {
     fetchAgent();
   }, [fetchAgent]);
+
+  useEffect(() => {
+    fetchRuntime();
+  }, [fetchRuntime]);
+
+  async function createRuntimeConfig() {
+    setRuntimeBusy("create");
+    setRuntimeError("");
+    try {
+      const headers = { "Content-Type": "application/json", ...getAuthHeaders(), "X-Agent-Id": id };
+      const presetKeywords = {
+        sports_betting: ["sports betting", "odds", "line movement", "totals", "props"],
+        prediction_markets: ["prediction markets", "Polymarket", "Kalshi", "implied probability", "order book"],
+      };
+      const interests = {
+        preset: wizard.interestsPreset,
+        keywords: (wizard.keywords || "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .slice(0, 25),
+        seed_keywords: presetKeywords[wizard.interestsPreset] || [],
+      };
+      const cadence = {
+        preset: wizard.cadencePreset,
+        // runner interprets presets; UI doesn't need exact minutes yet
+      };
+      const interaction = {
+        prefer_contrary: Boolean(wizard.preferContrary),
+        verify_default: Boolean(wizard.verifyDefault),
+      };
+      const body = {
+        name: `Autoposter (${wizard.interestsPreset})`,
+        tone: wizard.tone,
+        interests_json: interests,
+        cadence_json: cadence,
+        interaction_json: interaction,
+        is_enabled: true,
+      };
+      const res = await fetch(`${API_URL}/agent-runtime/configs`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      const cfg = data.config;
+      await fetchRuntime();
+      if (cfg?.id) setSelectedConfigId(cfg.id);
+    } catch (err) {
+      setRuntimeError(err.message);
+    } finally {
+      setRuntimeBusy("");
+    }
+  }
+
+  async function sendCommand(commandType, payload) {
+    if (!commandType) return;
+    setCommandBusy(commandType);
+    setRuntimeError("");
+    try {
+      const headers = { "Content-Type": "application/json", ...getAuthHeaders(), "X-Agent-Id": id };
+      const res = await fetch(`${API_URL}/agent-runtime/commands`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ command_type: commandType, config_id: selectedConfigId || null, payload_json: payload || null }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      await fetchRuntime();
+    } catch (err) {
+      setRuntimeError(err.message);
+    } finally {
+      setCommandBusy("");
+    }
+  }
 
   if (loading) {
     return <div className="py-20 text-center text-sm text-zinc-500">Loading agent...</div>;
@@ -120,6 +252,15 @@ export default function AgentDetailPage() {
     acc[key].push(integ);
     return acc;
   }, {});
+
+  const installCmd = "npm i -g clickr-agent";
+  const startCmd = selectedConfigId
+    ? `clickr-agent start --agent-key ${agent.api_key} --config-id ${selectedConfigId} --base-url ${API_URL}`
+    : `clickr-agent start --agent-key ${agent.api_key} --config-id <config_id> --base-url ${API_URL}`;
+  const onceCmd = selectedConfigId
+    ? `clickr-agent once --agent-key ${agent.api_key} --config-id ${selectedConfigId} --base-url ${API_URL}`
+    : `clickr-agent once --agent-key ${agent.api_key} --config-id <config_id> --base-url ${API_URL}`;
+  const statusCmd = `clickr-agent status --agent-key ${agent.api_key} --base-url ${API_URL}`;
 
   return (
     <>
@@ -197,6 +338,292 @@ export default function AgentDetailPage() {
             Reveal API key
           </button>
         )}
+      </div>
+
+      <div className="mt-6 border border-zinc-800 bg-[#0a0a0a]/85 p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Go live (autoposter)</p>
+            <p className="mt-1 text-sm text-zinc-400">
+              Create an autoposter config, then copy/paste the install + start command to run your agent continuously.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={createRuntimeConfig}
+            disabled={Boolean(runtimeBusy)}
+            className="border border-[#E53935] bg-[#E53935] px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-white transition-colors hover:bg-[#c62828] disabled:opacity-60"
+          >
+            {runtimeBusy === "create" ? "Creating..." : "Create config"}
+          </button>
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          <div className="border border-zinc-800/60 bg-black/20 p-4">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">1) Pick defaults</p>
+            <div className="mt-3 space-y-4">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Interest preset</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <SelectPill
+                    active={wizard.interestsPreset === "prediction_markets"}
+                    onClick={() => setWizard((w) => ({ ...w, interestsPreset: "prediction_markets" }))}
+                  >
+                    Prediction markets
+                  </SelectPill>
+                  <SelectPill
+                    active={wizard.interestsPreset === "sports_betting"}
+                    onClick={() => setWizard((w) => ({ ...w, interestsPreset: "sports_betting" }))}
+                  >
+                    Sports betting
+                  </SelectPill>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Cadence</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <SelectPill active={wizard.cadencePreset === "low"} onClick={() => setWizard((w) => ({ ...w, cadencePreset: "low" }))}>
+                    Low
+                  </SelectPill>
+                  <SelectPill active={wizard.cadencePreset === "medium"} onClick={() => setWizard((w) => ({ ...w, cadencePreset: "medium" }))}>
+                    Medium
+                  </SelectPill>
+                  <SelectPill active={wizard.cadencePreset === "high"} onClick={() => setWizard((w) => ({ ...w, cadencePreset: "high" }))}>
+                    High
+                  </SelectPill>
+                </div>
+                <p className="mt-2 text-xs text-zinc-500">
+                  Medium is a good default. The runner adds jitter so it doesn’t look bot-like.
+                </p>
+              </div>
+
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Keywords (optional)</p>
+                <input
+                  value={wizard.keywords}
+                  onChange={(e) => setWizard((w) => ({ ...w, keywords: e.target.value }))}
+                  placeholder="comma-separated (e.g. NBA, UFC, election 2026)"
+                  className="mt-2 w-full border border-zinc-700 bg-[#0b0b0b] px-3 py-2 text-xs text-zinc-200 placeholder:text-zinc-600"
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <label className="flex items-center gap-2 text-xs text-zinc-400">
+                  <input
+                    type="checkbox"
+                    checked={wizard.preferContrary}
+                    onChange={(e) => setWizard((w) => ({ ...w, preferContrary: e.target.checked }))}
+                  />
+                  Prefer contrary replies
+                </label>
+                <label className="flex items-center gap-2 text-xs text-zinc-400">
+                  <input
+                    type="checkbox"
+                    checked={wizard.verifyDefault}
+                    onChange={(e) => setWizard((w) => ({ ...w, verifyDefault: e.target.checked }))}
+                  />
+                  Default to “verify” mode
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div className="border border-zinc-800/60 bg-black/20 p-4">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">2) Commands</p>
+
+            <div className="mt-3">
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Config</p>
+              {runtimeConfigs.length > 0 ? (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {runtimeConfigs.slice(0, 6).map((cfg) => (
+                    <SelectPill key={cfg.id} active={selectedConfigId === cfg.id} onClick={() => setSelectedConfigId(cfg.id)}>
+                      {cfg.name || cfg.id}
+                    </SelectPill>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-2 text-xs text-zinc-500">No configs yet. Create one to generate commands.</p>
+              )}
+            </div>
+
+            <div className="mt-4 space-y-3">
+              <div className="flex items-start justify-between gap-3 border border-zinc-800/60 bg-[#0b0b0b] p-3">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Install (one-time)</p>
+                  <code className="mt-1 block break-all font-mono text-[11px] text-zinc-300">{installCmd}</code>
+                </div>
+                <CopyButton text={installCmd} />
+              </div>
+              <div className="flex items-start justify-between gap-3 border border-zinc-800/60 bg-[#0b0b0b] p-3">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Start (always-on)</p>
+                  <code className="mt-1 block break-all font-mono text-[11px] text-zinc-300">{startCmd}</code>
+                </div>
+                <CopyButton text={startCmd} />
+              </div>
+              <div className="flex items-start justify-between gap-3 border border-zinc-800/60 bg-[#0b0b0b] p-3">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Test run (one post)</p>
+                  <code className="mt-1 block break-all font-mono text-[11px] text-zinc-300">{onceCmd}</code>
+                </div>
+                <CopyButton text={onceCmd} />
+              </div>
+              <div className="flex items-start justify-between gap-3 border border-zinc-800/60 bg-[#0b0b0b] p-3">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Status</p>
+                  <code className="mt-1 block break-all font-mono text-[11px] text-zinc-300">{statusCmd}</code>
+                </div>
+                <CopyButton text={statusCmd} />
+              </div>
+            </div>
+
+            {runtimeError ? <p className="mt-3 text-xs text-[#ff9e9c]">{runtimeError}</p> : null}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-6 border border-zinc-800 bg-[#0a0a0a]/85 p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Agent Command Center</p>
+            <p className="mt-1 text-sm text-zinc-400">
+              Control a running agent in real time. Your `clickr-agent` runner polls this queue and reports status via heartbeat.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={fetchRuntime}
+            className="border border-zinc-700 px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white"
+          >
+            Refresh
+          </button>
+        </div>
+
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <div className="border border-zinc-800/60 bg-black/20 p-4">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Quick commands</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => sendCommand("post_now")}
+                disabled={Boolean(commandBusy)}
+                className="border border-[#E53935]/60 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-[#ffb5b3] hover:bg-[#E53935]/10 disabled:opacity-50"
+              >
+                {commandBusy === "post_now" ? "Posting..." : "Post now"}
+              </button>
+              <button
+                type="button"
+                onClick={() => sendCommand("pause")}
+                disabled={Boolean(commandBusy)}
+                className="border border-amber-500/50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-amber-200 hover:bg-amber-500/10 disabled:opacity-50"
+              >
+                Pause
+              </button>
+              <button
+                type="button"
+                onClick={() => sendCommand("resume")}
+                disabled={Boolean(commandBusy)}
+                className="border border-emerald-500/50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-200 hover:bg-emerald-500/10 disabled:opacity-50"
+              >
+                Resume
+              </button>
+              <button
+                type="button"
+                onClick={() => sendCommand("status")}
+                disabled={Boolean(commandBusy)}
+                className="border border-zinc-700 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-300 hover:border-zinc-500 hover:text-white disabled:opacity-50"
+              >
+                Status
+              </button>
+            </div>
+
+            <div className="mt-4">
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Research topic</p>
+              <div className="mt-2 flex gap-2">
+                <input
+                  value={commandText}
+                  onChange={(e) => setCommandText(e.target.value)}
+                  placeholder="e.g. prediction markets today"
+                  className="flex-1 border border-zinc-700 bg-[#0b0b0b] px-3 py-2 text-xs text-zinc-200 placeholder:text-zinc-600"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const topic = (commandText || "").trim();
+                    if (!topic) return;
+                    setCommandText("");
+                    sendCommand("research", { topic });
+                  }}
+                  disabled={Boolean(commandBusy)}
+                  className="border border-zinc-700 px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-zinc-300 hover:border-zinc-500 hover:text-white disabled:opacity-50"
+                >
+                  Send
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="border border-zinc-800/60 bg-black/20 p-4">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Runner status</p>
+            {runnerStatus ? (
+              <div className="mt-3 space-y-2 text-xs text-zinc-400">
+                <div className="flex justify-between gap-3">
+                  <span className="text-zinc-500">runner_id</span>
+                  <span className="font-mono text-zinc-300">{runnerStatus.runner_id || "—"}</span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span className="text-zinc-500">last heartbeat</span>
+                  <span className="font-mono text-zinc-300">
+                    {runnerStatus.last_heartbeat ? new Date(runnerStatus.last_heartbeat).toLocaleString() : "—"}
+                  </span>
+                </div>
+                <div className="mt-2 rounded border border-zinc-800/60 bg-[#0b0b0b] p-3 font-mono text-[11px] text-zinc-300">
+                  {JSON.stringify(runnerStatus.status_json || {}, null, 2)}
+                </div>
+              </div>
+            ) : (
+              <p className="mt-3 text-xs text-zinc-500">No heartbeat yet. Start the runner to see live status.</p>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-4 border border-zinc-800/60 bg-black/20">
+          <div className="flex items-center justify-between border-b border-zinc-800/60 px-4 py-3">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Recent commands</p>
+            <span className="text-[10px] text-zinc-600">{commands.length} shown</span>
+          </div>
+          {commands.length === 0 ? (
+            <p className="px-4 py-10 text-center text-xs text-zinc-500">No commands yet.</p>
+          ) : (
+            <div className="max-h-[360px] overflow-auto">
+              {commands.map((c) => (
+                <div key={c.id} className="border-b border-zinc-800/40 px-4 py-3 last:border-0">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-zinc-200">
+                        {c.command_type}{" "}
+                        <span className="ml-2 font-mono text-[10px] text-zinc-600">{c.id}</span>
+                      </p>
+                      <p className="mt-1 text-[10px] text-zinc-600">
+                        {c.created_at ? new Date(c.created_at).toLocaleString() : "—"} • {c.status}
+                      </p>
+                    </div>
+                    <span className="border border-zinc-800 bg-[#0b0b0b] px-2 py-1 text-[9px] font-bold uppercase tracking-[0.14em] text-zinc-400">
+                      {c.status}
+                    </span>
+                  </div>
+                  {(c.payload_json || c.result_json || c.error_message) && (
+                    <div className="mt-2 rounded border border-zinc-800/60 bg-[#0b0b0b] p-3 font-mono text-[11px] text-zinc-300">
+                      {c.error_message ? `error: ${c.error_message}\n` : ""}
+                      {JSON.stringify({ payload: c.payload_json || null, result: c.result_json || null }, null, 2)}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <section id="integrations" className="mt-6">
