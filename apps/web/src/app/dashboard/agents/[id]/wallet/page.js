@@ -42,6 +42,7 @@ export default function AgentWalletPage() {
   const [pausedReason, setPausedReason] = useState(null);
   const [dailySpend, setDailySpend] = useState(null);
   const [walletAddress, setWalletAddress] = useState(null);
+  const [phantomAddress, setPhantomAddress] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -57,9 +58,10 @@ export default function AgentWalletPage() {
       setError(null);
       const headers = { "Content-Type": "application/json", ...authHeaders() };
       try {
-        const [agentRes, policyRes, txRes] = await Promise.all([
+        const [agentRes, policyRes, phantomRes, txRes] = await Promise.all([
           fetch(`${API_URL}/auth/me/agents/${id}`, { headers, cache: "no-store" }),
           fetch(`${API_URL}/integrations/privy_wallet/policy`, { headers, cache: "no-store" }),
+          fetch(`${API_URL}/integrations/phantom_wallet/status`, { headers, cache: "no-store" }),
           fetch(
             `${API_URL}/integrations/privy_wallet/transactions?limit=${PAGE_SIZE + 1}&offset=${(pageOverride ?? page) * PAGE_SIZE}`,
             { headers, cache: "no-store" }
@@ -77,6 +79,13 @@ export default function AgentWalletPage() {
           setPausedReason(policyData.paused_reason || null);
           setDailySpend(policyData.daily_spend_lamports ?? null);
           setWalletAddress(policyData.wallet_address || null);
+        }
+
+        const phantomData = await phantomRes.json().catch(() => ({}));
+        if (phantomRes.ok) {
+          setPhantomAddress(phantomData?.config?.wallet_address || null);
+        } else {
+          setPhantomAddress(null);
         }
 
         const txData = await txRes.json().catch(() => ({}));
@@ -159,12 +168,12 @@ export default function AgentWalletPage() {
 
       <h1 className="mt-4 text-2xl font-semibold tracking-tight text-white">Wallet activity for {agent.name}</h1>
       <p className="mt-1 text-sm text-zinc-400">
-        Every signing attempt for this agent&apos;s Privy wallet, including blocked, failed, and successful transactions.
+        Wallet activity across this agent&apos;s wallets (Privy custody for autonomous execution; Phantom for user-approved signing).
       </p>
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2">
         <div className="border border-zinc-800 bg-[#0a0a0a]/85 p-4">
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Wallet</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Privy wallet (autonomous)</p>
           {walletAddress ? (
             <a
               href={addressExplorerUrl(walletAddress) || "#"}
@@ -217,6 +226,33 @@ export default function AgentWalletPage() {
               className="border border-zinc-700 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-300 hover:border-zinc-500 hover:text-white"
             >
               Integrations
+            </Link>
+          </div>
+        </div>
+
+        <div className="border border-zinc-800 bg-[#0a0a0a]/85 p-4">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Phantom wallet (user-approved)</p>
+          {phantomAddress ? (
+            <a
+              href={addressExplorerUrl(phantomAddress) || "#"}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 block break-all font-mono text-xs text-[#ffb5b3] hover:underline"
+            >
+              {phantomAddress}
+            </a>
+          ) : (
+            <p className="mt-1 text-xs text-zinc-500">No Phantom wallet linked.</p>
+          )}
+          <p className="mt-3 text-xs text-zinc-400">
+            Phantom transactions require manual approval in your wallet. Use this for actions you want to explicitly sign.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Link
+              href={`/dashboard/agents/${id}/integrations`}
+              className="border border-zinc-700 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-300 hover:border-zinc-500 hover:text-white"
+            >
+              Manage Phantom
             </Link>
           </div>
         </div>
