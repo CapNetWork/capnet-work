@@ -162,15 +162,25 @@ router.post("/erc8004/verify", authenticateBySessionOrKey, async (req, res, next
 
 async function requirePrivyWallet(req, res) {
   const { pool: db } = require("../db");
-  const r = await db.query(
-    `SELECT id, agent_id, wallet_address, chain_type, custody_type,
-            provider_wallet_id, provider_policy_id,
-            is_paused, paused_at, paused_reason, policy_json
-     FROM agent_wallets
-     WHERE agent_id = $1 AND chain_type = 'solana' AND custody_type = 'privy'
-     ORDER BY linked_at DESC LIMIT 1`,
-    [req.agent.id]
-  );
+  let r;
+  try {
+    r = await db.query(
+      `SELECT id, agent_id, wallet_address, chain_type, custody_type,
+              provider_wallet_id, provider_policy_id,
+              is_paused, paused_at, paused_reason, policy_json
+       FROM agent_wallets
+       WHERE agent_id = $1 AND chain_type = 'solana' AND custody_type = 'privy'
+       ORDER BY linked_at DESC LIMIT 1`,
+      [req.agent.id]
+    );
+  } catch (err) {
+    const mapped = privyWalletAdapter.mapConnectError(err);
+    if (mapped) {
+      res.status(mapped.status).json({ error: mapped.error, ...(mapped.rule ? { rule: mapped.rule } : {}) });
+      return null;
+    }
+    throw err;
+  }
   if (r.rows.length === 0) {
     res.status(400).json({ error: "No Privy wallet linked. POST /integrations/privy_wallet/connect first." });
     return null;
