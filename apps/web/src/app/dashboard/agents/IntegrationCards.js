@@ -301,6 +301,7 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
   const [error, setError] = useState("");
   const [formValues, setFormValues] = useState({});
   const [showForm, setShowForm] = useState(false);
+  const [phantomBusy, setPhantomBusy] = useState(false);
   const [moonpayBusy, setMoonpayBusy] = useState(false);
   const [moonpayWidgetParams, setMoonpayWidgetParams] = useState({ currencyCode: "", walletAddress: "" });
   const [fundingBusy, setFundingBusy] = useState(false);
@@ -334,6 +335,65 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
 
   function updateField(key, val) {
     setFormValues((prev) => ({ ...prev, [key]: val }));
+  }
+
+  async function handlePhantomConnect() {
+    setPhantomBusy(true);
+    setError("");
+    try {
+      const provider = typeof window !== "undefined" ? window?.phantom?.solana : null;
+      if (!provider?.isPhantom) {
+        throw new Error("Phantom not detected. Install the Phantom extension/app, then refresh.");
+      }
+
+      const connectRes = await provider.connect();
+      const pubkey =
+        connectRes?.publicKey?.toString?.() ||
+        provider?.publicKey?.toString?.() ||
+        "";
+      if (!pubkey) throw new Error("Phantom did not return a public key.");
+
+      const nonceRes = await fetch(`${API_URL}/integrations/phantom_wallet/nonce`, {
+        method: "GET",
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        cache: "no-store",
+      });
+      const nonceData = await nonceRes.json().catch(() => ({}));
+      if (!nonceRes.ok) throw new Error(nonceData.error || nonceRes.statusText);
+
+      const message = String(nonceData?.message || "");
+      const nonce = String(nonceData?.nonce || "");
+      if (!message || !nonce) throw new Error("Nonce response missing message/nonce.");
+
+      const encoder = new TextEncoder();
+      const signed = await provider.signMessage(encoder.encode(message), "utf8");
+      const sigBytes = signed?.signature || signed;
+      if (!sigBytes) throw new Error("Phantom did not return a signature.");
+
+      const signatureBase64 = btoa(String.fromCharCode(...new Uint8Array(sigBytes)));
+
+      const res = await fetch(`${API_URL}/integrations/phantom_wallet/connect`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify({
+          wallet_address: pubkey,
+          label: formValues.label || undefined,
+          nonce,
+          message,
+          signature: signatureBase64,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || res.statusText);
+
+      setShowForm(false);
+      setFormValues({});
+      onRefresh?.();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setPhantomBusy(false);
+    }
   }
 
   async function handleConnect(e) {
@@ -491,6 +551,35 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
               </button>
             </div>
           </>
+        )}
+
+        {!isConnected && integration.id === "phantom_wallet" && (
+          <div className="mt-4 border-t border-zinc-800/50 pt-4">
+            <p className="text-xs text-zinc-400">
+              Connect Phantom to link a user-owned Solana wallet. You&apos;ll approve a signature prompt to prove ownership.
+            </p>
+            <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+              <label className="block flex-1">
+                <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
+                  Label (optional)
+                </span>
+                <input
+                  value={formValues.label || ""}
+                  onChange={(e) => updateField("label", e.target.value)}
+                  placeholder="e.g. trading"
+                  className="w-full border border-zinc-700 bg-[#050505] px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:border-[#E53935]/50 focus:outline-none"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={handlePhantomConnect}
+                disabled={phantomBusy}
+                className="border border-[#E53935] bg-[#E53935] px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#c62828] disabled:opacity-50"
+              >
+                {phantomBusy ? "Connecting..." : "Connect Phantom"}
+              </button>
+            </div>
+          </div>
         )}
 
         {isConnected && integration.id === "moonpay" && (
