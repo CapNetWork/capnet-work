@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { addressExplorerUrl, txExplorerUrl, shortTxHash } from "@/lib/solana";
+import { Connection, PublicKey, Transaction, TransactionInstruction } from "@solana/web3.js";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || "http://localhost:4000";
 const SHOW_LEGACY_BANKR = process.env.NEXT_PUBLIC_SHOW_LEGACY_BANKR === "1";
@@ -296,6 +297,99 @@ function PrivyDevnetActions({
   );
 }
 
+function PhantomActions({ walletAddress, authHeaders, onRefresh, setParentError }) {
+  const [busy, setBusy] = useState("");
+  const [txHash, setTxHash] = useState("");
+
+  async function sendMemoTest() {
+    setBusy("memo");
+    setTxHash("");
+    setParentError("");
+    try {
+      const provider = typeof window !== "undefined" ? window?.phantom?.solana : null;
+      if (!provider?.isPhantom) throw new Error("Phantom not detected.");
+      const pubkey = provider?.publicKey;
+      if (!pubkey) throw new Error("Connect Phantom first.");
+
+      const rpc =
+        (process.env.NEXT_PUBLIC_SOLANA_CLUSTER || "mainnet-beta").toLowerCase() === "devnet"
+          ? "https://api.devnet.solana.com"
+          : "https://api.mainnet-beta.solana.com";
+      const conn = new Connection(rpc, "confirmed");
+
+      const feePayer = new PublicKey(walletAddress || pubkey.toString());
+      const { blockhash } = await conn.getLatestBlockhash("confirmed");
+      const memo = `clickr:test:${Date.now().toString(16)}`;
+      const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
+
+      const tx = new Transaction({ feePayer, recentBlockhash: blockhash }).add(
+        new TransactionInstruction({
+          keys: [],
+          programId: MEMO_PROGRAM_ID,
+          data: Buffer.from(memo, "utf8"),
+        })
+      );
+
+      const result = await provider.signAndSendTransaction(tx);
+      const signature = result?.signature || result?.hash || result;
+      if (!signature) throw new Error("Phantom did not return a transaction signature.");
+      setTxHash(String(signature));
+
+      // Best-effort: record tx hash server-side (endpoint added in a later step).
+      try {
+        await fetch(`${API_URL}/integrations/phantom_wallet/record-transaction`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...authHeaders },
+          body: JSON.stringify({ tx_hash: String(signature), tx_type: "memo_test", metadata: { memo } }),
+        });
+      } catch {
+        /* best-effort */
+      }
+
+      onRefresh?.();
+    } catch (err) {
+      setParentError(err.message);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  return (
+    <div className="mb-3 border-t border-zinc-800/50 pt-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Phantom approvals</p>
+        <span className="border border-zinc-700 bg-[#050505] px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-zinc-300">
+          User-approved
+        </span>
+      </div>
+      <p className="mt-1 text-xs leading-relaxed text-zinc-400">
+        Phantom is user-owned. Each transaction requires your approval in the wallet.
+      </p>
+      <div className="mt-3 space-y-1 border border-zinc-800 bg-[#050505] p-3">
+        <StatusRow label="wallet" value={walletAddress} href={addressExplorerUrl(walletAddress)} />
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={sendMemoTest}
+          disabled={Boolean(busy)}
+          className="border border-[#E53935]/60 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-[#ffb5b3] transition-colors hover:bg-[#E53935]/10 disabled:opacity-50"
+        >
+          {busy === "memo" ? "Sending..." : "Send Memo test"}
+        </button>
+      </div>
+      {txHash && (
+        <p className="mt-3 text-xs text-zinc-400">
+          Submitted{" "}
+          <a href={txExplorerUrl(txHash)} target="_blank" rel="noopener noreferrer" className="font-mono text-sky-200 hover:underline">
+            {shortTxHash(txHash)}
+          </a>
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, onRefresh }) {
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState("");
@@ -551,6 +645,15 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
               </button>
             </div>
           </>
+        )}
+
+        {isConnected && integration.id === "phantom_wallet" && (
+          <PhantomActions
+            walletAddress={currentStatus?.wallet_address}
+            authHeaders={authHeaders}
+            onRefresh={onRefresh}
+            setParentError={setError}
+          />
         )}
 
         {!isConnected && integration.id === "phantom_wallet" && (
