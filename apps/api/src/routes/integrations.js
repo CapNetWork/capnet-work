@@ -232,6 +232,9 @@ router.post("/privy_wallet/devnet-memo-test", authenticateBySessionOrKey, wallet
   } catch (err) {
     const mapped = privyWalletAdapter.mapConnectError(err);
     if (mapped) return res.status(mapped.status).json({ error: mapped.error, ...(mapped.rule ? { rule: mapped.rule } : {}) });
+    if (err && typeof err.status === "number") {
+      return res.status(err.status).json({ error: err.message || "Request failed", code: err.code || null });
+    }
     next(err);
   }
 });
@@ -310,6 +313,9 @@ router.post("/privy_wallet/devnet-airdrop", authenticateBySessionOrKey, walletFa
   } catch (err) {
     const mapped = privyWalletAdapter.mapConnectError(err);
     if (mapped) return res.status(mapped.status).json({ error: mapped.error });
+    if (err && typeof err.status === "number") {
+      return res.status(err.status).json({ error: err.message || "Request failed", code: err.code || null });
+    }
     next(err);
   }
 });
@@ -320,8 +326,13 @@ router.get("/privy_wallet/balance", authenticateBySessionOrKey, async (req, res,
   try {
     const privyDriver = require("../lib/drivers/privy");
     const balance = await privyDriver.getBalance(walletRow.wallet_address);
-    res.json({ wallet_address: walletRow.wallet_address, ...balance });
+    res.json({ wallet_address: walletRow.wallet_address, solana_cluster: privyDriver.getSolanaCluster(), ...balance });
   } catch (err) {
+    const mapped = privyWalletAdapter.mapConnectError(err);
+    if (mapped) return res.status(mapped.status).json({ error: mapped.error });
+    if (err && typeof err.status === "number") {
+      return res.status(err.status).json({ error: err.message || "Request failed", code: err.code || null });
+    }
     next(err);
   }
 });
