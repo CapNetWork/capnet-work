@@ -5,11 +5,19 @@
  *
  * @privy-io/node is ESM-only so we lazy-load it via dynamic import().
  */
-const { Connection, PublicKey, LAMPORTS_PER_SOL } = require("@solana/web3.js");
+const {
+  Connection,
+  PublicKey,
+  LAMPORTS_PER_SOL,
+  Transaction,
+  TransactionInstruction,
+} = require("@solana/web3.js");
 
 const PRIVY_APP_ID = process.env.PRIVY_APP_ID || "";
 const PRIVY_APP_SECRET = process.env.PRIVY_APP_SECRET || "";
 const SOLANA_RPC_URL = process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
+const SOLANA_CLUSTER = (process.env.SOLANA_CLUSTER || "").trim().toLowerCase();
+const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
 
 let _privyPromise;
 async function getPrivyClient() {
@@ -33,6 +41,27 @@ function getSolanaConnection() {
     _connection = new Connection(SOLANA_RPC_URL, "confirmed");
   }
   return _connection;
+}
+
+function getSolanaCluster() {
+  if (SOLANA_CLUSTER) return SOLANA_CLUSTER;
+  const rpc = SOLANA_RPC_URL.toLowerCase();
+  if (rpc.includes("devnet")) return "devnet";
+  if (rpc.includes("testnet")) return "testnet";
+  if (rpc.includes("localhost") || rpc.includes("127.0.0.1")) return "localnet";
+  if (rpc.includes("mainnet")) return "mainnet-beta";
+  return "custom";
+}
+
+function isDevnet() {
+  return getSolanaCluster() === "devnet";
+}
+
+function requireDevnet(action) {
+  if (isDevnet()) return;
+  const err = new Error(`${action} is only available when SOLANA_CLUSTER=devnet or SOLANA_RPC_URL points to devnet`);
+  err.code = "SOLANA_DEVNET_REQUIRED";
+  throw err;
 }
 
 function validateSolanaAddress(address) {
@@ -67,6 +96,62 @@ async function getBalance(address) {
   return {
     lamports,
     sol: lamports / LAMPORTS_PER_SOL,
+  };
+}
+
+async function requestDevnetAirdrop(address, sol = 1) {
+  requireDevnet("Devnet airdrop");
+  const amount = Number(sol);
+  if (!Number.isFinite(amount) || amount <= 0 || amount > 2) {
+    const err = new Error("sol must be a positive number up to 2");
+    err.code = "SOLANA_BAD_AIRDROP_AMOUNT";
+    throw err;
+  }
+  const conn = getSolanaConnection();
+  const pubkey = new PublicKey(address);
+  const lamports = Math.round(amount * LAMPORTS_PER_SOL);
+  const signature = await conn.requestAirdrop(pubkey, lamports);
+  try {
+    const latest = await conn.getLatestBlockhash("confirmed");
+    await conn.confirmTransaction({ signature, ...latest }, "confirmed");
+  } catch {
+    // Some public devnet faucets return before confirmation is queryable.
+  }
+  return { txHash: signature, lamports, sol: lamports / LAMPORTS_PER_SOL };
+}
+
+async function buildMemoTransaction(walletAddress, memo) {
+  if (!validateSolanaAddress(walletAddress)) {
+    const err = new Error("walletAddress must be a valid Solana address");
+    err.code = "SOLANA_INVALID_ADDRESS";
+    throw err;
+  }
+  if (!memo || typeof memo !== "string") {
+    const err = new Error("memo is required");
+    err.code = "SOLANA_MISSING_MEMO";
+    throw err;
+  }
+
+  const conn = getSolanaConnection();
+  const feePayer = new PublicKey(walletAddress);
+  const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash("confirmed");
+  const tx = new Transaction({
+    feePayer,
+    recentBlockhash: blockhash,
+  }).add(
+    new TransactionInstruction({
+      keys: [],
+      programId: MEMO_PROGRAM_ID,
+      data: Buffer.from(memo, "utf8"),
+    })
+  );
+
+  return {
+    transaction: tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64"),
+    memo,
+    programId: MEMO_PROGRAM_ID.toBase58(),
+    recentBlockhash: blockhash,
+    lastValidBlockHeight,
   };
 }
 
@@ -121,10 +206,14 @@ async function updatePolicy(walletRow, policyUpdate) {
 module.exports = {
   createWallet,
   getBalance,
+  requestDevnetAirdrop,
+  buildMemoTransaction,
   signMessage,
   signAndSend,
   getPolicy,
   updatePolicy,
   validateSolanaAddress,
   getSolanaConnection,
+  getSolanaCluster,
+  isDevnet,
 };

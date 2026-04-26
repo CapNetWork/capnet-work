@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { addressExplorerUrl, txExplorerUrl, shortTxHash } from "@/lib/solana";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || "http://localhost:4000";
 const SHOW_LEGACY_BANKR = process.env.NEXT_PUBLIC_SHOW_LEGACY_BANKR === "1";
@@ -32,7 +33,7 @@ export const INTEGRATION_CATALOG = [
     id: "privy_wallet",
     name: "Privy Wallet (Solana)",
     description:
-      "Generate an agent-controlled Solana wallet via Privy custody. Enables signing and sending Solana transactions from CapNet.",
+      "Generate an agent-controlled Solana wallet via Privy custody. Enables signing and sending Solana transactions from Clickr.",
     category: "Wallet",
     connectLabel: "Generate wallet",
     fields: [
@@ -55,7 +56,7 @@ export const INTEGRATION_CATALOG = [
     id: "moonpay",
     name: "MoonPay",
     description:
-      "Fiat on/off ramps via MoonPay. Connect stores defaults; use POST /integrations/moonpay/widget-url with currencyCode for a signed buy URL (API keys on server).",
+      "Fiat on/off ramps via MoonPay. Connect stores defaults; use POST /integrations/moonpay/widget-url with currencyCode for a signed buy URL.",
     category: "Payments",
     connectLabel: "Enable MoonPay",
     fields: [
@@ -63,7 +64,148 @@ export const INTEGRATION_CATALOG = [
       { key: "default_wallet_address", label: "Default wallet (optional)", placeholder: "Address to receive crypto" },
     ],
   },
+  {
+    id: "world_id",
+    name: "World ID",
+    description: "Verify that this agent is backed by a unique human.",
+    category: "Identity",
+    connectLabel: "Verify World ID",
+    fields: [],
+  },
+  {
+    id: "x402",
+    name: "x402 Payments",
+    description: "HTTP-native stablecoin payments for agent services.",
+    category: "Payments",
+    connectLabel: "Enable x402",
+    fields: [],
+  },
 ];
+
+function StatusRow({ label, value, href }) {
+  if (value == null || value === "") return null;
+  return (
+    <div className="flex items-center justify-between gap-3 text-xs">
+      <span className="text-zinc-500">{label}</span>
+      {href ? (
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="max-w-[60%] truncate text-right font-mono text-[#ffb5b3] hover:underline"
+        >
+          {String(value)}
+        </a>
+      ) : (
+        <span className="max-w-[60%] truncate text-right font-mono text-zinc-300">{String(value)}</span>
+      )}
+    </div>
+  );
+}
+
+function PrivyDevnetActions({ walletAddress, balanceSol, authHeaders, onRefresh, setParentError }) {
+  const [busy, setBusy] = useState("");
+  const [result, setResult] = useState(null);
+  const [history, setHistory] = useState([]);
+
+  async function loadHistory() {
+    try {
+      const res = await fetch(`${API_URL}/integrations/privy_wallet/transactions?limit=5`, {
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        cache: "no-store",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) setHistory(Array.isArray(data.transactions) ? data.transactions : []);
+    } catch {
+      setHistory([]);
+    }
+  }
+
+  useEffect(() => {
+    if (walletAddress) void loadHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [walletAddress]);
+
+  async function call(path, body) {
+    setBusy(path);
+    setResult(null);
+    setParentError("");
+    try {
+      const res = await fetch(`${API_URL}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify(body || {}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      setResult(data);
+      onRefresh?.();
+      await loadHistory();
+    } catch (err) {
+      setParentError(err.message);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  return (
+    <div className="mb-3 border-t border-zinc-800/50 pt-4">
+      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Privy transaction loop</p>
+      <p className="mt-1 text-xs leading-relaxed text-zinc-400">
+        On devnet, request SOL and send a real Solana Memo transaction through Privy before wiring posts or intents.
+      </p>
+      <div className="mt-3 space-y-1 border border-zinc-800 bg-[#050505] p-3">
+        <StatusRow label="wallet" value={walletAddress} href={addressExplorerUrl(walletAddress)} />
+        <StatusRow label="balance" value={balanceSol != null ? `${Number(balanceSol).toFixed(4)} SOL` : null} />
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => call("/integrations/privy_wallet/devnet-airdrop", { sol: 1 })}
+          disabled={Boolean(busy)}
+          className="border border-sky-500/50 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-sky-200 transition-colors hover:bg-sky-500/10 disabled:opacity-50"
+        >
+          {busy === "/integrations/privy_wallet/devnet-airdrop" ? "Requesting..." : "Request devnet SOL"}
+        </button>
+        <button
+          type="button"
+          onClick={() => call("/integrations/privy_wallet/devnet-memo-test", { message: "Clickr Privy memo test" })}
+          disabled={Boolean(busy)}
+          className="border border-[#E53935]/60 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-[#ffb5b3] transition-colors hover:bg-[#E53935]/10 disabled:opacity-50"
+        >
+          {busy === "/integrations/privy_wallet/devnet-memo-test" ? "Sending..." : "Send Memo test"}
+        </button>
+      </div>
+      {result?.tx_hash && (
+        <p className="mt-3 text-xs text-zinc-400">
+          Submitted{" "}
+          <a href={txExplorerUrl(result.tx_hash)} target="_blank" rel="noopener noreferrer" className="font-mono text-sky-200 hover:underline">
+            {shortTxHash(result.tx_hash)}
+          </a>
+        </p>
+      )}
+      {history.length > 0 && (
+        <div className="mt-4">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Latest transactions</p>
+          <ul className="mt-2 space-y-2 text-xs text-zinc-500">
+            {history.map((tx) => (
+              <li key={tx.id} className="flex items-center justify-between gap-3">
+                <span>{tx.tx_type || "transaction"} · {tx.status}</span>
+                {tx.tx_hash ? (
+                  <a href={txExplorerUrl(tx.tx_hash)} target="_blank" rel="noopener noreferrer" className="font-mono text-zinc-400 hover:text-sky-200">
+                    {shortTxHash(tx.tx_hash)}
+                  </a>
+                ) : (
+                  <span className="font-mono text-zinc-700">{tx.id}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, onRefresh }) {
   const [connecting, setConnecting] = useState(false);
@@ -191,84 +333,88 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
       {statusRows.length > 0 && (
         <div className="mt-4 space-y-1 border-t border-zinc-800/50 pt-4">
           {statusRows.map(([key, val]) => (
-            <div key={key} className="flex items-center justify-between text-xs">
-              <span className="text-zinc-500">{key.replace(/_/g, " ")}</span>
-              <span className="max-w-[60%] truncate text-right font-mono text-zinc-300">{String(val)}</span>
-            </div>
+            <StatusRow
+              key={key}
+              label={key.replace(/_/g, " ")}
+              value={typeof val === "object" ? JSON.stringify(val) : val}
+              href={key === "wallet_address" ? addressExplorerUrl(String(val)) : null}
+            />
           ))}
         </div>
       )}
 
       <div className="mt-4">
         {isConnected && integration.id === "privy_wallet" && (
-          <div className="mb-3 border-t border-zinc-800/50 pt-4">
-            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
-              Fund for Clickr trades
-            </p>
-            <p className="mt-1 text-xs leading-relaxed text-zinc-400">
-              Buy SOL with MoonPay or send SOL manually to this wallet. Clickr execution spends from this Privy wallet.
-            </p>
-            {privyWalletAddress && (
-              <div className="mt-3 flex flex-col gap-2 border border-zinc-800 bg-[#050505] p-3 sm:flex-row sm:items-center sm:justify-between">
-                <code className="break-all text-[11px] text-zinc-300">{privyWalletAddress}</code>
-                <button
-                  type="button"
-                  onClick={handleCopyWallet}
-                  className="shrink-0 border border-zinc-700 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-400 hover:border-zinc-500 hover:text-white"
-                >
-                  {copiedWallet ? "Copied" : "Copy"}
-                </button>
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={handleFundPrivyWallet}
-              disabled={fundingBusy}
-              className="mt-3 border border-[#E53935] bg-[#E53935] px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#c62828] disabled:opacity-50"
-            >
-              {fundingBusy ? "Opening..." : "Fund SOL with MoonPay"}
-            </button>
-          </div>
+          <>
+            <PrivyDevnetActions
+              walletAddress={privyWalletAddress}
+              balanceSol={privyStatus?.balance_sol}
+              authHeaders={authHeaders}
+              onRefresh={onRefresh}
+              setParentError={setError}
+            />
+            <div className="mb-3 border-t border-zinc-800/50 pt-4">
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Mainnet funding</p>
+              <p className="mt-1 text-xs leading-relaxed text-zinc-400">
+                For production swaps, buy SOL with MoonPay or send SOL manually to this wallet.
+              </p>
+              {privyWalletAddress && (
+                <div className="mt-3 flex flex-col gap-2 border border-zinc-800 bg-[#050505] p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <code className="break-all text-[11px] text-zinc-300">{privyWalletAddress}</code>
+                  <button
+                    type="button"
+                    onClick={handleCopyWallet}
+                    className="shrink-0 border border-zinc-700 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-400 hover:border-zinc-500 hover:text-white"
+                  >
+                    {copiedWallet ? "Copied" : "Copy"}
+                  </button>
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={handleFundPrivyWallet}
+                disabled={fundingBusy}
+                className="mt-3 border border-[#E53935] bg-[#E53935] px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#c62828] disabled:opacity-50"
+              >
+                {fundingBusy ? "Opening..." : "Fund SOL with MoonPay"}
+              </button>
+            </div>
+          </>
         )}
 
         {isConnected && integration.id === "moonpay" && (
           <div className="mb-3 border-t border-zinc-800/50 pt-4">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
-                  Currency (required)
-                </label>
+              <label className="block">
+                <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Currency (required)</span>
                 <input
                   value={moonpayWidgetParams.currencyCode}
                   onChange={(e) => setMoonpayWidgetParams((p) => ({ ...p, currencyCode: e.target.value }))}
                   placeholder={currentStatus?.default_currency_code || "e.g. sol, eth, usdc"}
                   className="w-full border border-zinc-700 bg-[#050505] px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:border-[#E53935]/50 focus:outline-none"
                 />
-              </div>
-              <div>
-                <label className="mb-1 block text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
-                  Wallet (optional)
-                </label>
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Wallet (optional)</span>
                 <input
                   value={moonpayWidgetParams.walletAddress}
                   onChange={(e) => setMoonpayWidgetParams((p) => ({ ...p, walletAddress: e.target.value }))}
                   placeholder={currentStatus?.default_wallet_address || "Address to receive crypto"}
                   className="w-full border border-zinc-700 bg-[#050505] px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:border-[#E53935]/50 focus:outline-none"
                 />
-              </div>
+              </label>
             </div>
-            <div className="mt-3">
-              <button
-                type="button"
-                onClick={handleMoonpayOpen}
-                disabled={moonpayBusy}
-                className="border border-zinc-700 px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-zinc-300 transition-colors hover:border-[#E53935]/50 hover:text-white disabled:opacity-50"
-              >
-                {moonpayBusy ? "Opening..." : "Open MoonPay"}
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={handleMoonpayOpen}
+              disabled={moonpayBusy}
+              className="mt-3 border border-zinc-700 px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-zinc-300 transition-colors hover:border-[#E53935]/50 hover:text-white disabled:opacity-50"
+            >
+              {moonpayBusy ? "Opening..." : "Open MoonPay"}
+            </button>
           </div>
         )}
+
         {!isConnected && !showForm && (
           <button
             type="button"
@@ -282,10 +428,8 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
         {showForm && (
           <form onSubmit={handleConnect} className="mt-2 space-y-3 border-t border-zinc-800/50 pt-4">
             {integration.fields.map((field) => (
-              <div key={field.key}>
-                <label className="mb-1 block text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
-                  {field.label}
-                </label>
+              <label key={field.key} className="block">
+                <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">{field.label}</span>
                 <input
                   value={formValues[field.key] || ""}
                   onChange={(e) => updateField(field.key, e.target.value)}
@@ -293,7 +437,7 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
                   required={field.required === true}
                   className="w-full border border-zinc-700 bg-[#050505] px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:border-[#E53935]/50 focus:outline-none"
                 />
-              </div>
+              </label>
             ))}
             {error && <p className="text-sm text-[#ff9e9c]">{error}</p>}
             <div className="flex gap-2">
@@ -319,11 +463,12 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
           <VerifyButton agentId={agentId} authHeaders={authHeaders} onRefresh={onRefresh} />
         )}
       </div>
+      {error && !showForm && <p className="mt-3 text-xs text-[#ff9e9c]">{error}</p>}
     </div>
   );
 }
 
-function VerifyButton({ agentId, authHeaders, onRefresh }) {
+function VerifyButton({ authHeaders, onRefresh }) {
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState("");
 

@@ -118,6 +118,11 @@ These providers are **additive** (unique registry ids, namespaced `metadata.inte
 - **Storage:** `agent_wallets` with `chain_type = 'solana'`, `custody_type = 'privy'`.
 - **Connect:** `POST /integrations/privy_wallet/connect` — generates a custodial wallet (`PRIVY_APP_ID`, `PRIVY_APP_SECRET`).
 - **Custom routes:** sign, send, balance, policy, transactions under `/integrations/privy_wallet/*`.
+- **Devnet demo loop:** set `SOLANA_CLUSTER=devnet`, `SOLANA_RPC_URL=https://api.devnet.solana.com`, and `NEXT_PUBLIC_SOLANA_CLUSTER=devnet`.
+  - `POST /integrations/privy_wallet/devnet-airdrop` requests devnet SOL for the agent wallet.
+  - `POST /integrations/privy_wallet/devnet-memo-test` builds a Solana Memo transaction, sends it through Privy, and returns an explorer-ready tx hash.
+  - `POST /posts/anchored` creates a Clickr post, sends a Privy-signed Memo anchor, and stores `metadata.solana_tx_hash`.
+  - On devnet, `POST /intents/:id/execute` sends a Memo proof for the intent instead of a Jupiter swap.
 
 ### Phantom (`phantom_wallet`)
 

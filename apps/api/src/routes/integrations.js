@@ -12,6 +12,7 @@ const {
 const bankrAdapter = require("../integrations/providers/bankr");
 const erc8004Adapter = require("../integrations/providers/erc8004");
 const privyWalletAdapter = require("../integrations/providers/privy-wallet");
+const solanaMemoAnchor = require("../services/solana-memo-anchor");
 const phantomWalletAdapter = require("../integrations/providers/phantom-wallet");
 const moonpayAdapter = require("../integrations/providers/moonpay");
 const worldIdAdapter = require("../integrations/providers/world-id");
@@ -43,6 +44,15 @@ const walletSendLimiter = rateLimit({
   max: 5,
   keyGenerator: (req) => req.agent?.id || "unknown",
   message: { error: "Rate limit exceeded for wallet send (5/min)" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const walletFaucetLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 2,
+  keyGenerator: (req) => req.agent?.id || "unknown",
+  message: { error: "Rate limit exceeded for devnet faucet (2/10min)" },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -167,6 +177,62 @@ router.post("/privy_wallet/send", authenticateBySessionOrKey, walletSendLimiter,
     const authMethod = req.clickrUser ? "session" : "api_key";
     const result = await privyWalletAdapter.send(req.agent.id, walletRow, req.body || {}, authMethod);
     res.json(result);
+  } catch (err) {
+    const mapped = privyWalletAdapter.mapConnectError(err);
+    if (mapped) return res.status(mapped.status).json({ error: mapped.error });
+    next(err);
+  }
+});
+
+router.post("/privy_wallet/devnet-memo-test", authenticateBySessionOrKey, walletSendLimiter, async (req, res, next) => {
+  const walletRow = await requirePrivyWallet(req, res);
+  if (!walletRow) return;
+  try {
+    const authMethod = req.clickrUser ? "session" : "api_key";
+    const result = await solanaMemoAnchor.anchorTestMemo({
+      agentId: req.agent.id,
+      walletRow,
+      walletAddress: walletRow.wallet_address,
+      message: req.body?.message,
+      authMethod,
+    });
+    res.json(result);
+  } catch (err) {
+    const mapped = privyWalletAdapter.mapConnectError(err);
+    if (mapped) return res.status(mapped.status).json({ error: mapped.error });
+    next(err);
+  }
+});
+
+router.post("/privy_wallet/devnet-airdrop", authenticateBySessionOrKey, walletFaucetLimiter, async (req, res, next) => {
+  const walletRow = await requirePrivyWallet(req, res);
+  if (!walletRow) return;
+  try {
+    const privyDriver = require("../lib/drivers/privy");
+    const requestedSol = req.body?.sol == null ? 1 : Number(req.body.sol);
+    let before = null;
+    try {
+      before = await privyDriver.getBalance(walletRow.wallet_address);
+    } catch {
+      before = null;
+    }
+    const airdrop = await privyDriver.requestDevnetAirdrop(walletRow.wallet_address, requestedSol);
+    let after = null;
+    try {
+      after = await privyDriver.getBalance(walletRow.wallet_address);
+    } catch {
+      after = null;
+    }
+    res.json({
+      ok: true,
+      wallet_address: walletRow.wallet_address,
+      solana_cluster: privyDriver.getSolanaCluster(),
+      requested_sol: airdrop.sol,
+      requested_lamports: airdrop.lamports,
+      tx_hash: airdrop.txHash,
+      balance_before: before,
+      balance_after: after,
+    });
   } catch (err) {
     const mapped = privyWalletAdapter.mapConnectError(err);
     if (mapped) return res.status(mapped.status).json({ error: mapped.error });

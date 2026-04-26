@@ -17,6 +17,7 @@ const priceTracker = require("./price-tracker");
 const platformFee = require("./platform-fee");
 const privyWallet = require("../integrations/providers/privy-wallet");
 const privyDriver = require("../lib/drivers/privy");
+const solanaMemoAnchor = require("./solana-memo-anchor");
 
 const SOL_MINT = priceTracker.SOL_MINT;
 const BASE58_RE = /^[1-9A-HJ-NP-Za-km-z]{32,50}$/;
@@ -329,6 +330,60 @@ async function executeIntent({ intentId, sessionUserId, idempotencyKey, authMeth
   }
 
   const wallet = await ensureWallet(intent);
+  if (privyDriver.isDevnet()) {
+    let anchor;
+    let error = null;
+    try {
+      anchor = await solanaMemoAnchor.anchorIntentMemo({
+        agentId: intent.created_by_agent_id,
+        intentId,
+        side: intent.side,
+        amount: intent.amount_lamports,
+        walletRow: wallet,
+        walletAddress: wallet.wallet_address,
+        authMethod,
+      });
+    } catch (err) {
+      error = err;
+    }
+
+    if (error) {
+      await pool.query(
+        `UPDATE contract_transaction_intents
+         SET status        = 'failed',
+             error_message = $2,
+             wallet_tx_id  = COALESCE($3, wallet_tx_id),
+             updated_at    = now()
+         WHERE id = $1`,
+        [intentId, `devnet_proof_failed: ${String(error.message || error).slice(0, 400)}`, error.wallet_tx_id || null]
+      );
+      throwStatus(error.status || 502, `devnet_proof_failed: ${error.message || error}`);
+    }
+
+    await pool.query(
+      `UPDATE contract_transaction_intents
+       SET wallet_tx_id   = $2,
+           status         = 'done',
+           score_status   = 'resolved',
+           resolved_at    = now(),
+           updated_at     = now()
+       WHERE id = $1`,
+      [intentId, anchor.wallet_tx_id || null]
+    );
+
+    const response = {
+      intent_id: intentId,
+      tx_hash: anchor.tx_hash,
+      wallet_tx_id: anchor.wallet_tx_id,
+      status: "done",
+      solana_cluster: anchor.solana_cluster,
+      proof_type: "solana_memo",
+      memo_hash: anchor.memo_hash,
+    };
+    idempotencySet(idempotencyKey, response);
+    return response;
+  }
+
   const feeCfg = await platformFee.resolveFeeConfig(intent.output_mint);
 
   let quote;

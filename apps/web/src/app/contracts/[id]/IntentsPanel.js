@@ -8,6 +8,8 @@ import { getApiBaseUrl } from "@/lib/api";
 import { agentProfileHref } from "@/lib/agentProfile";
 
 const API_URL = getApiBaseUrl();
+const SOLANA_CLUSTER = (process.env.NEXT_PUBLIC_SOLANA_CLUSTER || "mainnet-beta").toLowerCase();
+const IS_DEVNET = SOLANA_CLUSTER === "devnet";
 
 function fmtBps(bps) {
   if (bps == null) return "—";
@@ -111,7 +113,10 @@ export default function IntentsPanel({ contractId, initialIntents }) {
   }
 
   async function execute(intentId) {
-    if (!confirm("Execute this swap on-chain? This will spend from your agent's funded Privy Solana wallet.")) return;
+    const prompt = IS_DEVNET
+      ? "Send a devnet Solana Memo proof for this intent through your agent's Privy wallet?"
+      : "Execute this swap on-chain? This will spend from your agent's funded Privy Solana wallet.";
+    if (!confirm(prompt)) return;
     setBusy(true);
     setErr(null);
     try {
@@ -129,7 +134,7 @@ export default function IntentsPanel({ contractId, initialIntents }) {
       // Refresh intents
       const fresh = await fetch(`${API_URL}/contracts/${contractId}/intents?limit=50`, { cache: "no-store" });
       if (fresh.ok) setIntents(await fresh.json());
-      alert(`Submitted: ${data.tx_hash || data.wallet_tx_id}`);
+      alert(`${data.proof_type === "solana_memo" ? "Proof submitted" : "Submitted"}: ${data.tx_hash || data.wallet_tx_id}`);
     } catch (e) {
       setErr(e.message);
     } finally {
@@ -141,7 +146,11 @@ export default function IntentsPanel({ contractId, initialIntents }) {
     <div className="border border-zinc-900 bg-[#0a0a0a]/90">
       <div className="border-b border-zinc-900 px-4 py-3">
         <h2 className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-400">Stake an intent</h2>
-        <p className="mt-1 text-[10px] text-zinc-500">Anchored to a Jupiter v6 quote. Paper PnL tracks it vs live price.</p>
+        <p className="mt-1 text-[10px] text-zinc-500">
+          {IS_DEVNET
+            ? "Devnet execution sends a real Solana Memo proof through Privy. Paper PnL still tracks quoted intent data."
+            : "Anchored to a Jupiter v6 quote. Paper PnL tracks it vs live price."}
+        </p>
       </div>
 
       <div className="space-y-3 px-4 py-4">
@@ -198,11 +207,13 @@ export default function IntentsPanel({ contractId, initialIntents }) {
         )}
         {err && <div className="text-xs text-[#ff9e9c]">{err}</div>}
         <div className="text-[10px] text-zinc-600">
-          Execution uses your agent&apos;s Privy Solana wallet.{" "}
+          {IS_DEVNET
+            ? "Devnet execution uses your agent's Privy Solana wallet to broadcast a Memo proof. "
+            : "Execution uses your agent's Privy Solana wallet. "}
           <Link href={fundingHref} className="text-zinc-400 underline hover:text-white">
-            Fund it with SOL via MoonPay
+            {IS_DEVNET ? "Request devnet SOL" : "Fund it with SOL via MoonPay"}
           </Link>{" "}
-          before sending real transactions. Platform fee is shown in simulation.
+          before sending real transactions. {IS_DEVNET ? "No Jupiter swap is sent on devnet." : "Platform fee is shown in simulation."}
         </div>
       </div>
 

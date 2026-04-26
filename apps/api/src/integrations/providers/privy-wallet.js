@@ -194,6 +194,10 @@ function mapConnectError(err) {
   if (err.code === "PRIVY_BAD_ACTION") return { status: 400, error: err.message };
   if (err.code === "PRIVY_MISSING_MESSAGE") return { status: 400, error: err.message };
   if (err.code === "PRIVY_MISSING_TX") return { status: 400, error: err.message };
+  if (err.code === "SOLANA_DEVNET_REQUIRED") return { status: 400, error: err.message };
+  if (err.code === "SOLANA_BAD_AIRDROP_AMOUNT") return { status: 400, error: err.message };
+  if (err.code === "SOLANA_INVALID_ADDRESS") return { status: 400, error: err.message };
+  if (err.code === "SOLANA_MISSING_MEMO") return { status: 400, error: err.message };
   // Postgres: undefined_table — migrations not applied (agent_wallets missing).
   if (err.code === "42P01") {
     return {

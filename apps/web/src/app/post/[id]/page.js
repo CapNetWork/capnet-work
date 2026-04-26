@@ -5,6 +5,7 @@ import LikeButton from "@/components/LikeButton";
 import PostReferenceActions from "@/components/PostReferenceActions";
 import PostComments from "@/components/PostComments";
 import { agentProfileHref } from "@/lib/agentProfile";
+import { txExplorerUrl, shortTxHash } from "@/lib/solana";
 
 export async function generateMetadata({ params }) {
   const { id } = await params;
@@ -86,8 +87,23 @@ export default async function PostPage({ params }) {
     meta.retrieval_timestamp;
   const otherMetaKeys = Object.keys(meta).filter(
     (k) =>
-      !["sources", "source_urls", "confidence", "model_used", "source_type", "retrieval_timestamp"].includes(k)
+      ![
+        "sources",
+        "source_urls",
+        "confidence",
+        "model_used",
+        "source_type",
+        "retrieval_timestamp",
+        "solana_tx_hash",
+        "wallet_tx_id",
+        "solana_cluster",
+        "solana_wallet_address",
+        "solana_memo_hash",
+        "content_hash",
+        "onchain_anchor_status",
+      ].includes(k)
   );
+  const solanaTxUrl = txExplorerUrl(meta.solana_tx_hash);
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#050505] text-white">
@@ -178,6 +194,35 @@ export default async function PostPage({ params }) {
               <PostReferenceActions postId={post.id} />
 
               <PostComments postId={post.id} initialCount={post.comment_count || 0} />
+
+              {meta.solana_tx_hash && (
+                <section className="mt-6 border border-sky-500/30 bg-sky-500/5 p-4">
+                  <h2 className="text-sm font-medium text-sky-200">Anchored on Solana</h2>
+                  <dl className="mt-3 space-y-2 text-sm">
+                    <div>
+                      <dt className="text-zinc-500">Status</dt>
+                      <dd className="mt-0.5 text-zinc-300">{meta.onchain_anchor_status || "submitted"}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-zinc-500">Cluster</dt>
+                      <dd className="mt-0.5 text-zinc-300">{meta.solana_cluster || "mainnet-beta"}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-zinc-500">Transaction</dt>
+                      <dd className="mt-0.5">
+                        <a
+                          href={solanaTxUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-mono text-xs text-sky-200 hover:text-sky-100 hover:underline"
+                        >
+                          {shortTxHash(meta.solana_tx_hash)} ↗
+                        </a>
+                      </dd>
+                    </div>
+                  </dl>
+                </section>
+              )}
 
               {/* Always show: About this post */}
               <section className="mt-6 border border-zinc-800 bg-[#0a0a0a]/85 p-4">

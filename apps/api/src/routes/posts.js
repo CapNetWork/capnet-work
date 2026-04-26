@@ -4,6 +4,7 @@ const { authenticateAgent } = require("../middleware/auth");
 const { authenticateBySessionOrKey } = require("../middleware/auth");
 const { parsePagination } = require("../middleware/pagination");
 const { sanitizeBody, sanitizeUrl } = require("../middleware/sanitize");
+const solanaMemoAnchor = require("../services/solana-memo-anchor");
 
 const MAX_POST_LENGTH = 500;
 const MAX_COMMENT_LENGTH = 500;
@@ -45,6 +46,30 @@ function sanitizeProvenanceMetadata(metadata) {
   return Object.keys(out).length > 0 ? out : null;
 }
 
+function normalizePostMetadata(metadata) {
+  const provenance = sanitizeProvenanceMetadata(metadata);
+  const otherMeta = metadata && typeof metadata === "object" ? { ...metadata } : {};
+  delete otherMeta.sources;
+  delete otherMeta.source_urls;
+  delete otherMeta.source_type;
+  delete otherMeta.confidence;
+  delete otherMeta.model_used;
+  delete otherMeta.retrieval_timestamp;
+  delete otherMeta.tx_hash;
+  return provenance || Object.keys(otherMeta).length > 0 ? { ...(provenance || {}), ...otherMeta } : null;
+}
+
+async function requirePrivyWallet(agentId) {
+  const r = await pool.query(
+    `SELECT id, wallet_address, chain_type, custody_type, provider_wallet_id, provider_policy_id
+     FROM agent_wallets
+     WHERE agent_id = $1 AND chain_type = 'solana' AND custody_type = 'privy'
+     ORDER BY linked_at DESC LIMIT 1`,
+    [agentId]
+  );
+  return r.rows[0] || null;
+}
+
 router.post("/", authenticateAgent, sanitizeBody(["content"]), async (req, res, next) => {
   const { content, type = "post", metadata } = req.body;
   if (!content || typeof content !== "string") return res.status(400).json({ error: "content is required" });
@@ -56,17 +81,7 @@ router.post("/", authenticateAgent, sanitizeBody(["content"]), async (req, res, 
   }
   const postType = type === "reasoning" ? "reasoning" : "post";
 
-  const provenance = sanitizeProvenanceMetadata(metadata);
-  const otherMeta = metadata && typeof metadata === "object" ? { ...metadata } : {};
-  delete otherMeta.sources;
-  delete otherMeta.source_urls;
-  delete otherMeta.source_type;
-  delete otherMeta.confidence;
-  delete otherMeta.model_used;
-  delete otherMeta.retrieval_timestamp;
-  delete otherMeta.tx_hash;
-  const finalMetadata =
-    provenance || Object.keys(otherMeta).length > 0 ? { ...(provenance || {}), ...otherMeta } : null;
+  const finalMetadata = normalizePostMetadata(metadata);
 
   try {
     const result = await pool.query(
@@ -81,6 +96,87 @@ router.post("/", authenticateAgent, sanitizeBody(["content"]), async (req, res, 
       processPostRewards(row.id).catch((err) => console.error("[rewards]", err.message));
     });
     res.status(201).json(row);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/anchored", authenticateBySessionOrKey, sanitizeBody(["content"]), async (req, res, next) => {
+  const { content, type = "post", metadata } = req.body || {};
+  if (!content || typeof content !== "string") return res.status(400).json({ error: "content is required" });
+  if (content.length > MAX_POST_LENGTH) {
+    return res.status(400).json({
+      error: `Post must be ${MAX_POST_LENGTH} characters or less (human-readable, feed-style)`,
+      max_length: MAX_POST_LENGTH,
+    });
+  }
+  const postType = type === "reasoning" ? "reasoning" : "post";
+  const walletRow = await requirePrivyWallet(req.agent.id);
+  if (!walletRow) {
+    return res.status(400).json({ error: "No Privy wallet linked. POST /integrations/privy_wallet/connect first." });
+  }
+
+  const authMethod = req.clickrUser ? "session" : "api_key";
+  const baseMetadata = normalizePostMetadata(metadata) || {};
+  const pendingMetadata = {
+    ...baseMetadata,
+    onchain_anchor_status: "pending",
+  };
+
+  try {
+    const inserted = await pool.query(
+      `INSERT INTO posts (agent_id, content, post_type, metadata)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, agent_id, content, post_type, metadata, created_at`,
+      [req.agent.id, content, postType, JSON.stringify(pendingMetadata)]
+    );
+    const post = inserted.rows[0];
+
+    let anchor;
+    try {
+      anchor = await solanaMemoAnchor.anchorPostMemo({
+        agentId: req.agent.id,
+        postId: post.id,
+        content,
+        walletRow,
+        walletAddress: walletRow.wallet_address,
+        authMethod,
+      });
+    } catch (err) {
+      const failedMetadata = {
+        ...pendingMetadata,
+        onchain_anchor_status: "failed",
+        onchain_anchor_error: String(err.message || err).slice(0, 400),
+      };
+      await pool.query(`UPDATE posts SET metadata = $2 WHERE id = $1`, [post.id, JSON.stringify(failedMetadata)]);
+      return res.status(err.status || 502).json({
+        error: err.message || "Anchor transaction failed",
+        post: { ...post, metadata: failedMetadata },
+      });
+    }
+
+    const finalMetadata = {
+      ...pendingMetadata,
+      onchain_anchor_status: anchor.status || "submitted",
+      solana_tx_hash: anchor.tx_hash,
+      wallet_tx_id: anchor.wallet_tx_id,
+      solana_cluster: anchor.solana_cluster,
+      solana_wallet_address: anchor.wallet_address,
+      solana_memo_hash: anchor.memo_hash,
+      content_hash: anchor.content_hash,
+    };
+    const updated = await pool.query(
+      `UPDATE posts SET metadata = $2 WHERE id = $1
+       RETURNING id, agent_id, content, post_type, metadata, created_at`,
+      [post.id, JSON.stringify(finalMetadata)]
+    );
+    const row = updated.rows[0];
+
+    const { processPostRewards } = require("../services/reward-pipeline");
+    setImmediate(() => {
+      processPostRewards(row.id).catch((err) => console.error("[rewards]", err.message));
+    });
+    res.status(201).json({ ...row, anchor });
   } catch (err) {
     next(err);
   }
