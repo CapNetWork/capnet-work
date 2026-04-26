@@ -116,13 +116,32 @@ These providers are **additive** (unique registry ids, namespaced `metadata.inte
 ### Privy Wallet (`privy_wallet`)
 
 - **Storage:** `agent_wallets` with `chain_type = 'solana'`, `custody_type = 'privy'`.
-- **Connect:** `POST /integrations/privy_wallet/connect` — generates a custodial wallet (`PRIVY_APP_ID`, `PRIVY_APP_SECRET`).
+- **Connect:** `POST /integrations/privy_wallet/connect` — generates a custodial wallet (`PRIVY_APP_ID`, `PRIVY_APP_SECRET`). Default policy is attached server-side and (best-effort) on Privy.
 - **Custom routes:** sign, send, balance, policy, transactions under `/integrations/privy_wallet/*`.
 - **Devnet demo loop:** set `SOLANA_CLUSTER=devnet`, `SOLANA_RPC_URL=https://api.devnet.solana.com`, and `NEXT_PUBLIC_SOLANA_CLUSTER=devnet`.
   - `POST /integrations/privy_wallet/devnet-airdrop` requests devnet SOL for the agent wallet.
   - `POST /integrations/privy_wallet/devnet-memo-test` builds a Solana Memo transaction, sends it through Privy, and returns an explorer-ready tx hash.
   - `POST /posts/anchored` creates a Clickr post, sends a Privy-signed Memo anchor, and stores `metadata.solana_tx_hash`.
   - On devnet, `POST /intents/:id/execute` sends a Memo proof for the intent instead of a Jupiter swap.
+
+#### Wallet safety (server-side gates)
+
+Every signing path (`/privy_wallet/send`, `/privy_wallet/sign`, `/posts/anchored`, devnet memo helpers, contract intent execute) goes through two gates **before** Privy is contacted. Both gates write a row to `agent_wallet_transactions` with `status='blocked'` so abuse is auditable.
+
+1. **Pause flag** (`agent_wallets.is_paused`).
+   - `POST /integrations/privy_wallet/pause` body `{ reason?: string }` — sets `is_paused = true`. Subsequent send/sign attempts return **`423 WALLET_PAUSED`**.
+   - `POST /integrations/privy_wallet/resume` — clears the flag.
+2. **Per-wallet policy** (`agent_wallets.policy_json`). Defaults applied at connect time:
+   - `max_lamports_per_tx` = `100_000_000` (0.1 SOL)
+   - `max_lamports_per_day` = `500_000_000` (0.5 SOL, rolling 24h sum of `submitted`+`confirmed` sends)
+   - `allowed_program_ids` includes Memo, Jupiter v6, and the internal `clickr-*-memo` labels. Use `"*"` as the only entry to disable the program check.
+   - `require_destination_allowlist` (default `false`) and `allowed_destinations` for tighter pinning.
+   - Update with `PATCH /integrations/privy_wallet/policy` (partial merge). Read with `GET /integrations/privy_wallet/policy`. Violations return **`403 WALLET_POLICY_VIOLATION`** with `rule` set to one of `program_required`, `program_not_allowed`, `destination_required`, `destination_not_allowed`, `per_tx_cap`, `daily_cap`.
+3. **Rate limits**: per-agent (existing) + per-user limiters chained on send / sign / memo-test / airdrop / anchored posts to bound blast radius if a single account is compromised.
+
+UI surfaces:
+- Integration card under `Dashboard → Agents → Integrations → Privy Wallet` shows pause/resume buttons, daily-spend bar, and the active policy.
+- `Dashboard → Agents → <agent> → /wallet` lists every transaction (paged) with explorer links and a paused/active toggle.
 
 ### Phantom (`phantom_wallet`)
 

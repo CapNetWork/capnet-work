@@ -103,7 +103,25 @@ function StatusRow({ label, value, href }) {
   );
 }
 
-function PrivyDevnetActions({ walletAddress, balanceSol, authHeaders, onRefresh, setParentError }) {
+function formatSol(lamports) {
+  if (lamports == null) return null;
+  const n = Number(lamports);
+  if (!Number.isFinite(n)) return null;
+  return `${(n / 1_000_000_000).toFixed(4)} SOL`;
+}
+
+function PrivyDevnetActions({
+  agentId,
+  walletAddress,
+  balanceSol,
+  isPaused,
+  pausedReason,
+  policy,
+  dailySpendLamports,
+  authHeaders,
+  onRefresh,
+  setParentError,
+}) {
   const [busy, setBusy] = useState("");
   const [result, setResult] = useState(null);
   const [history, setHistory] = useState([]);
@@ -126,18 +144,21 @@ function PrivyDevnetActions({ walletAddress, balanceSol, authHeaders, onRefresh,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [walletAddress]);
 
-  async function call(path, body) {
+  async function call(path, body, method = "POST") {
     setBusy(path);
     setResult(null);
     setParentError("");
     try {
       const res = await fetch(`${API_URL}${path}`, {
-        method: "POST",
+        method,
         headers: { "Content-Type": "application/json", ...authHeaders },
-        body: JSON.stringify(body || {}),
+        body: method === "GET" ? undefined : JSON.stringify(body || {}),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || res.statusText);
+      if (!res.ok) {
+        const ruleSuffix = data.rule ? ` (${data.rule})` : "";
+        throw new Error(`${data.error || res.statusText}${ruleSuffix}`);
+      }
       setResult(data);
       onRefresh?.();
       await loadHistory();
@@ -148,16 +169,51 @@ function PrivyDevnetActions({ walletAddress, balanceSol, authHeaders, onRefresh,
     }
   }
 
+  const dailyCap = policy?.max_lamports_per_day != null ? Number(policy.max_lamports_per_day) : null;
+  const perTxCap = policy?.max_lamports_per_tx != null ? Number(policy.max_lamports_per_tx) : null;
+  const dailySpent = dailySpendLamports != null ? Number(dailySpendLamports) : null;
+  const dailyPctRaw = dailyCap && dailyCap > 0 && dailySpent != null ? (dailySpent / dailyCap) * 100 : null;
+  const dailyPct = dailyPctRaw != null ? Math.min(100, Math.max(0, dailyPctRaw)) : null;
+
   return (
     <div className="mb-3 border-t border-zinc-800/50 pt-4">
-      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Privy transaction loop</p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Privy transaction loop</p>
+        {isPaused ? (
+          <span className="border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-amber-300">
+            Paused
+          </span>
+        ) : (
+          <span className="border border-emerald-500/30 bg-emerald-500/5 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-emerald-300">
+            Active
+          </span>
+        )}
+      </div>
       <p className="mt-1 text-xs leading-relaxed text-zinc-400">
         On devnet, request SOL and send a real Solana Memo transaction through Privy before wiring posts or intents.
+        {isPaused && pausedReason ? <span className="block text-amber-300"> Paused reason: {pausedReason}</span> : null}
       </p>
       <div className="mt-3 space-y-1 border border-zinc-800 bg-[#050505] p-3">
         <StatusRow label="wallet" value={walletAddress} href={addressExplorerUrl(walletAddress)} />
         <StatusRow label="balance" value={balanceSol != null ? `${Number(balanceSol).toFixed(4)} SOL` : null} />
+        {perTxCap != null && (
+          <StatusRow label="per-tx cap" value={formatSol(perTxCap)} />
+        )}
+        {dailyCap != null && (
+          <StatusRow
+            label="24h spent / cap"
+            value={`${formatSol(dailySpent || 0)} / ${formatSol(dailyCap)}${dailyPct != null ? ` (${dailyPct.toFixed(1)}%)` : ""}`}
+          />
+        )}
       </div>
+      {dailyPct != null && (
+        <div className="mt-2 h-1 w-full bg-zinc-900">
+          <div
+            className={`h-1 ${dailyPct >= 100 ? "bg-amber-400" : dailyPct >= 75 ? "bg-amber-500" : "bg-emerald-500"}`}
+            style={{ width: `${dailyPct}%` }}
+          />
+        </div>
+      )}
       <div className="mt-3 flex flex-wrap gap-2">
         <button
           type="button"
@@ -170,11 +226,42 @@ function PrivyDevnetActions({ walletAddress, balanceSol, authHeaders, onRefresh,
         <button
           type="button"
           onClick={() => call("/integrations/privy_wallet/devnet-memo-test", { message: "Clickr Privy memo test" })}
-          disabled={Boolean(busy)}
-          className="border border-[#E53935]/60 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-[#ffb5b3] transition-colors hover:bg-[#E53935]/10 disabled:opacity-50"
+          disabled={Boolean(busy) || isPaused}
+          title={isPaused ? "Wallet is paused — resume it to send transactions" : ""}
+          className="border border-[#E53935]/60 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-[#ffb5b3] transition-colors hover:bg-[#E53935]/10 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {busy === "/integrations/privy_wallet/devnet-memo-test" ? "Sending..." : "Send Memo test"}
         </button>
+        {isPaused ? (
+          <button
+            type="button"
+            onClick={() => call("/integrations/privy_wallet/resume", {})}
+            disabled={Boolean(busy)}
+            className="border border-emerald-500/60 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-emerald-200 transition-colors hover:bg-emerald-500/10 disabled:opacity-50"
+          >
+            {busy === "/integrations/privy_wallet/resume" ? "Resuming..." : "Resume wallet"}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              const reason = window.prompt("Pause reason (optional)") || "";
+              call("/integrations/privy_wallet/pause", { reason });
+            }}
+            disabled={Boolean(busy)}
+            className="border border-amber-500/50 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-amber-200 transition-colors hover:bg-amber-500/10 disabled:opacity-50"
+          >
+            {busy === "/integrations/privy_wallet/pause" ? "Pausing..." : "Pause wallet"}
+          </button>
+        )}
+        {agentId && (
+          <a
+            href={`/dashboard/agents/${agentId}/wallet`}
+            className="border border-zinc-700 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white"
+          >
+            View all activity
+          </a>
+        )}
       </div>
       {result?.tx_hash && (
         <p className="mt-3 text-xs text-zinc-400">
@@ -190,7 +277,9 @@ function PrivyDevnetActions({ walletAddress, balanceSol, authHeaders, onRefresh,
           <ul className="mt-2 space-y-2 text-xs text-zinc-500">
             {history.map((tx) => (
               <li key={tx.id} className="flex items-center justify-between gap-3">
-                <span>{tx.tx_type || "transaction"} · {tx.status}</span>
+                <span>
+                  {tx.tx_type || "transaction"} · <span className={tx.status === "blocked" ? "text-amber-300" : tx.status === "failed" ? "text-[#ff9e9c]" : ""}>{tx.status}</span>
+                </span>
                 {tx.tx_hash ? (
                   <a href={txExplorerUrl(tx.tx_hash)} target="_blank" rel="noopener noreferrer" className="font-mono text-zinc-400 hover:text-sky-200">
                     {shortTxHash(tx.tx_hash)}
@@ -221,9 +310,26 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
   const privyStatus = agentMeta?.privy_wallet;
   const privyWalletAddress = privyStatus?.wallet_address || "";
   const isConnected = currentStatus?.connected === true;
+  // For the Privy card we render policy + paused state inside PrivyDevnetActions,
+  // so suppress those keys in the generic status rows to avoid duplication.
+  const PRIVY_HIDDEN_KEYS = new Set([
+    "policy",
+    "policy_summary",
+    "daily_spend_lamports",
+    "is_paused",
+    "paused_at",
+    "paused_reason",
+    "wallet_address",
+    "balance_sol",
+  ]);
   const statusRows =
     isConnected && currentStatus && typeof currentStatus === "object"
-      ? Object.entries(currentStatus).filter(([key, val]) => key !== "connected" && val != null && val !== "")
+      ? Object.entries(currentStatus).filter(([key, val]) => {
+          if (key === "connected") return false;
+          if (val == null || val === "") return false;
+          if (integration.id === "privy_wallet" && PRIVY_HIDDEN_KEYS.has(key)) return false;
+          return true;
+        })
       : [];
 
   function updateField(key, val) {
@@ -347,8 +453,13 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
         {isConnected && integration.id === "privy_wallet" && (
           <>
             <PrivyDevnetActions
+              agentId={agentId}
               walletAddress={privyWalletAddress}
               balanceSol={privyStatus?.balance_sol}
+              isPaused={Boolean(privyStatus?.is_paused)}
+              pausedReason={privyStatus?.paused_reason}
+              policy={privyStatus?.policy}
+              dailySpendLamports={privyStatus?.daily_spend_lamports}
               authHeaders={authHeaders}
               onRefresh={onRefresh}
               setParentError={setError}

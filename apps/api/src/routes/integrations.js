@@ -57,6 +57,26 @@ const walletFaucetLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// Per-user limiter for wallet activity. A user with N agents would otherwise
+// multiply the per-agent limits; this keeps total wallet ops bounded per human.
+const walletUserLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  keyGenerator: (req) => `user:${req.clickrUser?.id || req.agent?.id || "unknown"}`,
+  message: { error: "Rate limit exceeded for wallet activity (30/min per user)" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const walletFaucetUserLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 5,
+  keyGenerator: (req) => `user:${req.clickrUser?.id || req.agent?.id || "unknown"}`,
+  message: { error: "Rate limit exceeded for devnet faucet (5/10min per user)" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 const router = Router();
 
 function sanitizeConfigInput(input) {
@@ -143,7 +163,9 @@ router.post("/erc8004/verify", authenticateBySessionOrKey, async (req, res, next
 async function requirePrivyWallet(req, res) {
   const { pool: db } = require("../db");
   const r = await db.query(
-    `SELECT id, wallet_address, chain_type, custody_type, provider_wallet_id, provider_policy_id
+    `SELECT id, agent_id, wallet_address, chain_type, custody_type,
+            provider_wallet_id, provider_policy_id,
+            is_paused, paused_at, paused_reason, policy_json
      FROM agent_wallets
      WHERE agent_id = $1 AND chain_type = 'solana' AND custody_type = 'privy'
      ORDER BY linked_at DESC LIMIT 1`,
@@ -156,7 +178,7 @@ async function requirePrivyWallet(req, res) {
   return r.rows[0];
 }
 
-router.post("/privy_wallet/sign", authenticateBySessionOrKey, walletSignLimiter, async (req, res, next) => {
+router.post("/privy_wallet/sign", authenticateBySessionOrKey, walletUserLimiter, walletSignLimiter, async (req, res, next) => {
   const walletRow = await requirePrivyWallet(req, res);
   if (!walletRow) return;
   try {
@@ -165,12 +187,12 @@ router.post("/privy_wallet/sign", authenticateBySessionOrKey, walletSignLimiter,
     res.json(result);
   } catch (err) {
     const mapped = privyWalletAdapter.mapConnectError(err);
-    if (mapped) return res.status(mapped.status).json({ error: mapped.error });
+    if (mapped) return res.status(mapped.status).json({ error: mapped.error, ...(mapped.rule ? { rule: mapped.rule } : {}) });
     next(err);
   }
 });
 
-router.post("/privy_wallet/send", authenticateBySessionOrKey, walletSendLimiter, async (req, res, next) => {
+router.post("/privy_wallet/send", authenticateBySessionOrKey, walletUserLimiter, walletSendLimiter, async (req, res, next) => {
   const walletRow = await requirePrivyWallet(req, res);
   if (!walletRow) return;
   try {
@@ -179,12 +201,12 @@ router.post("/privy_wallet/send", authenticateBySessionOrKey, walletSendLimiter,
     res.json(result);
   } catch (err) {
     const mapped = privyWalletAdapter.mapConnectError(err);
-    if (mapped) return res.status(mapped.status).json({ error: mapped.error });
+    if (mapped) return res.status(mapped.status).json({ error: mapped.error, ...(mapped.rule ? { rule: mapped.rule } : {}) });
     next(err);
   }
 });
 
-router.post("/privy_wallet/devnet-memo-test", authenticateBySessionOrKey, walletSendLimiter, async (req, res, next) => {
+router.post("/privy_wallet/devnet-memo-test", authenticateBySessionOrKey, walletUserLimiter, walletSendLimiter, async (req, res, next) => {
   const walletRow = await requirePrivyWallet(req, res);
   if (!walletRow) return;
   try {
@@ -199,12 +221,54 @@ router.post("/privy_wallet/devnet-memo-test", authenticateBySessionOrKey, wallet
     res.json(result);
   } catch (err) {
     const mapped = privyWalletAdapter.mapConnectError(err);
+    if (mapped) return res.status(mapped.status).json({ error: mapped.error, ...(mapped.rule ? { rule: mapped.rule } : {}) });
+    next(err);
+  }
+});
+
+router.post("/privy_wallet/pause", authenticateBySessionOrKey, walletUserLimiter, async (req, res, next) => {
+  const walletRow = await requirePrivyWallet(req, res);
+  if (!walletRow) return;
+  try {
+    const authMethod = req.clickrUser ? "session" : "api_key";
+    const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : null;
+    const updated = await privyWalletAdapter.pause(req.agent.id, walletRow, reason, authMethod);
+    res.json({ ok: true, wallet: updated });
+  } catch (err) {
+    const mapped = privyWalletAdapter.mapConnectError(err);
     if (mapped) return res.status(mapped.status).json({ error: mapped.error });
     next(err);
   }
 });
 
-router.post("/privy_wallet/devnet-airdrop", authenticateBySessionOrKey, walletFaucetLimiter, async (req, res, next) => {
+router.post("/privy_wallet/resume", authenticateBySessionOrKey, walletUserLimiter, async (req, res, next) => {
+  const walletRow = await requirePrivyWallet(req, res);
+  if (!walletRow) return;
+  try {
+    const authMethod = req.clickrUser ? "session" : "api_key";
+    const updated = await privyWalletAdapter.resume(req.agent.id, walletRow, authMethod);
+    res.json({ ok: true, wallet: updated });
+  } catch (err) {
+    const mapped = privyWalletAdapter.mapConnectError(err);
+    if (mapped) return res.status(mapped.status).json({ error: mapped.error });
+    next(err);
+  }
+});
+
+router.patch("/privy_wallet/policy", authenticateBySessionOrKey, walletUserLimiter, async (req, res, next) => {
+  const walletRow = await requirePrivyWallet(req, res);
+  if (!walletRow) return;
+  try {
+    const updated = await privyWalletAdapter.updatePolicy(req.agent.id, walletRow, req.body || {});
+    res.json({ ok: true, wallet: updated });
+  } catch (err) {
+    const mapped = privyWalletAdapter.mapConnectError(err);
+    if (mapped) return res.status(mapped.status).json({ error: mapped.error });
+    next(err);
+  }
+});
+
+router.post("/privy_wallet/devnet-airdrop", authenticateBySessionOrKey, walletFaucetUserLimiter, walletFaucetLimiter, async (req, res, next) => {
   const walletRow = await requirePrivyWallet(req, res);
   if (!walletRow) return;
   try {
@@ -257,8 +321,30 @@ router.get("/privy_wallet/policy", authenticateBySessionOrKey, async (req, res, 
   if (!walletRow) return;
   try {
     const privyDriver = require("../lib/drivers/privy");
-    const policy = await privyDriver.getPolicy(walletRow);
-    res.json({ wallet_address: walletRow.wallet_address, policy });
+    const walletPolicy = require("../lib/wallet-policy");
+    const walletAudit = require("../lib/wallet-audit");
+    const effective = walletPolicy.getEffectivePolicy(walletRow);
+    let privy_policy = null;
+    try {
+      privy_policy = await privyDriver.getPolicy(walletRow);
+    } catch {
+      /* optional */
+    }
+    let daily_spend_lamports = null;
+    try {
+      daily_spend_lamports = await walletAudit.getDailySpend(req.agent.id, walletRow.id);
+    } catch {
+      /* non-fatal */
+    }
+    res.json({
+      wallet_address: walletRow.wallet_address,
+      is_paused: Boolean(walletRow.is_paused),
+      paused_at: walletRow.paused_at,
+      paused_reason: walletRow.paused_reason,
+      policy: effective,
+      daily_spend_lamports,
+      privy_policy,
+    });
   } catch (err) {
     next(err);
   }

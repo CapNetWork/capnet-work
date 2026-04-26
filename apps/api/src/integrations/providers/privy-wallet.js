@@ -5,6 +5,7 @@
 const { pool } = require("../../db");
 const privyDriver = require("../../lib/drivers/privy");
 const audit = require("../../lib/wallet-audit");
+const walletPolicy = require("../../lib/wallet-policy");
 const { refreshScore } = require("../../lib/reputation");
 
 const PROVIDER_ID = "privy_wallet";
@@ -17,15 +18,38 @@ async function connect(agentId, input = {}) {
   }
 
   const wallet = await privyDriver.createWallet();
+  const defaultPolicy = { ...walletPolicy.DEFAULT_POLICY };
 
   const r = await pool.query(
-    `INSERT INTO agent_wallets (agent_id, wallet_address, chain_id, chain_type, custody_type, provider_wallet_id, provider_policy_id, label)
-     VALUES ($1, $2, 0, 'solana', 'privy', $3, $4, $5)
+    `INSERT INTO agent_wallets (agent_id, wallet_address, chain_id, chain_type, custody_type,
+                                provider_wallet_id, provider_policy_id, label, policy_json)
+     VALUES ($1, $2, 0, 'solana', 'privy', $3, $4, $5, $6::jsonb)
      ON CONFLICT (wallet_address, chain_type, chain_id)
-       DO UPDATE SET provider_wallet_id = EXCLUDED.provider_wallet_id
-     RETURNING id, wallet_address, chain_type, custody_type, linked_at`,
-    [agentId, wallet.publicKey, wallet.providerWalletId, wallet.providerPolicyId, input.label || null]
+       DO UPDATE SET provider_wallet_id = EXCLUDED.provider_wallet_id,
+                     policy_json        = COALESCE(agent_wallets.policy_json, EXCLUDED.policy_json)
+     RETURNING id, agent_id, wallet_address, chain_type, custody_type,
+               provider_wallet_id, provider_policy_id,
+               is_paused, paused_at, paused_reason, policy_json, linked_at`,
+    [
+      agentId,
+      wallet.publicKey,
+      wallet.providerWalletId,
+      wallet.providerPolicyId,
+      input.label || null,
+      JSON.stringify(defaultPolicy),
+    ]
   );
+
+  // Best-effort: also attach the policy to Privy so signing fails closed even
+  // if our API is bypassed somehow. Privy's policy SDK shape varies between
+  // versions — failures here are non-fatal because the API gate is the trusted one.
+  try {
+    await privyDriver.updatePolicy(r.rows[0], defaultPolicy);
+  } catch (err) {
+    if (err && err.code !== "PRIVY_SDK_INCOMPATIBLE") {
+      console.warn("[privy-wallet] best-effort policy attach failed:", err.message);
+    }
+  }
 
   await audit.logAttempt({
     agentId,
@@ -46,7 +70,9 @@ async function connect(agentId, input = {}) {
 
 async function getIntegrationStatus(agentId) {
   const r = await pool.query(
-    `SELECT id, wallet_address, chain_type, custody_type, provider_wallet_id, linked_at
+    `SELECT id, agent_id, wallet_address, chain_type, custody_type,
+            provider_wallet_id, is_paused, paused_at, paused_reason,
+            policy_json, linked_at
      FROM agent_wallets
      WHERE agent_id = $1 AND chain_type = 'solana' AND custody_type = 'privy'
      ORDER BY linked_at DESC LIMIT 1`,
@@ -58,6 +84,7 @@ async function getIntegrationStatus(agentId) {
   const wallet = r.rows[0];
   let balance = null;
   let policy_summary = null;
+  let daily_spend_lamports = null;
   try {
     balance = await privyDriver.getBalance(wallet.wallet_address);
   } catch {
@@ -73,6 +100,12 @@ async function getIntegrationStatus(agentId) {
   } catch {
     /* policy API optional */
   }
+  try {
+    daily_spend_lamports = await audit.getDailySpend(agentId, wallet.id);
+  } catch {
+    /* non-fatal */
+  }
+  const effectivePolicy = walletPolicy.getEffectivePolicy(wallet);
   return {
     connected: true,
     provider: PROVIDER_ID,
@@ -82,9 +115,36 @@ async function getIntegrationStatus(agentId) {
       custody_type: wallet.custody_type,
       balance_sol: balance ? balance.sol : null,
       policy_summary,
+      policy: effectivePolicy,
+      daily_spend_lamports,
+      is_paused: Boolean(wallet.is_paused),
+      paused_at: wallet.paused_at,
+      paused_reason: wallet.paused_reason,
       linked_at: wallet.linked_at,
     },
   };
+}
+
+async function logBlocked({ agentId, walletRow, txType, authMethod, intent, reason }) {
+  try {
+    const attempt = await audit.logAttempt({
+      agentId,
+      walletId: walletRow?.id,
+      walletAddress: walletRow?.wallet_address,
+      chainType: "solana",
+      custodyType: "privy",
+      txType,
+      amountLamports: intent?.amount_lamports || null,
+      destination: intent?.destination || null,
+      programId: intent?.program_id || null,
+      authMethod,
+    });
+    await audit.updateOutcome(attempt.id, { status: "blocked", errorMessage: reason });
+    return attempt.id;
+  } catch (err) {
+    console.warn("[privy-wallet] failed to log blocked attempt:", err.message);
+    return null;
+  }
 }
 
 async function sign(agentId, walletRow, input, authMethod) {
@@ -95,10 +155,27 @@ async function sign(agentId, walletRow, input, authMethod) {
     throw err;
   }
 
+  // Pause gate (sign also blocked when paused; policy is intentionally not
+  // enforced here because signMessage doesn't have program/amount semantics).
+  const fresh = (await walletPolicy.loadWalletState(walletRow.id)) || walletRow;
+  if (fresh.is_paused) {
+    const err = new Error(`Wallet is paused: ${fresh.paused_reason || "wallet_paused"}`);
+    err.code = "WALLET_PAUSED";
+    err.status = 423;
+    await logBlocked({
+      agentId,
+      walletRow: fresh,
+      txType: "sign_message",
+      authMethod,
+      reason: `wallet_paused: ${fresh.paused_reason || ""}`.slice(0, 400),
+    });
+    throw err;
+  }
+
   const attempt = await audit.logAttempt({
     agentId,
-    walletId: walletRow.id,
-    walletAddress: walletRow.wallet_address,
+    walletId: fresh.id,
+    walletAddress: fresh.wallet_address,
     chainType: "solana",
     custodyType: "privy",
     txType: "sign_message",
@@ -106,7 +183,7 @@ async function sign(agentId, walletRow, input, authMethod) {
   });
 
   try {
-    const result = await privyDriver.signMessage(walletRow, messageBase64);
+    const result = await privyDriver.signMessage(fresh, messageBase64);
     await audit.updateOutcome(attempt.id, { status: "confirmed" });
     await refreshScore(agentId);
     return { ok: true, signature: result.signature };
@@ -124,10 +201,35 @@ async function send(agentId, walletRow, input, authMethod) {
     throw err;
   }
 
+  // Pause + policy gates run before we even touch Privy. Both record a
+  // status='blocked' audit row so operators can see who tried what.
+  let enforcement;
+  try {
+    enforcement = await walletPolicy.enforce(walletRow, {
+      amount_lamports: input.amount_lamports,
+      destination: input.destination,
+      program_id: input.program_id,
+    });
+  } catch (err) {
+    const reasonCode = err.rule || err.code || "blocked";
+    const txTypeForBlocked = err.code === "WALLET_PAUSED" ? "send_transaction" : "send_transaction";
+    const blockedAttemptId = await logBlocked({
+      agentId,
+      walletRow,
+      txType: txTypeForBlocked,
+      authMethod,
+      intent: input,
+      reason: `${reasonCode}: ${String(err.message || "").slice(0, 300)}`,
+    });
+    if (err instanceof Error) err.wallet_tx_id = blockedAttemptId;
+    throw err;
+  }
+  const fresh = enforcement.walletRow;
+
   const attempt = await audit.logAttempt({
     agentId,
-    walletId: walletRow.id,
-    walletAddress: walletRow.wallet_address,
+    walletId: fresh.id,
+    walletAddress: fresh.wallet_address,
     chainType: "solana",
     custodyType: "privy",
     txType: "send_transaction",
@@ -138,7 +240,7 @@ async function send(agentId, walletRow, input, authMethod) {
   });
 
   try {
-    const result = await privyDriver.signAndSend(walletRow, transactionBase64);
+    const result = await privyDriver.signAndSend(fresh, transactionBase64);
     await audit.updateOutcome(attempt.id, {
       txHash: result.txHash,
       status: "submitted",
@@ -152,6 +254,71 @@ async function send(agentId, walletRow, input, authMethod) {
     wrapped.wallet_tx_id = attempt.id;
     throw wrapped;
   }
+}
+
+async function pause(agentId, walletRow, reason, authMethod) {
+  const r = await pool.query(
+    `UPDATE agent_wallets
+     SET is_paused      = true,
+         paused_at      = now(),
+         paused_reason  = $2
+     WHERE id = $1
+     RETURNING id, agent_id, wallet_address, is_paused, paused_at, paused_reason`,
+    [walletRow.id, (reason || "manual_pause").slice(0, 200)]
+  );
+  await audit.logAttempt({
+    agentId,
+    walletId: walletRow.id,
+    walletAddress: walletRow.wallet_address,
+    chainType: "solana",
+    custodyType: "privy",
+    txType: "wallet_paused",
+    authMethod,
+  });
+  return r.rows[0];
+}
+
+async function resume(agentId, walletRow, authMethod) {
+  const r = await pool.query(
+    `UPDATE agent_wallets
+     SET is_paused      = false,
+         paused_at      = NULL,
+         paused_reason  = NULL
+     WHERE id = $1
+     RETURNING id, agent_id, wallet_address, is_paused`,
+    [walletRow.id]
+  );
+  await audit.logAttempt({
+    agentId,
+    walletId: walletRow.id,
+    walletAddress: walletRow.wallet_address,
+    chainType: "solana",
+    custodyType: "privy",
+    txType: "wallet_resumed",
+    authMethod,
+  });
+  return r.rows[0];
+}
+
+async function updatePolicy(agentId, walletRow, partial) {
+  const fresh = (await walletPolicy.loadWalletState(walletRow.id)) || walletRow;
+  const next = walletPolicy.mergePolicyUpdate(fresh.policy_json, partial);
+  const r = await pool.query(
+    `UPDATE agent_wallets
+     SET policy_json = $2::jsonb
+     WHERE id = $1
+     RETURNING id, agent_id, wallet_address, policy_json`,
+    [walletRow.id, JSON.stringify(next)]
+  );
+  // Best-effort sync to Privy (non-fatal).
+  try {
+    await privyDriver.updatePolicy(fresh, next);
+  } catch (err) {
+    if (err && err.code !== "PRIVY_SDK_INCOMPATIBLE") {
+      console.warn("[privy-wallet] best-effort policy sync failed:", err.message);
+    }
+  }
+  return { ...r.rows[0], policy: next };
 }
 
 async function disconnect(agentId) {
@@ -198,6 +365,11 @@ function mapConnectError(err) {
   if (err.code === "SOLANA_BAD_AIRDROP_AMOUNT") return { status: 400, error: err.message };
   if (err.code === "SOLANA_INVALID_ADDRESS") return { status: 400, error: err.message };
   if (err.code === "SOLANA_MISSING_MEMO") return { status: 400, error: err.message };
+  if (err.code === "WALLET_PAUSED") return { status: 423, error: err.message };
+  if (err.code === "WALLET_POLICY_VIOLATION") {
+    return { status: 403, error: err.message, rule: err.rule };
+  }
+  if (err.code === "WALLET_POLICY_INVALID") return { status: 400, error: err.message };
   // Postgres: undefined_table — migrations not applied (agent_wallets missing).
   if (err.code === "42P01") {
     return {
@@ -222,6 +394,9 @@ module.exports = {
   getIntegrationStatus,
   sign,
   send,
+  pause,
+  resume,
+  updatePolicy,
   disconnect,
   forbidDirectConfigPut,
   readConnectInput,
