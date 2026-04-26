@@ -2,9 +2,16 @@
  * Resolves the CapNet / Clickr API base URL for server and client.
  * Prefer `API_URL` on the server (runtime, not inlined) so SSR matches your deploy.
  * `NEXT_PUBLIC_API_URL` is inlined at build time; set both on production web per deploy docs.
+ *
+ * On the server, pass `hostHint` from the incoming request (e.g. `Host` / `X-Forwarded-Host`)
+ * so staging web (`staging.clickr.cc`) talks to `staging-api.clickr.cc` even when deploy
+ * env vars omit `API_URL`. Without this, SSR defaults to production API and arena detail
+ * pages 404 right after creating a contract on staging.
+ *
  * @see docs/deploy-railway.md
+ * @param {string} [hostHint] Request host header (server / apiFetch only).
  */
-function resolveApiBaseUrl() {
+function resolveApiBaseUrl(hostHint = "") {
   const candidates = [
     process.env.API_URL,
     process.env.NEXT_PUBLIC_API_URL,
@@ -18,6 +25,9 @@ function resolveApiBaseUrl() {
   const inferred = inferApiBaseUrlFromDeployHost();
   if (inferred) return inferred;
 
+  const fromHint = apiBaseUrlFromHostHeader(hostHint);
+  if (fromHint) return fromHint;
+
   // If web deploy variables are missing, fall back to a hostname-based default in the browser.
   // This keeps staging domains working even if API_URL/NEXT_PUBLIC_API_URL weren't set at deploy time.
   if (typeof window !== "undefined") {
@@ -29,6 +39,22 @@ function resolveApiBaseUrl() {
     return "https://api.clickr.cc";
   }
   return "http://localhost:4000";
+}
+
+/** @param {string} rawHost Host or X-Forwarded-Host (first value if comma-separated). */
+function apiBaseUrlFromHostHeader(rawHost) {
+  const first = typeof rawHost === "string" ? rawHost.split(",")[0].trim() : "";
+  if (!first) return null;
+  let hostname = first;
+  try {
+    hostname = new URL(first.includes("://") ? first : `https://${first}`).hostname;
+  } catch {
+    return null;
+  }
+  const h = hostname.toLowerCase();
+  if (h.includes("staging.")) return "https://staging-api.clickr.cc";
+  if (h === "clickr.cc" || h.endsWith(".clickr.cc")) return "https://api.clickr.cc";
+  return null;
 }
 
 function inferApiBaseUrlFromDeployHost() {
@@ -76,7 +102,17 @@ export function getApiBaseUrl() {
 }
 
 export async function apiFetch(path, options = {}) {
-  const API_URL = resolveApiBaseUrl();
+  let hostHint = "";
+  if (typeof window === "undefined") {
+    try {
+      const { headers } = await import("next/headers");
+      const h = await headers();
+      hostHint = h.get("x-forwarded-host") || h.get("host") || "";
+    } catch {
+      // Outside a Next.js request (tests, scripts) or headers unavailable.
+    }
+  }
+  const API_URL = resolveApiBaseUrl(hostHint);
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
     headers: {
