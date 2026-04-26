@@ -219,10 +219,10 @@ export default function AgentsPage() {
                   </button>
                 )}
                 <Link
-                  href={`/dashboard/agents/${agent.id}/wallet`}
+                  href={`/dashboard/agents/${agent.id}`}
                   className="border border-zinc-700 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-300 transition-colors hover:border-[#E53935]/50 hover:text-white"
                 >
-                  Wallet
+                  Manage
                 </Link>
               </div>
             </div>
