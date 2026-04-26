@@ -6,14 +6,96 @@ const { pool } = require("../../db");
 const phantomDriver = require("../../lib/drivers/phantom");
 const audit = require("../../lib/wallet-audit");
 const { refreshScore } = require("../../lib/reputation");
+const crypto = require("crypto");
+const { PublicKey } = require("@solana/web3.js");
 
 const PROVIDER_ID = "phantom_wallet";
+const NONCE_TTL_MS = 5 * 60 * 1000;
+const nonces = new Map(); // nonce -> { agentId, userId, message, expiresAt }
+
+function now() {
+  return Date.now();
+}
+
+function cleanupNonces() {
+  const ts = now();
+  for (const [nonce, entry] of nonces.entries()) {
+    if (!entry || entry.expiresAt <= ts) nonces.delete(nonce);
+  }
+}
+
+function issueNonce({ agentId, userId }) {
+  cleanupNonces();
+  const nonce = crypto.randomBytes(16).toString("hex");
+  const issuedAt = new Date(now()).toISOString();
+  const expiresAt = new Date(now() + NONCE_TTL_MS).toISOString();
+  const message = [
+    "Clickr Phantom wallet link",
+    `agent_id=${agentId}`,
+    `user_id=${userId || ""}`,
+    `nonce=${nonce}`,
+    `issued_at=${issuedAt}`,
+    `expires_at=${expiresAt}`,
+  ].join("\n");
+  nonces.set(nonce, { agentId, userId: userId || null, message, expiresAt: now() + NONCE_TTL_MS });
+  return { nonce, message, expires_at: expiresAt };
+}
+
+function consumeNonce({ nonce, agentId, userId, message }) {
+  cleanupNonces();
+  const entry = nonces.get(nonce);
+  if (!entry || entry.expiresAt <= now()) return false;
+  if (String(entry.agentId) !== String(agentId)) return false;
+  if (String(entry.userId || "") !== String(userId || "")) return false;
+  if (String(entry.message) !== String(message || "")) return false;
+  nonces.delete(nonce);
+  return true;
+}
+
+function verifySignature({ walletAddress, message, signatureBase64 }) {
+  const msgBytes = Buffer.from(String(message || ""), "utf8");
+  const sigBytes = Buffer.from(String(signatureBase64 || ""), "base64");
+  if (sigBytes.length !== 64) return false;
+  const pubkeyBytes = Buffer.from(new PublicKey(walletAddress).toBytes());
+
+  // Create an Ed25519 SPKI public key from raw 32-byte Solana pubkey.
+  // SPKI prefix for Ed25519: 302a300506032b6570032100
+  const spkiPrefix = Buffer.from("302a300506032b6570032100", "hex");
+  const keyDer = Buffer.concat([spkiPrefix, pubkeyBytes]);
+  const keyObject = crypto.createPublicKey({ key: keyDer, format: "der", type: "spki" });
+
+  return crypto.verify(null, msgBytes, keyObject, sigBytes);
+}
 
 async function connect(agentId, input = {}) {
   const walletAddress = (input.wallet_address || input.walletAddress || "").trim();
   if (!phantomDriver.validateSolanaAddress(walletAddress)) {
     const err = new Error("wallet_address must be a valid Solana address");
     err.code = "PHANTOM_BAD_ADDRESS";
+    throw err;
+  }
+
+  // Require signed nonce to prove wallet ownership.
+  const nonce = String(input.nonce || "").trim();
+  const message = String(input.message || "").trim();
+  const signature = String(input.signature || "").trim();
+  if (!nonce || !message || !signature) {
+    const err = new Error("nonce, message, and signature are required");
+    err.code = "PHANTOM_MISSING_PROOF";
+    err.status = 400;
+    throw err;
+  }
+  const userId = input.user_id || input.userId || input._userId || null;
+  if (!consumeNonce({ nonce, agentId, userId, message })) {
+    const err = new Error("Nonce missing or expired. Request a new nonce and retry.");
+    err.code = "PHANTOM_NONCE_EXPIRED";
+    err.status = 400;
+    throw err;
+  }
+  if (!verifySignature({ walletAddress, message, signatureBase64: signature })) {
+    const err = new Error("Signature did not verify for this wallet address");
+    err.code = "PHANTOM_BAD_SIGNATURE";
+    err.status = 401;
     throw err;
   }
 
@@ -178,6 +260,9 @@ function readConnectInput(body) {
   return {
     wallet_address: body.wallet_address || body.walletAddress,
     label: body.label,
+    nonce: body.nonce,
+    message: body.message,
+    signature: body.signature,
   };
 }
 
@@ -186,6 +271,9 @@ function mapConnectError(err) {
   if (err.code === "PHANTOM_BAD_ADDRESS") return { status: 400, error: err.message };
   if (err.code === "PHANTOM_WALLET_TAKEN") return { status: 409, error: err.message };
   if (err.code === "PHANTOM_NOT_IMPLEMENTED") return { status: 501, error: err.message };
+  if (err.code === "PHANTOM_MISSING_PROOF") return { status: 400, error: err.message };
+  if (err.code === "PHANTOM_NONCE_EXPIRED") return { status: 400, error: err.message };
+  if (err.code === "PHANTOM_BAD_SIGNATURE") return { status: 401, error: err.message };
   if (err.code === "42P01") {
     return {
       status: 503,
@@ -206,4 +294,5 @@ module.exports = {
   readConnectInput,
   mapConnectError,
   requirePhantomWallet,
+  issueNonce,
 };

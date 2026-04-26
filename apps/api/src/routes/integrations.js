@@ -443,6 +443,18 @@ router.post("/moonpay/fund-privy-wallet", authenticateBySessionOrKey, sanitizeBo
 // Phantom Wallet — linked pubkey; server-side sign/send not available (501)
 // ---------------------------------------------------------------------------
 
+router.get("/phantom_wallet/nonce", authenticateBySessionOrKey, walletUserLimiter, async (req, res, next) => {
+  try {
+    const userId = req.clickrUser?.id || null;
+    const out = phantomWalletAdapter.issueNonce({ agentId: req.agent.id, userId });
+    res.json(out);
+  } catch (err) {
+    const mapped = phantomWalletAdapter.mapConnectError(err);
+    if (mapped) return res.status(mapped.status).json({ error: mapped.error });
+    next(err);
+  }
+});
+
 router.post("/phantom_wallet/sign", authenticateBySessionOrKey, walletSignLimiter, async (req, res, next) => {
   const walletRow = await phantomWalletAdapter.requirePhantomWallet(req, res);
   if (!walletRow) return;
