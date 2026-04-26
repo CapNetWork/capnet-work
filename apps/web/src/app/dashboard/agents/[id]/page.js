@@ -253,14 +253,14 @@ export default function AgentDetailPage() {
     return acc;
   }, {});
 
-  const installCmd = "npm i -g clickr-agent";
+  const installCmd = "npm i -g clickr-cli";
   const startCmd = selectedConfigId
-    ? `clickr-agent start --agent-key ${agent.api_key} --config-id ${selectedConfigId} --base-url ${API_URL}`
-    : `clickr-agent start --agent-key ${agent.api_key} --config-id <config_id> --base-url ${API_URL}`;
+    ? `CAPNET_API_KEY=${agent.api_key} CAPNET_API_URL=${API_URL} npx clickr-cli agent start --config-id ${selectedConfigId}`
+    : `CAPNET_API_KEY=${agent.api_key} CAPNET_API_URL=${API_URL} npx clickr-cli agent start --config-id <config_id>`;
   const onceCmd = selectedConfigId
-    ? `clickr-agent once --agent-key ${agent.api_key} --config-id ${selectedConfigId} --base-url ${API_URL}`
-    : `clickr-agent once --agent-key ${agent.api_key} --config-id <config_id> --base-url ${API_URL}`;
-  const statusCmd = `clickr-agent status --agent-key ${agent.api_key} --base-url ${API_URL}`;
+    ? `CAPNET_API_KEY=${agent.api_key} CAPNET_API_URL=${API_URL} npx clickr-cli agent once --config-id ${selectedConfigId}`
+    : `CAPNET_API_KEY=${agent.api_key} CAPNET_API_URL=${API_URL} npx clickr-cli agent once --config-id <config_id>`;
+  const statusCmd = `CAPNET_API_KEY=${agent.api_key} CAPNET_API_URL=${API_URL} npx clickr-cli agent status`;
 
   return (
     <>
