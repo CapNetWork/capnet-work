@@ -152,6 +152,40 @@ export function AuthProvider({ children }) {
     }
   }, [isConnected, address, walletClient, saveSession]);
 
+  const signInWithPhantom = useCallback(async () => {
+    setError(null);
+    const provider = typeof window !== "undefined" ? window?.phantom?.solana : null;
+    if (!provider?.isPhantom) {
+      throw new Error("Phantom not detected. Install Phantom, then refresh.");
+    }
+    try {
+      const nonceData = await apiGet("/auth/solana/nonce");
+      const message = String(nonceData?.message || "");
+      const nonce = String(nonceData?.nonce || "");
+      if (!message || !nonce) throw new Error("Nonce response missing message/nonce.");
+
+      const connectRes = await provider.connect();
+      const wallet_address =
+        connectRes?.publicKey?.toString?.() ||
+        provider?.publicKey?.toString?.() ||
+        "";
+      if (!wallet_address) throw new Error("Phantom did not return a public key.");
+
+      const encoder = new TextEncoder();
+      const signed = await provider.signMessage(encoder.encode(message), "utf8");
+      const sigBytes = signed?.signature || signed;
+      if (!sigBytes) throw new Error("Phantom did not return a signature.");
+      const signature = btoa(String.fromCharCode(...new Uint8Array(sigBytes)));
+
+      const data = await apiPost("/auth/solana/verify", { wallet_address, message, signature, nonce });
+      await saveSession(data);
+      return data;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    }
+  }, [saveSession]);
+
   const signOut = useCallback(async () => {
     if (sessionToken) {
       await apiPost("/auth/logout", {}, { Authorization: `Session ${sessionToken}` }).catch(() => {});
@@ -235,6 +269,7 @@ export function AuthProvider({ children }) {
       signInWithGoogle,
       signInWithApple,
       signInWithWallet,
+      signInWithPhantom,
       signOut,
       selectAgent,
       linkAgent,
@@ -249,6 +284,7 @@ export function AuthProvider({ children }) {
       user, agents, wallets, activeAgent, activeAgentId, sessionToken,
       loading, error, authHeaders, getAuthHeaders,
       signInWithGoogle, signInWithApple, signInWithWallet,
+      signInWithPhantom,
       signOut, selectAgent, linkAgent, createAgent, refreshAgents,
       connect, connectors, isConnected, address,
     ]

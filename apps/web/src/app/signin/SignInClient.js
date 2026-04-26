@@ -23,6 +23,7 @@ function SignInInner({ googleClientId, appleClientId }) {
     signInWithGoogle,
     signInWithApple,
     signInWithWallet,
+    signInWithPhantom,
     agents,
   } = useAuth();
   const { isConnected, address } = useAccount();
@@ -41,6 +42,18 @@ function SignInInner({ googleClientId, appleClientId }) {
     setLocalError("");
     try {
       await signInWithWallet();
+    } catch (err) {
+      setLocalError(err.message);
+    } finally {
+      setSigningIn(false);
+    }
+  }
+
+  async function handlePhantomSignIn() {
+    setSigningIn(true);
+    setLocalError("");
+    try {
+      await signInWithPhantom();
     } catch (err) {
       setLocalError(err.message);
     } finally {
@@ -175,6 +188,14 @@ function SignInInner({ googleClientId, appleClientId }) {
                 className="w-full border border-zinc-600 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-300 transition-colors hover:border-zinc-400 disabled:opacity-50"
               >
                 Browser wallet (injected)
+              </button>
+              <button
+                type="button"
+                onClick={handlePhantomSignIn}
+                disabled={signingIn}
+                className="w-full border border-[#E53935] bg-[#0a0a0a]/70 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-200 transition-colors hover:border-[#E53935]/60 hover:text-white disabled:opacity-50"
+              >
+                {signingIn ? "Signing in..." : "Sign in with Phantom"}
               </button>
             </div>
           ) : (
