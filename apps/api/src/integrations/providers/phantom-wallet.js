@@ -38,7 +38,7 @@ function issueNonce({ agentId, userId }) {
     `expires_at=${expiresAt}`,
   ].join("\n");
   nonces.set(nonce, { agentId, userId: userId || null, message, expiresAt: now() + NONCE_TTL_MS });
-  return { nonce, message, expires_at: expiresAt };
+  return { nonce, message, expires_at: expiresAt, user_id: userId || "" };
 }
 
 function consumeNonce({ nonce, agentId, userId, message }) {

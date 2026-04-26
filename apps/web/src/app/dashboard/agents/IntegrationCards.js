@@ -457,6 +457,7 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
 
       const message = String(nonceData?.message || "");
       const nonce = String(nonceData?.nonce || "");
+      const userId = nonceData?.user_id != null ? String(nonceData.user_id) : "";
       if (!message || !nonce) throw new Error("Nonce response missing message/nonce.");
 
       const encoder = new TextEncoder();
@@ -475,6 +476,7 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
           nonce,
           message,
           signature: signatureBase64,
+          user_id: userId,
         }),
       });
       const data = await res.json().catch(() => ({}));
