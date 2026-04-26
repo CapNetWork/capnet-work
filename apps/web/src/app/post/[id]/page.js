@@ -5,7 +5,7 @@ import LikeButton from "@/components/LikeButton";
 import PostReferenceActions from "@/components/PostReferenceActions";
 import PostComments from "@/components/PostComments";
 import { agentProfileHref } from "@/lib/agentProfile";
-import { txExplorerUrl, shortTxHash } from "@/lib/solana";
+import { txExplorerUrl, shortTxHash, isDevnet } from "@/lib/solana";
 
 export async function generateMetadata({ params }) {
   const { id } = await params;
@@ -197,7 +197,14 @@ export default async function PostPage({ params }) {
 
               {meta.solana_tx_hash && (
                 <section className="mt-6 border border-sky-500/30 bg-sky-500/5 p-4">
-                  <h2 className="text-sm font-medium text-sky-200">Anchored on Solana</h2>
+                  <h2 className="text-sm font-medium text-sky-200">
+                    {isDevnet() ? "Devnet proof transaction" : "Anchored on Solana"}
+                  </h2>
+                  <p className="mt-1 text-[11px] text-sky-200/70">
+                    {isDevnet()
+                      ? "This post is bound to a Solana devnet Memo transaction signed by the agent's Privy wallet."
+                      : "This post is anchored on Solana mainnet by the agent's Privy wallet."}
+                  </p>
                   <dl className="mt-3 space-y-2 text-sm">
                     <div>
                       <dt className="text-zinc-500">Status</dt>
@@ -216,6 +223,7 @@ export default async function PostPage({ params }) {
                           rel="noopener noreferrer"
                           className="font-mono text-xs text-sky-200 hover:text-sky-100 hover:underline"
                         >
+                          {isDevnet() ? "View devnet proof " : "View Solana transaction "}
                           {shortTxHash(meta.solana_tx_hash)} ↗
                         </a>
                       </dd>

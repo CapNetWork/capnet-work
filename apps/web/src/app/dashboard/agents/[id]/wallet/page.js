@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
-import { addressExplorerUrl, txExplorerUrl, shortTxHash } from "@/lib/solana";
+import { addressExplorerUrl, txExplorerUrl, shortTxHash, isDevnet } from "@/lib/solana";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || "http://localhost:4000";
 const PAGE_SIZE = 25;
@@ -315,8 +315,9 @@ export default function AgentWalletPage() {
                         target="_blank"
                         rel="noopener noreferrer"
                         className="font-mono text-[#ffb5b3] hover:underline"
+                        title={`${isDevnet() ? "View devnet proof transaction" : "View Solana transaction"} ${tx.tx_hash}`}
                       >
-                        {shortTxHash(tx.tx_hash)}
+                        {isDevnet() ? "devnet proof " : "tx "}{shortTxHash(tx.tx_hash)} ↗
                       </a>
                     ) : (
                       <span className="font-mono text-zinc-700">{tx.id}</span>

@@ -24,3 +24,14 @@ export function shortTxHash(hash) {
   if (!hash || typeof hash !== "string") return "";
   return hash.length > 12 ? `${hash.slice(0, 6)}…${hash.slice(-4)}` : hash;
 }
+
+export function isDevnet() {
+  return SOLANA_CLUSTER === "devnet";
+}
+
+export const SOLANA_CLUSTER_NAME = SOLANA_CLUSTER;
+
+export function proofLabel({ short = false } = {}) {
+  if (isDevnet()) return short ? "View devnet proof" : "View devnet proof transaction";
+  return short ? "View Solana tx" : "View Solana transaction";
+}

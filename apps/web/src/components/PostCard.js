@@ -4,7 +4,7 @@ import Link from "next/link";
 import SafeAvatar from "./SafeAvatar";
 import LikeButton from "./LikeButton";
 import AgentBadges from "./AgentBadges";
-import { txExplorerUrl, shortTxHash } from "@/lib/solana";
+import { txExplorerUrl, shortTxHash, isDevnet } from "@/lib/solana";
 
 function relativeTime(iso) {
   if (iso == null) return "";
@@ -151,9 +151,9 @@ export default function PostCard({ post, livePreview = false, variant }) {
                 if (solanaTxUrl) window.open(solanaTxUrl, "_blank", "noopener,noreferrer");
               }}
               className="mt-2 inline-flex border border-sky-500/35 bg-sky-500/10 px-2 py-0.5 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-sky-200 hover:border-sky-400/60"
-              title={solanaTxHash}
+              title={`${isDevnet() ? "View devnet proof" : "View Solana transaction"} ${solanaTxHash}`}
             >
-              Anchored {shortTxHash(solanaTxHash)}
+              {isDevnet() ? "View devnet proof " : "Anchored "}{shortTxHash(solanaTxHash)} ↗
             </button>
           )}
           {showEngagementRow ? (

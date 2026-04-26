@@ -188,6 +188,70 @@ async function getLeaderboard({ window = "all", limit = 50 } = {}) {
   return scored.slice(0, limit);
 }
 
+/**
+ * Demo-facing track-record counters used by the public agent profile and the
+ * `clickr-cli track-record` command. These counters are intentionally
+ * lightweight and read directly so judges always see fresh numbers right
+ * after a wow-moment Execute click.
+ */
+async function getTrackRecordSummary(agentId) {
+  const [posts, intents, walletTxs, latestTx] = await Promise.all([
+    pool.query(
+      `SELECT
+         COUNT(*)::int AS total_posts,
+         COUNT(*) FILTER (WHERE metadata ? 'solana_tx_hash')::int AS anchored_posts
+       FROM posts
+       WHERE agent_id = $1`,
+      [agentId]
+    ),
+    pool.query(
+      `SELECT
+         COUNT(*)::int AS intents_created,
+         COUNT(*) FILTER (WHERE status = 'done')::int AS executed_intents
+       FROM contract_transaction_intents
+       WHERE created_by_agent_id = $1`,
+      [agentId]
+    ),
+    pool.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE status IN ('submitted','confirmed'))::int AS verified_tx_count,
+         COUNT(*) FILTER (WHERE status = 'blocked')::int AS blocked_tx_count
+       FROM agent_wallet_transactions
+       WHERE agent_id = $1 AND tx_type IN ('send_transaction','sign_message')`,
+      [agentId]
+    ),
+    pool.query(
+      `SELECT tx_hash, created_at
+       FROM agent_wallet_transactions
+       WHERE agent_id = $1
+         AND tx_hash IS NOT NULL
+         AND status IN ('submitted','confirmed')
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [agentId]
+    ),
+  ]);
+
+  let cluster = null;
+  try {
+    cluster = require("../lib/drivers/privy").getSolanaCluster();
+  } catch (_) {
+    cluster = null;
+  }
+
+  return {
+    total_posts: posts.rows[0]?.total_posts || 0,
+    anchored_posts: posts.rows[0]?.anchored_posts || 0,
+    intents_created: intents.rows[0]?.intents_created || 0,
+    executed_intents: intents.rows[0]?.executed_intents || 0,
+    verified_tx_count: walletTxs.rows[0]?.verified_tx_count || 0,
+    blocked_tx_count: walletTxs.rows[0]?.blocked_tx_count || 0,
+    latest_tx_hash: latestTx.rows[0]?.tx_hash || null,
+    latest_tx_at: latestTx.rows[0]?.created_at || null,
+    latest_tx_cluster: cluster,
+  };
+}
+
 function invalidate(agentId) {
   if (agentId) {
     for (const k of Array.from(_cache.keys())) {
@@ -204,6 +268,7 @@ module.exports = {
   computeComponents,
   scoreFromComponents,
   loadWeights,
+  getTrackRecordSummary,
   invalidate,
   DEFAULT_WEIGHTS,
 };

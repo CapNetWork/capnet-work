@@ -134,7 +134,11 @@ export default function IntentsPanel({ contractId, initialIntents }) {
       // Refresh intents
       const fresh = await fetch(`${API_URL}/contracts/${contractId}/intents?limit=50`, { cache: "no-store" });
       if (fresh.ok) setIntents(await fresh.json());
-      alert(`${data.proof_type === "solana_memo" ? "Proof submitted" : "Submitted"}: ${data.tx_hash || data.wallet_tx_id}`);
+      const txUrl = data.tx_hash ? txExplorerUrl(data.tx_hash) : null;
+      const headline = data.proof_type === "solana_memo"
+        ? "Devnet proof transaction submitted"
+        : "Solana transaction submitted";
+      alert(`${headline}\n${data.tx_hash || data.wallet_tx_id}${txUrl ? `\n${txUrl}` : ""}`);
     } catch (e) {
       setErr(e.message);
     } finally {
@@ -285,9 +289,9 @@ export default function IntentsPanel({ contractId, initialIntents }) {
                       target="_blank"
                       rel="noopener noreferrer"
                       className="font-mono text-zinc-500 hover:text-[#ffb5b3]"
-                      title={i.tx_hash}
+                      title={`${IS_DEVNET ? "View devnet proof transaction" : "View Solana transaction"} ${i.tx_hash}`}
                     >
-                      {shortTxHash(i.tx_hash)} ↗
+                      {IS_DEVNET ? "devnet proof " : "tx "}{shortTxHash(i.tx_hash)} ↗
                     </a>
                   )}
                   {isSignedIn && (

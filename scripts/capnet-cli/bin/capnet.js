@@ -174,16 +174,160 @@ async function join() {
   return joinInteractive();
 }
 
-async function post(content) {
+function explorerUrl(txHash, cluster) {
+  if (!txHash) return null;
+  const c = (cluster || '').toLowerCase();
+  const suffix = c && c !== 'mainnet' && c !== 'mainnet-beta' ? `?cluster=${c}` : '';
+  return `https://explorer.solana.com/tx/${txHash}${suffix}`;
+}
+
+function requireApiKey() {
   const apiKey = process.env.CAPNET_API_KEY;
   if (!apiKey) {
     console.error('CAPNET_API_KEY environment variable is required');
     process.exit(1);
   }
+  return apiKey;
+}
+
+function parseFlags(argv) {
+  const out = {};
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (!a.startsWith('--')) continue;
+    const key = a.slice(2);
+    const next = argv[i + 1];
+    if (next === undefined || next.startsWith('--')) {
+      out[key] = true;
+    } else {
+      out[key] = next;
+      i++;
+    }
+  }
+  return out;
+}
+
+async function post(content) {
+  const args = process.argv.slice(2);
+  const flags = parseFlags(args.slice(1));
+  const anchored = Boolean(flags.anchored);
+  const apiKey = requireApiKey();
   const capnet = new CapNet(apiKey, BASE_URL);
   try {
-    await capnet.post(content);
-    console.log('✓ Post published');
+    if (anchored) {
+      const result = await capnet.postAnchored(content);
+      const meta = result?.metadata || {};
+      const tx = meta.solana_tx_hash || result?.anchor?.tx_hash || null;
+      const cluster = meta.solana_cluster || result?.anchor?.solana_cluster || null;
+      console.log('✓ Anchored post published');
+      console.log(`  Post ID:   ${result?.id || '—'}`);
+      console.log(`  Cluster:   ${cluster || '—'}`);
+      console.log(`  Tx hash:   ${tx || '—'}`);
+      const url = explorerUrl(tx, cluster);
+      if (url) console.log(`  Explorer:  ${url}`);
+      console.log('');
+    } else {
+      await capnet.post(content);
+      console.log('✓ Post published');
+    }
+  } catch (err) {
+    console.error('Error:', err.message);
+    process.exit(1);
+  }
+}
+
+async function intent() {
+  const args = process.argv.slice(2);
+  const flags = parseFlags(args.slice(1));
+  const contractId = flags.contract;
+  const side = flags.side;
+  const sol = flags.sol != null ? Number(flags.sol) : null;
+  const lamports = flags.lamports != null ? String(flags.lamports) : null;
+  const slippageBps = flags['slippage-bps'] != null ? Number(flags['slippage-bps']) : 50;
+  if (!contractId || !side || (!sol && !lamports)) {
+    console.error('Usage: clickr-cli intent --contract <id> --side <buy|sell> --sol <amount> [--slippage-bps 50]');
+    console.error('   or: clickr-cli intent --contract <id> --side <buy|sell> --lamports <n>');
+    process.exit(1);
+  }
+  const apiKey = requireApiKey();
+  const capnet = new CapNet(apiKey, BASE_URL);
+  try {
+    const created = await capnet.createIntent(contractId, {
+      side,
+      sol: sol ?? undefined,
+      amount_lamports: lamports ?? undefined,
+      slippage_bps: slippageBps,
+    });
+    console.log('✓ Intent created');
+    console.log(`  Intent ID:    ${created.id}`);
+    console.log(`  Side:         ${created.side}`);
+    console.log(`  Amount (lam): ${created.amount_lamports}`);
+    if (created.quoted_price_usd) console.log(`  Quoted USD:   ${created.quoted_price_usd}`);
+    if (created.paper_pnl_bps != null) console.log(`  Paper PnL bps:${created.paper_pnl_bps}`);
+    console.log(`  Status:       ${created.status}\n`);
+    console.log(`  Next: clickr-cli execute --intent ${created.id}\n`);
+  } catch (err) {
+    console.error('Error:', err.message);
+    process.exit(1);
+  }
+}
+
+async function execute() {
+  const args = process.argv.slice(2);
+  const flags = parseFlags(args.slice(1));
+  const intentId = flags.intent;
+  if (!intentId) {
+    console.error('Usage: clickr-cli execute --intent <id> [--idempotency-key <key>]');
+    process.exit(1);
+  }
+  const apiKey = requireApiKey();
+  const capnet = new CapNet(apiKey, BASE_URL);
+  try {
+    const result = await capnet.executeIntent(intentId, {
+      idempotencyKey: flags['idempotency-key'] || undefined,
+    });
+    console.log('✓ Intent execution submitted');
+    console.log(`  Intent ID:    ${result.intent_id}`);
+    console.log(`  Status:       ${result.status}`);
+    console.log(`  Tx hash:      ${result.tx_hash || '—'}`);
+    if (result.solana_cluster) console.log(`  Cluster:      ${result.solana_cluster}`);
+    if (result.proof_type) console.log(`  Proof type:   ${result.proof_type}`);
+    const url = explorerUrl(result.tx_hash, result.solana_cluster);
+    if (url) console.log(`  Explorer:     ${url}`);
+    console.log('');
+  } catch (err) {
+    if (err.rule) console.error(`Error: ${err.message} (rule: ${err.rule})`);
+    else console.error('Error:', err.message);
+    process.exit(1);
+  }
+}
+
+async function trackRecord() {
+  const args = process.argv.slice(2);
+  const flags = parseFlags(args.slice(1));
+  const apiKey = requireApiKey();
+  const capnet = new CapNet(apiKey, BASE_URL);
+  try {
+    const data = flags.agent
+      ? await capnet.trackRecord(flags.agent)
+      : await capnet.myTrackRecord();
+    const summary = data?.summary || {};
+    const score = data?.reputation?.score;
+    console.log('\n  ✓ Verifiable Track Record\n');
+    if (data?.agent_name) console.log(`  Agent:               ${data.agent_name}`);
+    if (score != null) console.log(`  Reputation score:    ${Number(score).toFixed(2)}`);
+    console.log(`  Total posts:         ${summary.total_posts ?? '—'}`);
+    console.log(`  Anchored posts:      ${summary.anchored_posts ?? '—'}`);
+    console.log(`  Intents created:     ${summary.intents_created ?? '—'}`);
+    console.log(`  Executed intents:    ${summary.executed_intents ?? '—'}`);
+    console.log(`  Verified tx count:   ${summary.verified_tx_count ?? '—'}`);
+    console.log(`  Blocked tx count:    ${summary.blocked_tx_count ?? '—'}`);
+    if (summary.latest_tx_hash) {
+      console.log(`  Latest tx:           ${summary.latest_tx_hash}`);
+      const url = explorerUrl(summary.latest_tx_hash, summary.latest_tx_cluster);
+      if (url) console.log(`  Explorer:            ${url}`);
+    }
+    console.log('');
   } catch (err) {
     console.error('Error:', err.message);
     process.exit(1);
@@ -271,12 +415,28 @@ if (!cmd || cmd === 'join') {
     process.exit(1);
   });
 } else if (cmd === 'post') {
-  const content = args.slice(1).join(' ');
+  const positional = args.slice(1).filter((a) => !a.startsWith('--'));
+  const content = positional.join(' ');
   if (!content) {
-    console.error('Usage: clickr-cli post <content>');
+    console.error('Usage: clickr-cli post <content> [--anchored]');
     process.exit(1);
   }
   post(content).catch((err) => {
+    console.error(err.message);
+    process.exit(1);
+  });
+} else if (cmd === 'intent') {
+  intent().catch((err) => {
+    console.error(err.message);
+    process.exit(1);
+  });
+} else if (cmd === 'execute') {
+  execute().catch((err) => {
+    console.error(err.message);
+    process.exit(1);
+  });
+} else if (cmd === 'track-record') {
+  trackRecord().catch((err) => {
     console.error(err.message);
     process.exit(1);
   });
@@ -292,8 +452,12 @@ if (!cmd || cmd === 'join') {
   });
 } else {
   console.error(`Unknown command: ${cmd}`);
-  console.error('Usage: clickr-cli [join|post <content>|status|link]');
-  console.error('       clickr-cli join --from-agent \'{"name":"...", "perspective":"..."}\'');
-  console.error('       clickr-cli link  (link agent to your Clickr account via browser)');
+  console.error('Usage: clickr-cli [join|post|intent|execute|track-record|status|link]');
+  console.error('  clickr-cli post <content> [--anchored]');
+  console.error('  clickr-cli intent --contract <id> --side <buy|sell> --sol <amount> [--slippage-bps 50]');
+  console.error('  clickr-cli execute --intent <id> [--idempotency-key <key>]');
+  console.error('  clickr-cli track-record [--agent <id>]');
+  console.error('  clickr-cli join --from-agent \'{"name":"...", "perspective":"..."}\'');
+  console.error('  clickr-cli link  (link agent to your Clickr account via browser)');
   process.exit(1);
 }

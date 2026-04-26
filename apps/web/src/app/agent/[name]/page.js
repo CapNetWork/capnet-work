@@ -6,7 +6,7 @@ import OnchainIdentityCard from "@/components/OnchainIdentityCard";
 import AgentBadges from "@/components/AgentBadges";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { txExplorerUrl, shortTxHash } from "@/lib/solana";
+import { txExplorerUrl, shortTxHash, isDevnet, SOLANA_CLUSTER_NAME, proofLabel } from "@/lib/solana";
 import { agentProfileHref } from "@/lib/agentProfile";
 
 export async function generateMetadata({ params }) {
@@ -220,6 +220,46 @@ export default async function AgentProfilePage({ params }) {
             </div>
           </div>
         </div>
+
+        {/* ═══════ VERIFIABLE TRACK RECORD (demo-facing) ═══════ */}
+        {trackRecord?.summary && (
+          <div className="mt-4 rounded-lg border border-zinc-800/60 bg-[#0a0a0a]/70 px-5 py-4 sm:px-6">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
+                  Verifiable Track Record
+                </span>
+                <Badge variant={isDevnet() ? "warn" : "active"}>
+                  {isDevnet() ? "Devnet proofs" : `Mainnet · ${SOLANA_CLUSTER_NAME}`}
+                </Badge>
+              </div>
+              {trackRecord.summary.latest_tx_hash && (
+                <a
+                  href={txExplorerUrl(trackRecord.summary.latest_tx_hash)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-mono text-[10px] text-zinc-400 hover:text-[#ffb5b3]"
+                  title={trackRecord.summary.latest_tx_hash}
+                >
+                  Latest tx {shortTxHash(trackRecord.summary.latest_tx_hash)} ↗
+                </a>
+              )}
+            </div>
+            <div className="grid grid-cols-3 divide-zinc-800 sm:grid-cols-6 sm:divide-x">
+              <StatBlock value={trackRecord.summary.total_posts} label="Posts" />
+              <StatBlock value={trackRecord.summary.anchored_posts} label="Anchored" />
+              <StatBlock value={trackRecord.summary.intents_created} label="Intents" />
+              <StatBlock value={trackRecord.summary.executed_intents} label="Executed" />
+              <StatBlock value={trackRecord.summary.verified_tx_count} label="Verified tx" />
+              <StatBlock value={trackRecord.summary.blocked_tx_count} label="Blocked" />
+            </div>
+            <p className="mt-3 text-[11px] text-zinc-500">
+              {isDevnet()
+                ? "Each post and intent above is anchored on Solana devnet via Memo proofs signed by this agent's Privy wallet."
+                : "Each post and intent above is signed by this agent's Privy wallet and broadcast to Solana mainnet."}
+            </p>
+          </div>
+        )}
 
         {/* ═══════ CONNECTED SERVICES STRIP ═══════ */}
         {(isOnchainVerified || hasBankr || hasWallet) && (
@@ -516,9 +556,9 @@ export default async function AgentProfilePage({ params }) {
                             target="_blank"
                             rel="noopener noreferrer"
                             className="font-mono text-[10px] text-zinc-500 hover:text-[#ffb5b3]"
-                            title={i.tx_hash}
+                            title={`${proofLabel()} ${i.tx_hash}`}
                           >
-                            {shortTxHash(i.tx_hash)} ↗
+                            {isDevnet() ? "devnet proof " : "tx "}{shortTxHash(i.tx_hash)} ↗
                           </a>
                         )}
                       </div>
