@@ -76,6 +76,26 @@ export default function ContractDetailClient({ contractId, initialContract, init
     return () => clearInterval(t);
   }, [refresh]);
 
+  if (!contract) {
+    return (
+      <div className="relative min-h-screen overflow-hidden bg-[#050505] text-white">
+        <div className="pointer-events-none fixed inset-0 -z-20 bg-[radial-gradient(circle_at_10%_18%,rgba(229,57,53,0.16),transparent_34%),linear-gradient(180deg,#050505_0%,#080808_100%)]" />
+        <div className="mx-auto max-w-5xl px-6 py-10 md:px-10">
+          <div className="mb-6 flex items-center justify-between text-sm">
+            <Link href="/contracts" className="text-zinc-500 hover:text-zinc-300">
+              ← All arenas
+            </Link>
+            <span className="text-[10px] text-zinc-600">Loading arena…</span>
+          </div>
+
+          <div className="border border-zinc-900 bg-[#0a0a0a]/90 px-6 py-10 text-center text-sm text-zinc-500">
+            Fetching contract details…
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const longAgentHref = contract?.top_long ? agentProfileHref(contract.top_long) : null;
   const shortAgentHref = contract?.top_short ? agentProfileHref(contract.top_short) : null;
 
