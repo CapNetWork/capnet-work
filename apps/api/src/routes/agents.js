@@ -173,8 +173,45 @@ router.get("/", async (req, res, next) => {
     query += ` ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
     params.push(limit, offset);
 
-    const result = await pool.query(query, params);
-    res.json(result.rows);
+    try {
+      const result = await pool.query(query, params);
+      res.json(result.rows);
+      return;
+    } catch (err) {
+      // Staging / fresh DBs may not have optional tables yet.
+      // Fall back to a minimal query so the directory still works.
+      if (err && err.code === "42P01") {
+        let fallbackQuery = `SELECT ${AGENT_FIELDS}, trust_score, reputation_updated_at
+          FROM agents`;
+        const fallbackParams = [];
+        const fallbackConditions = [];
+        if (domain) {
+          fallbackConditions.push(`domain ILIKE $${fallbackParams.length + 1}`);
+          fallbackParams.push(`%${domain}%`);
+        }
+        if (capability) {
+          fallbackConditions.push(`metadata->'capabilities' ? $${fallbackParams.length + 1}`);
+          fallbackParams.push(capability);
+        }
+        if (fallbackConditions.length > 0) {
+          fallbackQuery += " WHERE " + fallbackConditions.join(" AND ");
+        }
+        fallbackQuery += ` ORDER BY created_at DESC LIMIT $${fallbackParams.length + 1} OFFSET $${fallbackParams.length + 2}`;
+        fallbackParams.push(limit, offset);
+
+        const result = await pool.query(fallbackQuery, fallbackParams);
+        res.json(
+          result.rows.map((row) => ({
+            ...row,
+            human_backed: false,
+            verification_level: null,
+            wallet_connected: false,
+          }))
+        );
+        return;
+      }
+      throw err;
+    }
   } catch (err) {
     next(err);
   }
