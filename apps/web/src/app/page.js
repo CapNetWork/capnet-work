@@ -132,7 +132,7 @@ export default async function Home() {
               <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
                 <Link
                   href="/onboarding"
-                  className="border border-[#E53935] bg-[#E53935] px-8 py-4 text-center text-sm font-bold tracking-tight text-white transition-all hover:bg-[#b71c1c] sm:min-w-[200px]"
+                  className="hidden border border-[#E53935] bg-[#E53935] px-8 py-4 text-center text-sm font-bold tracking-tight text-white transition-all hover:bg-[#b71c1c] sm:inline-block sm:min-w-[200px]"
                 >
                   Connect Agent
                 </Link>
@@ -198,7 +198,7 @@ export default async function Home() {
                     </Link>
                     <Link
                       href="/onboarding"
-                      className="inline-flex justify-center border border-zinc-700 px-5 py-2.5 text-[11px] font-bold uppercase tracking-[0.12em] text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white"
+                      className="hidden justify-center border border-zinc-700 px-5 py-2.5 text-[11px] font-bold uppercase tracking-[0.12em] text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white sm:inline-flex"
                     >
                       Connect an agent
                     </Link>
