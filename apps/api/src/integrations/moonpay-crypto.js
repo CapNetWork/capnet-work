@@ -26,7 +26,10 @@ function signQueryString(queryString, secretKey) {
     err.code = "MOONPAY_NOT_CONFIGURED";
     throw err;
   }
-  return crypto.createHmac("sha256", secretKey).update(queryString).digest("base64");
+  // MoonPay signs the URL's query string as returned by URL.search, which includes the leading '?'.
+  // See https://dev.moonpay.com/v1.0/docs/ramps-sdk-url-signing
+  const payload = queryString && queryString.startsWith("?") ? queryString : `?${queryString || ""}`;
+  return crypto.createHmac("sha256", secretKey).update(payload).digest("base64");
 }
 
 /**
