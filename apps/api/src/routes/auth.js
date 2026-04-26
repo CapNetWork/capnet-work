@@ -251,6 +251,92 @@ router.get("/siwe/nonce", (_req, res) => {
   return res.json(issueNonce());
 });
 
+// ---------------------------------------------------------------------------
+// Solana wallet sign-in (Phantom -> session)
+// ---------------------------------------------------------------------------
+
+const SOLANA_NONCE_TTL_MS = 5 * 60 * 1000;
+const solanaNonces = new Map(); // nonce -> { message, expiresAt }
+
+function cleanupSolanaNonces() {
+  const ts = Date.now();
+  for (const [nonce, entry] of solanaNonces.entries()) {
+    if (!entry || entry.expiresAt <= ts) solanaNonces.delete(nonce);
+  }
+}
+
+function issueSolanaNonce({ domain }) {
+  const crypto = require("crypto");
+  cleanupSolanaNonces();
+  const nonce = crypto.randomBytes(16).toString("hex");
+  const issuedAt = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + SOLANA_NONCE_TTL_MS).toISOString();
+  const message = [
+    "Clickr Sign-in (Solana)",
+    `domain=${domain || "clickr.cc"}`,
+    `nonce=${nonce}`,
+    `issued_at=${issuedAt}`,
+    `expires_at=${expiresAt}`,
+  ].join("\n");
+  solanaNonces.set(nonce, { message, expiresAt: Date.now() + SOLANA_NONCE_TTL_MS });
+  return { nonce, message, expires_at: expiresAt };
+}
+
+function consumeSolanaNonce({ nonce, message }) {
+  cleanupSolanaNonces();
+  const entry = solanaNonces.get(nonce);
+  if (!entry || entry.expiresAt <= Date.now()) return false;
+  if (String(entry.message) !== String(message || "")) return false;
+  solanaNonces.delete(nonce);
+  return true;
+}
+
+router.get("/solana/nonce", authLimiter, (req, res) => {
+  const host = (req.headers["x-forwarded-host"] || req.headers.host || "").toString();
+  const domain = host ? host.split(",")[0].trim() : "clickr.cc";
+  return res.json(issueSolanaNonce({ domain }));
+});
+
+router.post("/solana/verify", authLimiter, async (req, res, next) => {
+  const walletAddress = typeof req.body?.wallet_address === "string" ? req.body.wallet_address.trim() : "";
+  const messageStr = typeof req.body?.message === "string" ? req.body.message.trim() : "";
+  const signatureB64 = typeof req.body?.signature === "string" ? req.body.signature.trim() : "";
+  const nonce = typeof req.body?.nonce === "string" ? req.body.nonce.trim() : "";
+  if (!walletAddress) return res.status(400).json({ error: "wallet_address is required" });
+  if (!messageStr) return res.status(400).json({ error: "message is required" });
+  if (!signatureB64) return res.status(400).json({ error: "signature is required" });
+  if (!nonce) return res.status(400).json({ error: "nonce is required" });
+
+  try {
+    const { PublicKey } = require("@solana/web3.js");
+    const crypto = require("crypto");
+    // nonce lifecycle
+    if (!consumeSolanaNonce({ nonce, message: messageStr })) {
+      return res.status(400).json({ error: "Nonce missing or expired. Request a new nonce and retry." });
+    }
+    // signature verify (ed25519)
+    const msgBytes = Buffer.from(messageStr, "utf8");
+    const sigBytes = Buffer.from(signatureB64, "base64");
+    if (sigBytes.length !== 64) return res.status(400).json({ error: "signature looks invalid" });
+    const pubkeyBytes = Buffer.from(new PublicKey(walletAddress).toBytes());
+    const spkiPrefix = Buffer.from("302a300506032b6570032100", "hex");
+    const keyDer = Buffer.concat([spkiPrefix, pubkeyBytes]);
+    const keyObject = crypto.createPublicKey({ key: keyDer, format: "der", type: "spki" });
+    const ok = crypto.verify(null, msgBytes, keyObject, sigBytes);
+    if (!ok) return res.status(401).json({ error: "Signature did not verify for this wallet" });
+
+    // Solana chain id placeholder (Clickr uses clickr_linked_wallets.chain_id int)
+    const SOLANA_CHAIN_ID = 0;
+    const user = await findOrCreateUserByWallet(walletAddress, SOLANA_CHAIN_ID);
+    if (!user) return res.status(500).json({ error: "Failed to resolve user" });
+
+    const session = await createSession(user.id);
+    return res.json({ ok: true, user, wallet_address: walletAddress, ...session });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.post("/wallet", authLimiter, async (req, res, next) => {
   const messageStr = typeof req.body?.message === "string" ? req.body.message.trim() : "";
   const signature = typeof req.body?.signature === "string" ? req.body.signature.trim() : "";
