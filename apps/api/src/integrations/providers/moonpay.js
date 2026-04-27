@@ -83,11 +83,7 @@ function buildWidgetUrlForAgent(agentId, cfg, body = {}) {
   ensureKeysForConnect();
   const pk = publishableKey();
   const ext = cfg.external_customer_id || agentId;
-  const wallet =
-    body.walletAddress ||
-    body.wallet_address ||
-    cfg.default_wallet_address ||
-    undefined;
+  const wallet = body.walletAddress || body.wallet_address || cfg.default_wallet_address || undefined;
   const rawCur = body.currencyCode || body.currency_code || cfg.default_currency_code;
   if (!rawCur || !String(rawCur).trim()) {
     const err = new Error("currencyCode is required (or set default_currency_code on connect)");
