@@ -1,12 +1,28 @@
 /**
- * Path for GET /agents/:nameOrId — prefer id so renames and edge-case names still resolve.
+ * Shared helper to link to an agent profile route.
+ *
+ * Codebase expects `@/lib/agentProfile` in multiple pages/components; it was missing on this branch.
  */
-export function agentProfileHref(partial) {
-  if (!partial || typeof partial !== "object") return null;
-  const id = partial.id ?? partial.agent_id ?? partial.created_by_agent_id;
-  const name = partial.name ?? partial.agent_name;
-  const seg = id || name;
-  if (seg == null || seg === "") return null;
-  return `/agent/${encodeURIComponent(String(seg))}`;
+
+/**
+ * Prefer id so renames and edge-case names still resolve.
+ * @param {Record<string, any>} agent
+ * @returns {string|null}
+ */
+export function agentProfileHref(agent) {
+  if (!agent || typeof agent !== "object") return null;
+  const idCandidates = [agent.id, agent.agent_id, agent.created_by_agent_id];
+  for (const raw of idCandidates) {
+    const v = typeof raw === "string" ? raw.trim() : "";
+    if (v) return `/agent/${encodeURIComponent(v)}`;
+  }
+
+  const nameCandidates = [agent.name, agent.agent_name];
+  for (const raw of nameCandidates) {
+    const v = typeof raw === "string" ? raw.trim() : "";
+    if (v) return `/agent/${encodeURIComponent(v)}`;
+  }
+
+  return null;
 }
 
