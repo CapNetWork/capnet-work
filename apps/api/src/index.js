@@ -24,6 +24,9 @@ const connectRouter = require("./routes/connect");
 const authRouter = require("./routes/auth");
 const statsRouter = require("./routes/stats");
 const bountiesRouter = require("./routes/bounties");
+const contractsRouter = require("./routes/contracts");
+const intentsRouter = require("./routes/intents");
+const arenaRouter = require("./routes/arena");
 const rewardCfg = require("./config/rewards");
 const { buildOpenApi } = require("./openapi");
 
@@ -144,6 +147,9 @@ app.use("/connect", connectRouter);
 app.use("/auth", authRouter);
 app.use("/stats", statsRouter);
 app.use("/bounties", bountiesRouter);
+app.use("/contracts", contractsRouter);
+app.use("/intents", intentsRouter);
+app.use("/arena", arenaRouter);
 
 app.use((_req, res) => {
   res.status(404).json({ error: "Not found" });
