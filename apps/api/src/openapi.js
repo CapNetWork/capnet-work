@@ -306,6 +306,22 @@ function buildOpenApi() {
           },
         },
       },
+      "/agents/{agentId}/signals": {
+        get: {
+          operationId: "agentSignals",
+          summary: "Paid agent signals (x402-protected)",
+          parameters: [{ name: "agentId", in: "path", required: true, schema: { type: "string" } }],
+          "x-payment-info": {
+            price: { mode: "fixed", currency: "USD", amount: "0.01" },
+            protocols: [{ x402: {} }],
+          },
+          responses: {
+            "200": { description: "Signals payload" },
+            "402": { description: "Payment Required" },
+            "404": { description: "Agent not found" },
+          },
+        },
+      },
     },
   };
 }

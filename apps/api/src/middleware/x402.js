@@ -6,11 +6,39 @@
 const { pool } = require("../db");
 
 const X402_FACILITATOR_URL = process.env.X402_FACILITATOR_URL || "https://x402.org/facilitator";
-const X402_PAYMENT_ADDRESS =
-  process.env.X402_PAYMENT_ADDRESS || "0x0000000000000000000000000000000000000000";
+const X402_PAYMENT_ADDRESS = process.env.X402_PAYMENT_ADDRESS;
 const X402_NETWORK = process.env.X402_NETWORK || "eip155:8453";
 const X402_ASSET_ADDRESS =
   process.env.X402_ASSET_ADDRESS || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"; // USDC on Base
+const X402_ASSET_DECIMALS = Number(process.env.X402_ASSET_DECIMALS || 6);
+
+function isZeroEvmAddress(addr) {
+  if (!addr || typeof addr !== "string") return false;
+  return /^0x0{40}$/i.test(addr.trim());
+}
+
+function requireConfiguredPaymentAddress() {
+  const a = typeof X402_PAYMENT_ADDRESS === "string" ? X402_PAYMENT_ADDRESS.trim() : "";
+  if (!a) {
+    const err = new Error("X402_PAYMENT_ADDRESS is required to accept x402 payments");
+    err.code = "X402_MISCONFIGURED";
+    throw err;
+  }
+  if (isZeroEvmAddress(a)) {
+    const err = new Error("X402_PAYMENT_ADDRESS must not be the zero address");
+    err.code = "X402_MISCONFIGURED";
+    throw err;
+  }
+  return a;
+}
+
+/**
+ * Phase 1: platform wallet only.
+ * Phase 2: return seller payment_wallet || platform wallet.
+ */
+function resolvePayTo(_ctx = {}) {
+  return requireConfiguredPaymentAddress();
+}
 
 async function checkWorldIdDiscount(agentId) {
   if (!agentId) return null;
@@ -26,7 +54,40 @@ function toBase64Json(obj) {
   return Buffer.from(JSON.stringify(obj), "utf-8").toString("base64");
 }
 
-function setPaymentRequiredHeaders(res, { amount, token, resourceUrl, method }) {
+function fromBase64Json(b64) {
+  const raw = Buffer.from(String(b64), "base64").toString("utf-8");
+  return JSON.parse(raw);
+}
+
+function parseUsdcToAtomic(amount) {
+  // Supports "0", "1", "0.01", "1.234567" (up to decimals).
+  const s = String(amount).trim();
+  if (!s) throw new Error("amount is required");
+  if (!/^\d+(\.\d+)?$/.test(s)) throw new Error("amount must be a non-negative decimal string");
+  const [whole, frac = ""] = s.split(".");
+  const fracPadded = (frac + "0".repeat(X402_ASSET_DECIMALS)).slice(0, X402_ASSET_DECIMALS);
+  const atomic = BigInt(whole) * BigInt(10 ** X402_ASSET_DECIMALS) + BigInt(fracPadded || "0");
+  return atomic.toString();
+}
+
+function buildPaymentRequirements({ amountAtomic, token, resourceUrl, method, payTo }) {
+  return {
+    scheme: "exact",
+    network: X402_NETWORK,
+    amount: String(amountAtomic),
+    asset: X402_ASSET_ADDRESS,
+    payTo,
+    maxTimeoutSeconds: 60,
+    // Bazaar-style I/O schema hint used by discovery tooling.
+    outputSchema: {
+      input: { type: "http", method: (method || "POST").toUpperCase(), resource: resourceUrl },
+      output: null,
+    },
+    extra: { name: token, facilitator: X402_FACILITATOR_URL, version: "2" },
+  };
+}
+
+function setPaymentRequiredHeaders(res, { amountAtomic, token, resourceUrl, method, payTo }) {
   // x402 transport header (base64 PaymentRequired object)
   const paymentRequired = {
     x402Version: 2,
@@ -37,20 +98,7 @@ function setPaymentRequiredHeaders(res, { amount, token, resourceUrl, method }) 
       mimeType: "application/json",
     },
     accepts: [
-      {
-        scheme: "exact",
-        network: X402_NETWORK,
-        amount: String(amount),
-        asset: X402_ASSET_ADDRESS,
-        payTo: X402_PAYMENT_ADDRESS,
-        maxTimeoutSeconds: 60,
-        // Bazaar-style I/O schema hint used by discovery tooling.
-        outputSchema: {
-          input: { type: "http", method: (method || "POST").toUpperCase(), resource: resourceUrl },
-          output: null,
-        },
-        extra: { name: token, facilitator: X402_FACILITATOR_URL, version: "2" },
-      },
+      buildPaymentRequirements({ amountAtomic, token, resourceUrl, method, payTo }),
     ],
   };
 
@@ -60,71 +108,258 @@ function setPaymentRequiredHeaders(res, { amount, token, resourceUrl, method }) 
   res.setHeader("PAYMENT-REQUIRED", toBase64Json(paymentRequired));
 }
 
-async function logPaymentEvent(agentId, direction, resourcePath, amount, txHash) {
+function setPaymentResponseHeaders(res, settlementResponse) {
+  res.setHeader("PAYMENT-RESPONSE", toBase64Json(settlementResponse));
+}
+
+async function reserveReplayNonce({ network, nonce }) {
+  // This table is created by migration 027_x402_payment_receipts.sql.
+  // If it is missing, we fail closed because replay protection is required.
+  await pool.query(
+    `INSERT INTO x402_payment_receipts (network, nonce)
+     VALUES ($1, $2)`,
+    [network, nonce]
+  );
+}
+
+async function logPaymentEvent({
+  agentId,
+  direction,
+  resourcePath,
+  amountAtomic,
+  txHash,
+  counterpartyAgentId,
+  status = "settled",
+}) {
   await pool.query(
     `INSERT INTO agent_payment_events
-       (agent_id, direction, resource_path, amount, token, network, tx_hash, status)
-     VALUES ($1, $2, $3, $4, 'USDC', $5, $6, 'settled')`,
-    [agentId, direction, resourcePath, amount, X402_NETWORK, txHash || null]
+       (agent_id, direction, counterparty_agent_id, resource_path, amount, token, network, tx_hash, status)
+     VALUES ($1, $2, $3, $4, $5, 'USDC', $6, $7, $8)`,
+    [agentId, direction, counterpartyAgentId || null, resourcePath, String(amountAtomic), X402_NETWORK, txHash, status]
   );
+}
+
+function normalizeFacilitatorBase(url) {
+  return String(url || "").replace(/\/$/, "");
+}
+
+async function facilitatorVerifyAndSettle({ paymentPayload, paymentRequirements }) {
+  const base = normalizeFacilitatorBase(X402_FACILITATOR_URL);
+  const reqBody = {
+    x402Version: 2,
+    paymentPayload,
+    paymentRequirements,
+  };
+
+  const verifyResp = await fetch(`${base}/verify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(reqBody),
+  });
+  const verifyJson = await verifyResp.json().catch(() => ({}));
+  if (!verifyResp.ok || verifyJson?.isValid !== true) {
+    const err = new Error(verifyJson?.invalidReason || "x402 verification failed");
+    err.code = "X402_VERIFY_FAILED";
+    err.details = verifyJson;
+    throw err;
+  }
+
+  const settleResp = await fetch(`${base}/settle`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(reqBody),
+  });
+  const settleJson = await settleResp.json().catch(() => ({}));
+  if (!settleResp.ok || settleJson?.success !== true || !settleJson?.transaction) {
+    const err = new Error(settleJson?.errorReason || "x402 settlement failed");
+    err.code = "X402_SETTLE_FAILED";
+    err.details = settleJson;
+    throw err;
+  }
+
+  return settleJson;
+}
+
+function extractReplayNonce(paymentPayload) {
+  const nonce =
+    paymentPayload?.payload?.authorization?.nonce ||
+    paymentPayload?.payload?.nonce ||
+    paymentPayload?.nonce ||
+    null;
+  if (!nonce || typeof nonce !== "string") return null;
+  return nonce.trim() || null;
+}
+
+function paymentRequiredResponseBody({ amountAtomic, displayAmount, token, payTo, discountMeta }) {
+  return {
+    error: "Payment required",
+    amount: displayAmount,
+    amount_atomic: String(amountAtomic),
+    token,
+    network: X402_NETWORK,
+    asset: X402_ASSET_ADDRESS,
+    pay_to: payTo,
+    facilitator: X402_FACILITATOR_URL,
+    ...(discountMeta || {}),
+  };
 }
 
 function x402Paywall({ amount, token = "USDC", freeForHumans = false, discountForHumans = 0 } = {}) {
   return async (req, res, next) => {
     const paymentSig = req.headers["payment-signature"] || req.headers["x-payment-signature"];
+    const sellerAgentId = req.params?.agentId || null;
+    const buyerAgentId = req.agent?.id || null;
+    const resourcePath = req.originalUrl || req.path;
+    const resourceUrl = `${req.protocol}://${req.get("host")}${resourcePath}`;
+
+    let payTo;
+    try {
+      payTo = resolvePayTo({ sellerAgentId, buyerAgentId, req });
+    } catch (e) {
+      return res.status(503).json({ error: e.message || "x402 is not configured" });
+    }
+
+    // Amount=0 endpoints are effectively free; don't prompt for payment.
+    let baseAmountAtomic;
+    try {
+      baseAmountAtomic = parseUsdcToAtomic(amount);
+    } catch (e) {
+      return res.status(500).json({ error: e.message || "Invalid x402 amount configuration" });
+    }
+    if (baseAmountAtomic === "0") return next();
 
     if (!paymentSig) {
-      const resourceUrl = `${req.protocol}://${req.get("host")}${req.originalUrl || req.path}`;
-      const agentId = req.agent?.id;
-      if (freeForHumans && agentId) {
-        const level = await checkWorldIdDiscount(agentId);
+      if (freeForHumans && buyerAgentId) {
+        const level = await checkWorldIdDiscount(buyerAgentId);
         if (level) return next();
       }
-      if (discountForHumans > 0 && agentId) {
-        const level = await checkWorldIdDiscount(agentId);
+      if (discountForHumans > 0 && buyerAgentId) {
+        const level = await checkWorldIdDiscount(buyerAgentId);
         if (level) {
           const discounted = (parseFloat(amount) * (1 - discountForHumans)).toFixed(6);
-          setPaymentRequiredHeaders(res, { amount: discounted, token, resourceUrl, method: req.method });
-          return res.status(402).json({
-            error: "Payment required",
-            amount: discounted,
-            original_amount: amount,
-            discount: `${discountForHumans * 100}% (World ID verified)`,
+          const discountedAtomic = parseUsdcToAtomic(discounted);
+          setPaymentRequiredHeaders(res, {
+            amountAtomic: discountedAtomic,
             token,
-            network: X402_NETWORK,
-            pay_to: X402_PAYMENT_ADDRESS,
-            facilitator: X402_FACILITATOR_URL,
+            resourceUrl,
+            method: req.method,
+            payTo,
           });
+          return res.status(402).json(
+            paymentRequiredResponseBody({
+              amountAtomic: discountedAtomic,
+              displayAmount: discounted,
+              token,
+              payTo,
+              discountMeta: {
+                original_amount: String(amount),
+                original_amount_atomic: baseAmountAtomic,
+                discount: `${discountForHumans * 100}% (World ID verified)`,
+              },
+            })
+          );
         }
       }
 
-      setPaymentRequiredHeaders(res, { amount, token, resourceUrl, method: req.method });
-      return res.status(402).json({
-        error: "Payment required",
-        amount,
+      setPaymentRequiredHeaders(res, {
+        amountAtomic: baseAmountAtomic,
         token,
-        network: X402_NETWORK,
-        pay_to: X402_PAYMENT_ADDRESS,
-        facilitator: X402_FACILITATOR_URL,
+        resourceUrl,
+        method: req.method,
+        payTo,
       });
+      return res.status(402).json(
+        paymentRequiredResponseBody({
+          amountAtomic: baseAmountAtomic,
+          displayAmount: String(amount),
+          token,
+          payTo,
+        })
+      );
     }
 
     try {
-      const buyerAgentId = req.agent?.id || null;
-      const resourcePath = req.originalUrl || req.path;
-
-      await logPaymentEvent(buyerAgentId, "outbound", resourcePath, amount, null);
-
-      const sellerAgentId = req.params?.agentId || null;
-      if (sellerAgentId) {
-        await logPaymentEvent(sellerAgentId, "inbound", resourcePath, amount, null);
+      let paymentPayload;
+      try {
+        paymentPayload = fromBase64Json(paymentSig);
+      } catch {
+        return res.status(400).json({ error: "Invalid PAYMENT-SIGNATURE header (expected base64 JSON)" });
       }
+
+      // The server is authoritative: only accept the payment requirement we challenged with.
+      const expectedReq = buildPaymentRequirements({
+        amountAtomic: baseAmountAtomic,
+        token,
+        resourceUrl,
+        method: req.method,
+        payTo,
+      });
+
+      // Replay protection: reserve the nonce before settling.
+      const nonce = extractReplayNonce(paymentPayload);
+      if (!nonce) return res.status(400).json({ error: "Payment payload missing nonce (replay protection required)" });
+      try {
+        await reserveReplayNonce({ network: X402_NETWORK, nonce });
+      } catch (e) {
+        if (e?.code === "23505") {
+          return res.status(402).json({ error: "Payment already used (replay detected)" });
+        }
+        throw e;
+      }
+
+      const settlement = await facilitatorVerifyAndSettle({
+        paymentPayload,
+        paymentRequirements: expectedReq,
+      });
+
+      const txHash = settlement.transaction;
+
+      // Internal attribution even when payTo is the platform wallet.
+      if (buyerAgentId) {
+        await logPaymentEvent({
+          agentId: buyerAgentId,
+          direction: "outbound",
+          counterpartyAgentId: sellerAgentId,
+          resourcePath,
+          amountAtomic: baseAmountAtomic,
+          txHash,
+          status: "settled",
+        });
+      }
+      if (sellerAgentId) {
+        await logPaymentEvent({
+          agentId: sellerAgentId,
+          direction: "inbound",
+          counterpartyAgentId: buyerAgentId,
+          resourcePath,
+          amountAtomic: baseAmountAtomic,
+          txHash,
+          status: "settled",
+        });
+      }
+
+      setPaymentResponseHeaders(res, {
+        success: true,
+        payer: settlement.payer || null,
+        transaction: txHash,
+        network: settlement.network || X402_NETWORK,
+      });
 
       next();
     } catch (err) {
+      if (err.code === "X402_VERIFY_FAILED" || err.code === "X402_SETTLE_FAILED") {
+        setPaymentRequiredHeaders(res, {
+          amountAtomic: baseAmountAtomic,
+          token,
+          resourceUrl,
+          method: req.method,
+          payTo,
+        });
+        return res.status(402).json({ error: err.message || "Payment failed", code: err.code, details: err.details || null });
+      }
       next(err);
     }
   };
 }
 
-module.exports = { x402Paywall, logPaymentEvent };
+module.exports = { x402Paywall, logPaymentEvent, resolvePayTo };

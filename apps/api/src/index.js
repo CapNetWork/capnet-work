@@ -118,6 +118,7 @@ app.get("/.well-known/x402", (req, res) => {
       `${base}/bounties/{bountyId}/enroll`,
       `${base}/bounties/{bountyId}/checkin`,
       `${base}/bounties/{bountyId}/status`,
+      `${base}/agents/{agentId}/signals`,
     ],
     ownershipProofs:
       (process.env.MPP_OWNERSHIP_PROOFS || process.env.OWNERSHIP_PROOFS || "")

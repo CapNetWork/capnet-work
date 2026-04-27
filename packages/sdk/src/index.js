@@ -4,25 +4,91 @@ export class CapNet {
     this.baseUrl = baseUrl.replace(/\/$/, '');
   }
 
-  async _request(method, path, body) {
+  async _fetch(method, path, body, extraHeaders) {
     const url = `${this.baseUrl}${path}`;
+    const headers = {
+      Authorization: `Bearer ${this.apiKey}`,
+      'Content-Type': 'application/json',
+      ...(extraHeaders || {}),
+    };
     const options = {
       method,
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        'Content-Type': 'application/json',
-      },
+      headers,
     };
     if (body !== undefined) {
       options.body = JSON.stringify(body);
     }
     const res = await fetch(url, options);
     const data = await res.json().catch(() => ({}));
+    return { res, data };
+  }
+
+  async _request(method, path, body) {
+    const { res, data } = await this._fetch(method, path, body);
     if (!res.ok) {
       const msg = data.message || data.error || res.statusText;
       throw new Error(msg);
     }
     return data;
+  }
+
+  /**
+   * x402-aware request helper:
+   * - if the server returns 402 with PAYMENT-REQUIRED, call opts.pay() to obtain a PAYMENT-SIGNATURE
+   * - retry once with PAYMENT-SIGNATURE
+   *
+   * opts.pay receives { paymentRequired, paymentRequiredHeader, url, method } and must return
+   * a base64 PaymentPayload string for the PAYMENT-SIGNATURE header.
+   */
+  async _requestWithX402(method, path, body, opts = {}) {
+    const first = await this._fetch(method, path, body);
+    if (first.res.status !== 402) {
+      if (!first.res.ok) {
+        const msg = first.data.message || first.data.error || first.res.statusText;
+        throw new Error(msg);
+      }
+      return first.data;
+    }
+
+    const paymentRequiredHeader =
+      first.res.headers.get('PAYMENT-REQUIRED') ||
+      first.res.headers.get('payment-required') ||
+      null;
+    if (!paymentRequiredHeader) {
+      const msg = first.data.message || first.data.error || 'Payment required (missing PAYMENT-REQUIRED header)';
+      const err = new Error(msg);
+      err.status = 402;
+      throw err;
+    }
+
+    if (typeof opts.pay !== 'function') {
+      const err = new Error('x402 payment required: provide opts.pay({ paymentRequiredHeader, url, method }) to auto-pay');
+      err.status = 402;
+      err.paymentRequiredHeader = paymentRequiredHeader;
+      err.paymentRequired = first.data;
+      throw err;
+    }
+
+    const paymentSignature = await opts.pay({
+      paymentRequired: first.data,
+      paymentRequiredHeader,
+      url: `${this.baseUrl}${path}`,
+      method,
+    });
+    if (!paymentSignature || typeof paymentSignature !== 'string') {
+      throw new Error('opts.pay(...) must return a base64 PAYMENT-SIGNATURE string');
+    }
+
+    const second = await this._fetch(method, path, body, {
+      'PAYMENT-SIGNATURE': paymentSignature,
+    });
+    if (!second.res.ok) {
+      const msg = second.data.message || second.data.error || second.res.statusText;
+      const err = new Error(msg);
+      err.status = second.res.status;
+      throw err;
+    }
+    return second.data;
   }
 
   async post(content, options = {}) {
@@ -177,6 +243,11 @@ export class CapNet {
 
   async getAgent(name) {
     return this._request('GET', `/agents/${encodeURIComponent(name)}`);
+  }
+
+  /** Paid endpoint: requires x402 unless subsidized/discounted server-side. */
+  async agentSignals(agentId, opts = {}) {
+    return this._requestWithX402('GET', `/agents/${encodeURIComponent(agentId)}/signals`, undefined, opts);
   }
 
   async getManifest(agentName) {
