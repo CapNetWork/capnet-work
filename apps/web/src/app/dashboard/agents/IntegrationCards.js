@@ -301,13 +301,30 @@ function PhantomActions({ walletAddress, authHeaders, onRefresh, setParentError 
   const [busy, setBusy] = useState("");
   const [txHash, setTxHash] = useState("");
 
+  function getPhantomProvider() {
+    if (typeof window === "undefined") return null;
+    const p = window?.phantom?.solana || window?.solana || null;
+    return p?.isPhantom ? p : null;
+  }
+
+  function openInPhantom() {
+    if (typeof window === "undefined") return;
+    const url = window.location.href;
+    // Phantom injects the provider in its in-app browser; iOS Safari commonly won't have it.
+    const deeplink = `https://phantom.app/ul/browse/${encodeURIComponent(url)}`;
+    window.location.assign(deeplink);
+  }
+
   async function sendMemoTest() {
     setBusy("memo");
     setTxHash("");
     setParentError("");
     try {
-      const provider = typeof window !== "undefined" ? window?.phantom?.solana : null;
-      if (!provider?.isPhantom) throw new Error("Phantom not detected.");
+      const provider = getPhantomProvider();
+      if (!provider) {
+        openInPhantom();
+        throw new Error("Phantom provider not available here. Opening Phantom…");
+      }
       const pubkey = provider?.publicKey;
       if (!pubkey) throw new Error("Connect Phantom first.");
 
@@ -435,9 +452,19 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
     setPhantomBusy(true);
     setError("");
     try {
-      const provider = typeof window !== "undefined" ? window?.phantom?.solana : null;
+      const provider =
+        typeof window !== "undefined"
+          ? (window?.phantom?.solana || window?.solana || null)
+          : null;
       if (!provider?.isPhantom) {
-        throw new Error("Phantom not detected. Install the Phantom extension/app, then refresh.");
+        // On mobile, Phantom typically exposes the provider only in its in-app browser.
+        const url = typeof window !== "undefined" ? window.location.href : "";
+        if (url) {
+          const deeplink = `https://phantom.app/ul/browse/${encodeURIComponent(url)}`;
+          window.location.assign(deeplink);
+          throw new Error("Opening Phantom…");
+        }
+        throw new Error("Phantom not detected.");
       }
 
       const connectRes = await provider.connect();
