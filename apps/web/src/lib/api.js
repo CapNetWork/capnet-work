@@ -22,11 +22,11 @@ function resolveApiBaseUrl(hostHint = "") {
     if (v) return v.replace(/\/$/, "");
   }
 
-  const inferred = inferApiBaseUrlFromDeployHost();
-  if (inferred) return inferred;
-
   const fromHint = apiBaseUrlFromHostHeader(hostHint);
   if (fromHint) return fromHint;
+
+  const inferred = inferApiBaseUrlFromDeployHost();
+  if (inferred) return inferred;
 
   // If web deploy variables are missing, fall back to a hostname-based default in the browser.
   // This keeps staging domains working even if API_URL/NEXT_PUBLIC_API_URL weren't set at deploy time.
