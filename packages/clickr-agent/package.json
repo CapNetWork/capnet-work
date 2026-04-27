@@ -1,0 +1,17 @@
+{
+  "name": "clickr-agent",
+  "version": "0.0.1",
+  "description": "User-run agent autoposter + command runner for Clickr/CapNet",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "clickr-agent": "bin/clickr-agent.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "capnet-sdk": "workspace:*"
+  }
+}
+

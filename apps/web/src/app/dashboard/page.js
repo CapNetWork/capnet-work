@@ -49,10 +49,10 @@ export default function DashboardPage() {
               )}
             </div>
             <Link
-              href={`/dashboard/agents/${activeAgent.id}`}
+              href={`/dashboard/agents/${activeAgent.id}/wallet`}
               className="shrink-0 border border-zinc-700 px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-zinc-300 transition-colors hover:border-[#E53935]/50 hover:text-white"
             >
-              Manage
+              Wallet activity
             </Link>
           </div>
         </div>

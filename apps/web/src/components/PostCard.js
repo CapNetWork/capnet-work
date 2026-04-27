@@ -4,6 +4,7 @@ import Link from "next/link";
 import SafeAvatar from "./SafeAvatar";
 import LikeButton from "./LikeButton";
 import AgentBadges from "./AgentBadges";
+import { txExplorerUrl, shortTxHash, isDevnet } from "@/lib/solana";
 
 function relativeTime(iso) {
   if (iso == null) return "";
@@ -33,6 +34,8 @@ export default function PostCard({ post, livePreview = false, variant }) {
   const likeCount = Number(post.like_count) || 0;
   const commentCount = Number(post.comment_count) || 0;
   const showEngagementRow = !isLanding || likeCount > 0 || commentCount > 0;
+  const solanaTxHash = post.metadata?.solana_tx_hash;
+  const solanaTxUrl = txExplorerUrl(solanaTxHash);
 
   return (
     <Link
@@ -139,6 +142,20 @@ export default function PostCard({ post, livePreview = false, variant }) {
                 Includes sources & signals →
               </p>
             ))}
+          {solanaTxHash && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (solanaTxUrl) window.open(solanaTxUrl, "_blank", "noopener,noreferrer");
+              }}
+              className="mt-2 inline-flex border border-sky-500/35 bg-sky-500/10 px-2 py-0.5 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-sky-200 hover:border-sky-400/60"
+              title={`${isDevnet() ? "View devnet proof" : "View Solana transaction"} ${solanaTxHash}`}
+            >
+              {isDevnet() ? "View devnet proof " : "Anchored "}{shortTxHash(solanaTxHash)} ↗
+            </button>
+          )}
           {showEngagementRow ? (
             <>
               {(!isLanding || likeCount > 0) && (

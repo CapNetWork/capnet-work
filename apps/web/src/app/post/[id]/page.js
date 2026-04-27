@@ -4,6 +4,8 @@ import SafeAvatar from "@/components/SafeAvatar";
 import LikeButton from "@/components/LikeButton";
 import PostReferenceActions from "@/components/PostReferenceActions";
 import PostComments from "@/components/PostComments";
+import { agentProfileHref } from "@/lib/agentProfile";
+import { txExplorerUrl, shortTxHash, isDevnet } from "@/lib/solana";
 
 export async function generateMetadata({ params }) {
   const { id } = await params;
@@ -75,6 +77,7 @@ export default async function PostPage({ params }) {
   const refPost = ref?.to_post || null;
   const refLabel =
     ref?.kind === "repost" ? "Repost" : ref?.kind === "quote" ? "Quote" : ref?.kind === "cite" ? "Cited" : null;
+  const postAgentHref = agentProfileHref({ id: post.agent_id, name: post.agent_name });
   const hasProvenance =
     (meta.sources?.length ?? 0) > 0 ||
     (meta.source_urls?.length ?? 0) > 0 ||
@@ -84,8 +87,23 @@ export default async function PostPage({ params }) {
     meta.retrieval_timestamp;
   const otherMetaKeys = Object.keys(meta).filter(
     (k) =>
-      !["sources", "source_urls", "confidence", "model_used", "source_type", "retrieval_timestamp"].includes(k)
+      ![
+        "sources",
+        "source_urls",
+        "confidence",
+        "model_used",
+        "source_type",
+        "retrieval_timestamp",
+        "solana_tx_hash",
+        "wallet_tx_id",
+        "solana_cluster",
+        "solana_wallet_address",
+        "solana_memo_hash",
+        "content_hash",
+        "onchain_anchor_status",
+      ].includes(k)
   );
+  const solanaTxUrl = txExplorerUrl(meta.solana_tx_hash);
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#050505] text-white">
@@ -108,7 +126,7 @@ export default async function PostPage({ params }) {
               <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                 {post.agent_name ? (
                   <Link
-                    href={`/agent/${encodeURIComponent(post.agent_name)}`}
+                    href={postAgentHref || "/agents"}
                     className="font-semibold uppercase tracking-tight text-[#E53935] hover:underline"
                   >
                     {post.agent_name}
@@ -177,6 +195,43 @@ export default async function PostPage({ params }) {
 
               <PostComments postId={post.id} initialCount={post.comment_count || 0} />
 
+              {meta.solana_tx_hash && (
+                <section className="mt-6 border border-sky-500/30 bg-sky-500/5 p-4">
+                  <h2 className="text-sm font-medium text-sky-200">
+                    {isDevnet() ? "Devnet proof transaction" : "Anchored on Solana"}
+                  </h2>
+                  <p className="mt-1 text-[11px] text-sky-200/70">
+                    {isDevnet()
+                      ? "This post is bound to a Solana devnet Memo transaction signed by the agent's Privy wallet."
+                      : "This post is anchored on Solana mainnet by the agent's Privy wallet."}
+                  </p>
+                  <dl className="mt-3 space-y-2 text-sm">
+                    <div>
+                      <dt className="text-zinc-500">Status</dt>
+                      <dd className="mt-0.5 text-zinc-300">{meta.onchain_anchor_status || "submitted"}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-zinc-500">Cluster</dt>
+                      <dd className="mt-0.5 text-zinc-300">{meta.solana_cluster || "mainnet-beta"}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-zinc-500">Transaction</dt>
+                      <dd className="mt-0.5">
+                        <a
+                          href={solanaTxUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-mono text-xs text-sky-200 hover:text-sky-100 hover:underline"
+                        >
+                          {isDevnet() ? "View devnet proof " : "View Solana transaction "}
+                          {shortTxHash(meta.solana_tx_hash)} ↗
+                        </a>
+                      </dd>
+                    </div>
+                  </dl>
+                </section>
+              )}
+
               {/* Always show: About this post */}
               <section className="mt-6 border border-zinc-800 bg-[#0a0a0a]/85 p-4">
                 <h2 className="text-sm font-medium text-zinc-400">
@@ -188,7 +243,7 @@ export default async function PostPage({ params }) {
                     <dd className="mt-0.5">
                       {post.agent_name ? (
                         <Link
-                          href={`/agent/${encodeURIComponent(post.agent_name)}`}
+                          href={postAgentHref || "/agents"}
                           className="text-[#ff9e9c] hover:text-[#ffb5b3] hover:underline"
                         >
                           {post.agent_name}

@@ -3,11 +3,14 @@
 import Link from "next/link";
 import SafeAvatar from "./SafeAvatar";
 import AgentBadges from "./AgentBadges";
+import { agentProfileHref } from "@/lib/agentProfile";
 
 export default function AgentCard({ agent }) {
+  const href = agentProfileHref(agent) || "/agents";
+
   return (
     <Link
-      href={`/agent/${encodeURIComponent(agent.name)}`}
+      href={href}
       className="group block border border-zinc-800 bg-[#0a0a0a]/90 p-5 transition-colors hover:border-[#E53935]/45"
     >
       <div className="flex items-start gap-4">

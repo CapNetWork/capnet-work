@@ -16,6 +16,7 @@
 </p>
 
 <p align="center">
+  <a href="docs/hackathon-demo.md"><strong>Hackathon Demo</strong></a> &bull;
   <a href="#quickstart">Quickstart</a> &bull;
   <a href="docs/protocol.md">Protocol</a> &bull;
   <a href="docs/api.md">API Reference</a> &bull;
@@ -24,6 +25,10 @@
   <a href="CONTRIBUTING.md">Contributing</a> &bull;
   <a href="#roadmap">Roadmap</a>
 </p>
+
+> **Judging Clickr?** Read the [Hackathon Demo](docs/hackathon-demo.md) — it
+> covers the 2-minute demo script, sponsor alignment (Privy, Solana, Memo,
+> Jupiter), and the exact CLI commands.
 
 ---
 

@@ -173,8 +173,45 @@ router.get("/", async (req, res, next) => {
     query += ` ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
     params.push(limit, offset);
 
-    const result = await pool.query(query, params);
-    res.json(result.rows);
+    try {
+      const result = await pool.query(query, params);
+      res.json(result.rows);
+      return;
+    } catch (err) {
+      // Staging / fresh DBs may not have optional tables yet.
+      // Fall back to a minimal query so the directory still works.
+      if (err && err.code === "42P01") {
+        let fallbackQuery = `SELECT ${AGENT_FIELDS}, trust_score, reputation_updated_at
+          FROM agents`;
+        const fallbackParams = [];
+        const fallbackConditions = [];
+        if (domain) {
+          fallbackConditions.push(`domain ILIKE $${fallbackParams.length + 1}`);
+          fallbackParams.push(`%${domain}%`);
+        }
+        if (capability) {
+          fallbackConditions.push(`metadata->'capabilities' ? $${fallbackParams.length + 1}`);
+          fallbackParams.push(capability);
+        }
+        if (fallbackConditions.length > 0) {
+          fallbackQuery += " WHERE " + fallbackConditions.join(" AND ");
+        }
+        fallbackQuery += ` ORDER BY created_at DESC LIMIT $${fallbackParams.length + 1} OFFSET $${fallbackParams.length + 2}`;
+        fallbackParams.push(limit, offset);
+
+        const result = await pool.query(fallbackQuery, fallbackParams);
+        res.json(
+          result.rows.map((row) => ({
+            ...row,
+            human_backed: false,
+            verification_level: null,
+            wallet_connected: false,
+          }))
+        );
+        return;
+      }
+      throw err;
+    }
   } catch (err) {
     next(err);
   }
@@ -196,7 +233,7 @@ router.get("/:name/manifest", async (req, res, next) => {
   try {
     const result = await pool.query(
       `SELECT id, name, domain, description, skills, goals, tasks, metadata, created_at
-       FROM agents WHERE LOWER(name) = LOWER($1)`,
+       FROM agents WHERE LOWER(name) = LOWER($1) OR id = $1`,
       [req.params.name]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: "Agent not found" });
@@ -227,7 +264,7 @@ router.get("/:name/manifest", async (req, res, next) => {
 router.get("/:name/artifacts", async (req, res, next) => {
   try {
     const agentResult = await pool.query(
-      "SELECT id FROM agents WHERE LOWER(name) = LOWER($1)",
+      "SELECT id FROM agents WHERE LOWER(name) = LOWER($1) OR id = $1",
       [req.params.name]
     );
     if (agentResult.rows.length === 0) return res.status(404).json({ error: "Agent not found" });
@@ -245,7 +282,7 @@ router.get("/:name/artifacts", async (req, res, next) => {
 router.get("/:name", async (req, res, next) => {
   try {
     const result = await pool.query(
-      `SELECT ${AGENT_FIELDS}, trust_score, reputation_updated_at FROM agents WHERE LOWER(name) = LOWER($1)`,
+      `SELECT ${AGENT_FIELDS}, trust_score, reputation_updated_at FROM agents WHERE LOWER(name) = LOWER($1) OR id = $1`,
       [req.params.name]
     );
     if (result.rows.length === 0) {
@@ -439,6 +476,51 @@ router.patch("/me", authenticateAgent, sanitizeBody(["domain", "personality", "d
       ]
     );
     res.json(result.rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/:id/track-record", async (req, res, next) => {
+  const { limit, offset } = parsePagination(req.query);
+  try {
+    const reputation = require("../services/agent-reputation");
+    const agentRow = await pool.query(`SELECT id, name FROM agents WHERE id = $1`, [req.params.id]);
+    if (agentRow.rows.length === 0) {
+      return res.status(404).json({ error: "Agent not found" });
+    }
+    const intents = await pool.query(
+      `SELECT i.id, i.contract_id, i.side, i.amount_lamports,
+              i.quoted_price_usd, i.quoted_price_sol, i.quote_timestamp, i.quote_source,
+              i.status, i.score_status, i.paper_pnl_bps, i.realized_pnl_bps, i.resolved_at,
+              i.created_at,
+              c.mint_address, c.symbol AS contract_symbol, c.name AS contract_name,
+              awt.tx_hash, awt.status AS tx_status,
+              (SELECT price_usd FROM contract_price_snapshots s
+                 WHERE s.contract_id = i.contract_id
+                 ORDER BY captured_at DESC LIMIT 1) AS current_price_usd
+       FROM contract_transaction_intents i
+       JOIN token_contracts c ON c.id = i.contract_id
+       LEFT JOIN agent_wallet_transactions awt ON awt.id = i.wallet_tx_id
+       WHERE i.created_by_agent_id = $1
+       ORDER BY i.created_at DESC
+       LIMIT $2 OFFSET $3`,
+      [req.params.id, limit, offset]
+    );
+    const [scored, summary] = await Promise.all([
+      reputation.getScore(req.params.id),
+      reputation.getTrackRecordSummary(req.params.id),
+    ]);
+    res.json({
+      agent_id: req.params.id,
+      agent_name: agentRow.rows[0].name,
+      score: scored.score,
+      components: scored.components,
+      weights: scored.weights,
+      summary,
+      reputation: { score: scored.score, components: scored.components, weights: scored.weights },
+      intents: intents.rows,
+    });
   } catch (err) {
     next(err);
   }

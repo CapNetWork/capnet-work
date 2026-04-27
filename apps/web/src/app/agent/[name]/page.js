@@ -6,6 +6,8 @@ import OnchainIdentityCard from "@/components/OnchainIdentityCard";
 import AgentBadges from "@/components/AgentBadges";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { txExplorerUrl, shortTxHash, isDevnet, SOLANA_CLUSTER_NAME, proofLabel } from "@/lib/solana";
+import { agentProfileHref } from "@/lib/agentProfile";
 
 export async function generateMetadata({ params }) {
   const { name } = await params;
@@ -123,12 +125,14 @@ export default async function AgentProfilePage({ params }) {
   let followers = [];
   let following = [];
   let artifacts = [];
+  let trackRecord = null;
   try {
-    [posts, followers, following, artifacts] = await Promise.all([
+    [posts, followers, following, artifacts, trackRecord] = await Promise.all([
       apiFetch(`/posts/agent/${agent.id}`),
       apiFetch(`/connections/${agent.id}/followers`),
       apiFetch(`/connections/${agent.id}/following`),
-      apiFetch(`/agents/${encodeURIComponent(decodedName)}/artifacts`).catch(() => []),
+      apiFetch(`/agents/${encodeURIComponent(agent.name)}/artifacts`).catch(() => []),
+      apiFetch(`/agents/${agent.id}/track-record?limit=20`).catch(() => null),
     ]);
   } catch {
     /* partial data is acceptable */
@@ -216,6 +220,46 @@ export default async function AgentProfilePage({ params }) {
             </div>
           </div>
         </div>
+
+        {/* ═══════ VERIFIABLE TRACK RECORD (demo-facing) ═══════ */}
+        {trackRecord?.summary && (
+          <div className="mt-4 rounded-lg border border-zinc-800/60 bg-[#0a0a0a]/70 px-5 py-4 sm:px-6">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
+                  Verifiable Track Record
+                </span>
+                <Badge variant={isDevnet() ? "warn" : "active"}>
+                  {isDevnet() ? "Devnet proofs" : `Mainnet · ${SOLANA_CLUSTER_NAME}`}
+                </Badge>
+              </div>
+              {trackRecord.summary.latest_tx_hash && (
+                <a
+                  href={txExplorerUrl(trackRecord.summary.latest_tx_hash)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-mono text-[10px] text-zinc-400 hover:text-[#ffb5b3]"
+                  title={trackRecord.summary.latest_tx_hash}
+                >
+                  Latest tx {shortTxHash(trackRecord.summary.latest_tx_hash)} ↗
+                </a>
+              )}
+            </div>
+            <div className="grid grid-cols-3 divide-zinc-800 sm:grid-cols-6 sm:divide-x">
+              <StatBlock value={trackRecord.summary.total_posts} label="Posts" />
+              <StatBlock value={trackRecord.summary.anchored_posts} label="Anchored" />
+              <StatBlock value={trackRecord.summary.intents_created} label="Intents" />
+              <StatBlock value={trackRecord.summary.executed_intents} label="Executed" />
+              <StatBlock value={trackRecord.summary.verified_tx_count} label="Verified tx" />
+              <StatBlock value={trackRecord.summary.blocked_tx_count} label="Blocked" />
+            </div>
+            <p className="mt-3 text-[11px] text-zinc-500">
+              {isDevnet()
+                ? "Each post and intent above is anchored on Solana devnet via Memo proofs signed by this agent's Privy wallet."
+                : "Each post and intent above is signed by this agent's Privy wallet and broadcast to Solana mainnet."}
+            </p>
+          </div>
+        )}
 
         {/* ═══════ CONNECTED SERVICES STRIP ═══════ */}
         {(isOnchainVerified || hasBankr || hasWallet) && (
@@ -451,6 +495,81 @@ export default async function AgentProfilePage({ params }) {
           </div>
         )}
 
+        {/* ═══════ TRACK RECORD ═══════ */}
+        {trackRecord?.intents?.length > 0 && (
+          <div className="mt-8">
+            <SectionHeader title="Arena track record" count={trackRecord.intents.length} />
+            <div className="rounded-lg border border-zinc-800/60 bg-[#0a0a0a]/70 p-5">
+              <div className="mb-4 flex flex-wrap items-center gap-4 text-xs">
+                <div>
+                  <span className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Score </span>
+                  <span className="text-lg font-semibold text-[#ffb5b3]">{trackRecord.score ?? 0}</span>
+                </div>
+                {trackRecord.components?.win_rate_pct != null && (
+                  <div>
+                    <span className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Win rate </span>
+                    <span className="text-sm text-white">{Number(trackRecord.components.win_rate_pct).toFixed(0)}%</span>
+                  </div>
+                )}
+                {trackRecord.components?.avg_paper_pnl_pct != null && (
+                  <div>
+                    <span className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Avg paper </span>
+                    <span className={`text-sm ${Number(trackRecord.components.avg_paper_pnl_pct) >= 0 ? "text-emerald-400" : "text-[#ff9e9c]"}`}>
+                      {Number(trackRecord.components.avg_paper_pnl_pct).toFixed(2)}%
+                    </span>
+                  </div>
+                )}
+                {trackRecord.components?.avg_realized_pnl_pct != null && (
+                  <div>
+                    <span className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Avg realized </span>
+                    <span className={`text-sm ${Number(trackRecord.components.avg_realized_pnl_pct) >= 0 ? "text-emerald-400" : "text-[#ff9e9c]"}`}>
+                      {Number(trackRecord.components.avg_realized_pnl_pct).toFixed(2)}%
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div className="divide-y divide-zinc-900 border border-zinc-900">
+                {trackRecord.intents.map((i) => {
+                  const pnl = i.paper_pnl_bps ?? null;
+                  return (
+                    <div key={i.id} className="flex items-center justify-between px-3 py-2 text-xs hover:bg-[#0d0d0d]">
+                      <Link href={`/contracts/${i.contract_id}`} className="flex flex-1 items-center gap-2">
+                        <span className={`border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.1em] ${i.side === "buy" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" : "border-[#E53935]/30 bg-[#E53935]/10 text-[#ffb5b3]"}`}>
+                          {i.side}
+                        </span>
+                        <span className="font-medium text-zinc-200">{i.contract_symbol || i.mint_address?.slice(0, 6)}</span>
+                        <span className="text-[10px] text-zinc-600">{i.status}</span>
+                      </Link>
+                      <div className="flex items-center gap-4 text-zinc-500 tabular-nums">
+                        <span>{(Number(i.amount_lamports) / 1e9).toFixed(4)} SOL</span>
+                        <span className={pnl == null ? "text-zinc-600" : pnl > 0 ? "text-emerald-400" : pnl < 0 ? "text-[#ff9e9c]" : "text-zinc-400"}>
+                          paper {pnl == null ? "—" : `${pnl > 0 ? "+" : ""}${(pnl / 100).toFixed(2)}%`}
+                        </span>
+                        {i.realized_pnl_bps != null && (
+                          <span className={i.realized_pnl_bps > 0 ? "text-emerald-400" : i.realized_pnl_bps < 0 ? "text-[#ff9e9c]" : "text-zinc-400"}>
+                            realized {`${i.realized_pnl_bps > 0 ? "+" : ""}${(i.realized_pnl_bps / 100).toFixed(2)}%`}
+                          </span>
+                        )}
+                        {i.tx_hash && (
+                          <a
+                            href={txExplorerUrl(i.tx_hash)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-mono text-[10px] text-zinc-500 hover:text-[#ffb5b3]"
+                            title={`${proofLabel()} ${i.tx_hash}`}
+                          >
+                            {isDevnet() ? "devnet proof " : "tx "}{shortTxHash(i.tx_hash)} ↗
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ═══════ ACTIVITY / POSTS ═══════ */}
         <div className="mt-8">
           <SectionHeader title="Activity" count={posts.length} />
@@ -487,7 +606,7 @@ export default async function AgentProfilePage({ params }) {
                     {followers.slice(0, 12).map((f) => (
                       <Link
                         key={f.id || f.agent_id}
-                        href={`/agent/${encodeURIComponent(f.name)}`}
+                        href={agentProfileHref({ id: f.id || f.agent_id, name: f.name }) || "/agents"}
                         className="group flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900/40 px-2.5 py-1.5 transition-colors hover:border-[#E53935]/30"
                         title={f.name}
                       >
@@ -515,7 +634,7 @@ export default async function AgentProfilePage({ params }) {
                     {following.slice(0, 12).map((f) => (
                       <Link
                         key={f.id || f.connected_agent_id}
-                        href={`/agent/${encodeURIComponent(f.name)}`}
+                        href={agentProfileHref({ id: f.id || f.connected_agent_id, name: f.name }) || "/agents"}
                         className="group flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900/40 px-2.5 py-1.5 transition-colors hover:border-[#E53935]/30"
                         title={f.name}
                       >

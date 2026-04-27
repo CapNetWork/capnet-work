@@ -12,6 +12,9 @@ const {
 const bankrAdapter = require("../integrations/providers/bankr");
 const erc8004Adapter = require("../integrations/providers/erc8004");
 const privyWalletAdapter = require("../integrations/providers/privy-wallet");
+const solanaMemoAnchor = require("../services/solana-memo-anchor");
+const phantomWalletAdapter = require("../integrations/providers/phantom-wallet");
+const moonpayAdapter = require("../integrations/providers/moonpay");
 const worldIdAdapter = require("../integrations/providers/world-id");
 const x402Adapter = require("../integrations/providers/x402");
 const rateLimit = require("express-rate-limit");
@@ -21,6 +24,8 @@ const ADAPTERS = {
   bankr: bankrAdapter,
   erc8004: erc8004Adapter,
   privy_wallet: privyWalletAdapter,
+  phantom_wallet: phantomWalletAdapter,
+  moonpay: moonpayAdapter,
   world_id: worldIdAdapter,
   x402: x402Adapter,
 };
@@ -39,6 +44,35 @@ const walletSendLimiter = rateLimit({
   max: 5,
   keyGenerator: (req) => req.agent?.id || "unknown",
   message: { error: "Rate limit exceeded for wallet send (5/min)" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const walletFaucetLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 2,
+  keyGenerator: (req) => req.agent?.id || "unknown",
+  message: { error: "Rate limit exceeded for devnet faucet (2/10min)" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Per-user limiter for wallet activity. A user with N agents would otherwise
+// multiply the per-agent limits; this keeps total wallet ops bounded per human.
+const walletUserLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  keyGenerator: (req) => `user:${req.clickrUser?.id || req.agent?.id || "unknown"}`,
+  message: { error: "Rate limit exceeded for wallet activity (30/min per user)" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const walletFaucetUserLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 5,
+  keyGenerator: (req) => `user:${req.clickrUser?.id || req.agent?.id || "unknown"}`,
+  message: { error: "Rate limit exceeded for devnet faucet (5/10min per user)" },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -89,7 +123,9 @@ router.post("/:providerId/connect", authenticateBySessionOrKey, sanitizeBody([])
     });
   }
 
-  const input = typeof adapter.readConnectInput === "function" ? adapter.readConnectInput(req.body) : req.body;
+  const authMethod = req.clickrUser ? "session" : "api_key";
+  const baseInput = typeof adapter.readConnectInput === "function" ? adapter.readConnectInput(req.body) : req.body;
+  const input = { ...baseInput, _authMethod: authMethod };
   try {
     const out = await adapter.connect(req.agent.id, input);
     res.json(out);
@@ -126,13 +162,25 @@ router.post("/erc8004/verify", authenticateBySessionOrKey, async (req, res, next
 
 async function requirePrivyWallet(req, res) {
   const { pool: db } = require("../db");
-  const r = await db.query(
-    `SELECT id, wallet_address, chain_type, custody_type, provider_wallet_id, provider_policy_id
-     FROM agent_wallets
-     WHERE agent_id = $1 AND chain_type = 'solana' AND custody_type = 'privy'
-     ORDER BY linked_at DESC LIMIT 1`,
-    [req.agent.id]
-  );
+  let r;
+  try {
+    r = await db.query(
+      `SELECT id, agent_id, wallet_address, chain_type, custody_type,
+              provider_wallet_id, provider_policy_id,
+              is_paused, paused_at, paused_reason, policy_json
+       FROM agent_wallets
+       WHERE agent_id = $1 AND chain_type = 'solana' AND custody_type = 'privy'
+       ORDER BY linked_at DESC LIMIT 1`,
+      [req.agent.id]
+    );
+  } catch (err) {
+    const mapped = privyWalletAdapter.mapConnectError(err);
+    if (mapped) {
+      res.status(mapped.status).json({ error: mapped.error, ...(mapped.rule ? { rule: mapped.rule } : {}) });
+      return null;
+    }
+    throw err;
+  }
   if (r.rows.length === 0) {
     res.status(400).json({ error: "No Privy wallet linked. POST /integrations/privy_wallet/connect first." });
     return null;
@@ -140,7 +188,7 @@ async function requirePrivyWallet(req, res) {
   return r.rows[0];
 }
 
-router.post("/privy_wallet/sign", authenticateBySessionOrKey, walletSignLimiter, async (req, res, next) => {
+router.post("/privy_wallet/sign", authenticateBySessionOrKey, walletUserLimiter, walletSignLimiter, async (req, res, next) => {
   const walletRow = await requirePrivyWallet(req, res);
   if (!walletRow) return;
   try {
@@ -149,12 +197,12 @@ router.post("/privy_wallet/sign", authenticateBySessionOrKey, walletSignLimiter,
     res.json(result);
   } catch (err) {
     const mapped = privyWalletAdapter.mapConnectError(err);
-    if (mapped) return res.status(mapped.status).json({ error: mapped.error });
+    if (mapped) return res.status(mapped.status).json({ error: mapped.error, ...(mapped.rule ? { rule: mapped.rule } : {}) });
     next(err);
   }
 });
 
-router.post("/privy_wallet/send", authenticateBySessionOrKey, walletSendLimiter, async (req, res, next) => {
+router.post("/privy_wallet/send", authenticateBySessionOrKey, walletUserLimiter, walletSendLimiter, async (req, res, next) => {
   const walletRow = await requirePrivyWallet(req, res);
   if (!walletRow) return;
   try {
@@ -163,7 +211,111 @@ router.post("/privy_wallet/send", authenticateBySessionOrKey, walletSendLimiter,
     res.json(result);
   } catch (err) {
     const mapped = privyWalletAdapter.mapConnectError(err);
+    if (mapped) return res.status(mapped.status).json({ error: mapped.error, ...(mapped.rule ? { rule: mapped.rule } : {}) });
+    next(err);
+  }
+});
+
+router.post("/privy_wallet/devnet-memo-test", authenticateBySessionOrKey, walletUserLimiter, walletSendLimiter, async (req, res, next) => {
+  const walletRow = await requirePrivyWallet(req, res);
+  if (!walletRow) return;
+  try {
+    const authMethod = req.clickrUser ? "session" : "api_key";
+    const result = await solanaMemoAnchor.anchorTestMemo({
+      agentId: req.agent.id,
+      walletRow,
+      walletAddress: walletRow.wallet_address,
+      message: req.body?.message,
+      authMethod,
+    });
+    res.json(result);
+  } catch (err) {
+    const mapped = privyWalletAdapter.mapConnectError(err);
+    if (mapped) return res.status(mapped.status).json({ error: mapped.error, ...(mapped.rule ? { rule: mapped.rule } : {}) });
+    if (err && typeof err.status === "number") {
+      return res.status(err.status).json({ error: err.message || "Request failed", code: err.code || null });
+    }
+    next(err);
+  }
+});
+
+router.post("/privy_wallet/pause", authenticateBySessionOrKey, walletUserLimiter, async (req, res, next) => {
+  const walletRow = await requirePrivyWallet(req, res);
+  if (!walletRow) return;
+  try {
+    const authMethod = req.clickrUser ? "session" : "api_key";
+    const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : null;
+    const updated = await privyWalletAdapter.pause(req.agent.id, walletRow, reason, authMethod);
+    res.json({ ok: true, wallet: updated });
+  } catch (err) {
+    const mapped = privyWalletAdapter.mapConnectError(err);
     if (mapped) return res.status(mapped.status).json({ error: mapped.error });
+    next(err);
+  }
+});
+
+router.post("/privy_wallet/resume", authenticateBySessionOrKey, walletUserLimiter, async (req, res, next) => {
+  const walletRow = await requirePrivyWallet(req, res);
+  if (!walletRow) return;
+  try {
+    const authMethod = req.clickrUser ? "session" : "api_key";
+    const updated = await privyWalletAdapter.resume(req.agent.id, walletRow, authMethod);
+    res.json({ ok: true, wallet: updated });
+  } catch (err) {
+    const mapped = privyWalletAdapter.mapConnectError(err);
+    if (mapped) return res.status(mapped.status).json({ error: mapped.error });
+    next(err);
+  }
+});
+
+router.patch("/privy_wallet/policy", authenticateBySessionOrKey, walletUserLimiter, async (req, res, next) => {
+  const walletRow = await requirePrivyWallet(req, res);
+  if (!walletRow) return;
+  try {
+    const updated = await privyWalletAdapter.updatePolicy(req.agent.id, walletRow, req.body || {});
+    res.json({ ok: true, wallet: updated });
+  } catch (err) {
+    const mapped = privyWalletAdapter.mapConnectError(err);
+    if (mapped) return res.status(mapped.status).json({ error: mapped.error });
+    next(err);
+  }
+});
+
+router.post("/privy_wallet/devnet-airdrop", authenticateBySessionOrKey, walletFaucetUserLimiter, walletFaucetLimiter, async (req, res, next) => {
+  const walletRow = await requirePrivyWallet(req, res);
+  if (!walletRow) return;
+  try {
+    const privyDriver = require("../lib/drivers/privy");
+    const requestedSol = req.body?.sol == null ? 1 : Number(req.body.sol);
+    let before = null;
+    try {
+      before = await privyDriver.getBalance(walletRow.wallet_address);
+    } catch {
+      before = null;
+    }
+    const airdrop = await privyDriver.requestDevnetAirdrop(walletRow.wallet_address, requestedSol);
+    let after = null;
+    try {
+      after = await privyDriver.getBalance(walletRow.wallet_address);
+    } catch {
+      after = null;
+    }
+    res.json({
+      ok: true,
+      wallet_address: walletRow.wallet_address,
+      solana_cluster: privyDriver.getSolanaCluster(),
+      requested_sol: airdrop.sol,
+      requested_lamports: airdrop.lamports,
+      tx_hash: airdrop.txHash,
+      balance_before: before,
+      balance_after: after,
+    });
+  } catch (err) {
+    const mapped = privyWalletAdapter.mapConnectError(err);
+    if (mapped) return res.status(mapped.status).json({ error: mapped.error });
+    if (err && typeof err.status === "number") {
+      return res.status(err.status).json({ error: err.message || "Request failed", code: err.code || null });
+    }
     next(err);
   }
 });
@@ -174,8 +326,13 @@ router.get("/privy_wallet/balance", authenticateBySessionOrKey, async (req, res,
   try {
     const privyDriver = require("../lib/drivers/privy");
     const balance = await privyDriver.getBalance(walletRow.wallet_address);
-    res.json({ wallet_address: walletRow.wallet_address, ...balance });
+    res.json({ wallet_address: walletRow.wallet_address, solana_cluster: privyDriver.getSolanaCluster(), ...balance });
   } catch (err) {
+    const mapped = privyWalletAdapter.mapConnectError(err);
+    if (mapped) return res.status(mapped.status).json({ error: mapped.error });
+    if (err && typeof err.status === "number") {
+      return res.status(err.status).json({ error: err.message || "Request failed", code: err.code || null });
+    }
     next(err);
   }
 });
@@ -185,8 +342,30 @@ router.get("/privy_wallet/policy", authenticateBySessionOrKey, async (req, res, 
   if (!walletRow) return;
   try {
     const privyDriver = require("../lib/drivers/privy");
-    const policy = await privyDriver.getPolicy(walletRow);
-    res.json({ wallet_address: walletRow.wallet_address, policy });
+    const walletPolicy = require("../lib/wallet-policy");
+    const walletAudit = require("../lib/wallet-audit");
+    const effective = walletPolicy.getEffectivePolicy(walletRow);
+    let privy_policy = null;
+    try {
+      privy_policy = await privyDriver.getPolicy(walletRow);
+    } catch {
+      /* optional */
+    }
+    let daily_spend_lamports = null;
+    try {
+      daily_spend_lamports = await walletAudit.getDailySpend(req.agent.id, walletRow.id);
+    } catch {
+      /* non-fatal */
+    }
+    res.json({
+      wallet_address: walletRow.wallet_address,
+      is_paused: Boolean(walletRow.is_paused),
+      paused_at: walletRow.paused_at,
+      paused_reason: walletRow.paused_reason,
+      policy: effective,
+      daily_spend_lamports,
+      privy_policy,
+    });
   } catch (err) {
     next(err);
   }
@@ -200,6 +379,136 @@ router.get("/privy_wallet/transactions", authenticateBySessionOrKey, async (req,
     const history = await walletAudit.getHistory(req.agent.id, { limit, offset });
     res.json({ transactions: history });
   } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// MoonPay — signed widget URL (agent must POST /integrations/moonpay/connect first)
+// ---------------------------------------------------------------------------
+
+router.post("/moonpay/widget-url", authenticateBySessionOrKey, sanitizeBody([]), async (req, res, next) => {
+  try {
+    const status = await moonpayAdapter.getIntegrationStatus(req.agent.id);
+    if (!status.connected) {
+      return res.status(400).json({
+        error: "MoonPay is not linked for this agent. POST /integrations/moonpay/connect first.",
+      });
+    }
+    const cfg = status.config;
+    const out = moonpayAdapter.buildWidgetUrlForAgent(req.agent.id, cfg, req.body || {});
+    res.json(out);
+  } catch (err) {
+    const mapped = moonpayAdapter.mapConnectError(err);
+    if (mapped) return res.status(mapped.status).json({ error: mapped.error });
+    next(err);
+  }
+});
+
+router.post("/moonpay/fund-privy-wallet", authenticateBySessionOrKey, sanitizeBody([]), async (req, res, next) => {
+  const walletRow = await requirePrivyWallet(req, res);
+  if (!walletRow) return;
+  try {
+    let status = await moonpayAdapter.getIntegrationStatus(req.agent.id);
+    let cfg = status.config;
+    if (!status.connected) {
+      const connected = await moonpayAdapter.connect(req.agent.id, {
+        default_currency_code: "sol",
+        default_wallet_address: walletRow.wallet_address,
+      });
+      cfg = connected.config;
+      status = { connected: true, config: cfg };
+    }
+
+    const out = moonpayAdapter.buildWidgetUrlForAgent(req.agent.id, cfg, {
+      ...req.body,
+      currencyCode: "sol",
+      walletAddress: walletRow.wallet_address,
+    });
+    res.json({
+      ...out,
+      wallet_address: walletRow.wallet_address,
+      provider: "moonpay",
+      target_provider: "privy_wallet",
+      moonpay_connected: status.connected,
+    });
+  } catch (err) {
+    const mapped = moonpayAdapter.mapConnectError(err);
+    if (mapped) return res.status(mapped.status).json({ error: mapped.error });
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Phantom Wallet — linked pubkey; server-side sign/send not available (501)
+// ---------------------------------------------------------------------------
+
+router.get("/phantom_wallet/nonce", authenticateBySessionOrKey, walletUserLimiter, async (req, res, next) => {
+  try {
+    const userId = req.clickrUser?.id || null;
+    const out = phantomWalletAdapter.issueNonce({ agentId: req.agent.id, userId });
+    res.json(out);
+  } catch (err) {
+    const mapped = phantomWalletAdapter.mapConnectError(err);
+    if (mapped) return res.status(mapped.status).json({ error: mapped.error });
+    next(err);
+  }
+});
+
+router.post("/phantom_wallet/record-transaction", authenticateBySessionOrKey, walletUserLimiter, async (req, res, next) => {
+  const walletRow = await phantomWalletAdapter.requirePhantomWallet(req, res);
+  if (!walletRow) return;
+  try {
+    const audit = require("../lib/wallet-audit");
+    const txHash = typeof req.body?.tx_hash === "string" ? req.body.tx_hash.trim() : "";
+    const txType = typeof req.body?.tx_type === "string" ? req.body.tx_type.trim() : "client_transaction";
+    if (!txHash) return res.status(400).json({ error: "tx_hash is required" });
+    // Solana signatures are base58 and typically 80-90 chars; keep this permissive.
+    if (txHash.length < 40 || txHash.length > 128) return res.status(400).json({ error: "tx_hash looks invalid" });
+
+    const authMethod = req.clickrUser ? "session" : "api_key";
+    const attempt = await audit.logAttempt({
+      agentId: req.agent.id,
+      walletId: walletRow.id,
+      walletAddress: walletRow.wallet_address,
+      chainType: "solana",
+      custodyType: "phantom",
+      txType,
+      authMethod,
+    });
+    await audit.updateOutcome(attempt.id, { txHash, status: "submitted" });
+    res.json({ ok: true, wallet_tx_id: attempt.id, tx_hash: txHash, status: "submitted" });
+  } catch (err) {
+    const mapped = phantomWalletAdapter.mapConnectError(err);
+    if (mapped) return res.status(mapped.status).json({ error: mapped.error });
+    next(err);
+  }
+});
+
+router.post("/phantom_wallet/sign", authenticateBySessionOrKey, walletSignLimiter, async (req, res, next) => {
+  const walletRow = await phantomWalletAdapter.requirePhantomWallet(req, res);
+  if (!walletRow) return;
+  try {
+    const authMethod = req.clickrUser ? "session" : "api_key";
+    const result = await phantomWalletAdapter.sign(req.agent.id, walletRow, req.body || {}, authMethod);
+    res.json(result);
+  } catch (err) {
+    const mapped = phantomWalletAdapter.mapConnectError(err);
+    if (mapped) return res.status(mapped.status).json({ error: mapped.error });
+    next(err);
+  }
+});
+
+router.post("/phantom_wallet/send", authenticateBySessionOrKey, walletSendLimiter, async (req, res, next) => {
+  const walletRow = await phantomWalletAdapter.requirePhantomWallet(req, res);
+  if (!walletRow) return;
+  try {
+    const authMethod = req.clickrUser ? "session" : "api_key";
+    const result = await phantomWalletAdapter.send(req.agent.id, walletRow, req.body || {}, authMethod);
+    res.json(result);
+  } catch (err) {
+    const mapped = phantomWalletAdapter.mapConnectError(err);
+    if (mapped) return res.status(mapped.status).json({ error: mapped.error });
     next(err);
   }
 });

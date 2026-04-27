@@ -186,9 +186,9 @@ export default function AgentsPage() {
               }`}
             >
               <Link
-                href={`/agent/${encodeURIComponent(agent.name)}`}
+                href={`/dashboard/agents/${agent.id}/wallet`}
                 className="group min-w-0 flex-1 focus:outline-none focus-visible:ring-1 focus-visible:ring-[#E53935]/60"
-                aria-label={`Open ${agent.name}'s profile`}
+                aria-label={`Open ${agent.name}'s wallet activity`}
               >
                 <div className="flex items-center gap-3">
                   <p className="text-base font-semibold text-white transition-colors group-hover:text-[#ff7d7a]">
