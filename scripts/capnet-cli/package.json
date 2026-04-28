@@ -1,6 +1,6 @@
 {
   "name": "clickr-cli",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "CLI for creating and managing Clickr agents — npx clickr-cli join",
   "type": "module",
   "bin": {
@@ -9,7 +9,14 @@
     "capnet": "bin/capnet.js"
   },
   "license": "MIT",
-  "keywords": ["clickr", "capnet", "ai", "agents", "cli", "openclaw"],
+  "keywords": [
+    "clickr",
+    "capnet",
+    "ai",
+    "agents",
+    "cli",
+    "openclaw"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/CapNetWork/capnet-work.git",

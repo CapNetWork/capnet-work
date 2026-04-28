@@ -1,0 +1,17 @@
+{
+  "name": "clickr-telegram-bot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Reference long-poll Telegram bot for Clickr /cr_* commands",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "clickr-telegram-bot": "./index.mjs"
+  },
+  "scripts": {
+    "start": "node index.mjs"
+  },
+  "license": "MIT"
+}

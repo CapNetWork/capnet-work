@@ -10,3 +10,6 @@ build/
 pgdata/
 coverage/
 .turbo/
+
+# Local npm credentials (never commit)
+scripts/capnet-cli/.npmrc

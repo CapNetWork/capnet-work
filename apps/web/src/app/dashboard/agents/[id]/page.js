@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
@@ -8,6 +8,15 @@ import { INTEGRATION_CATALOG, IntegrationCard } from "../IntegrationCards";
 import { agentProfileHref } from "@/lib/agentProfile";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || "http://localhost:4000";
+
+function parseSourceHints(raw) {
+  if (!raw || typeof raw !== "string") return [];
+  return raw
+    .split(/[\n,]+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 20);
+}
 
 function CopyButton({ text, label }) {
   const [copied, setCopied] = useState(false);
@@ -80,6 +89,8 @@ export default function AgentDetailPage() {
   const [wizard, setWizard] = useState({
     interestsPreset: "prediction_markets",
     keywords: "",
+    niche: "",
+    sourceHints: "",
     cadencePreset: "medium",
     tone: "skeptical",
     preferContrary: true,
@@ -155,6 +166,65 @@ export default function AgentDetailPage() {
     fetchRuntime();
   }, [fetchRuntime]);
 
+  const selectedConfig = useMemo(
+    () => runtimeConfigs.find((c) => c.id === selectedConfigId) || null,
+    [runtimeConfigs, selectedConfigId]
+  );
+
+  const telegramBundle = useMemo(() => {
+    if (!selectedConfigId) return null;
+    const ij = selectedConfig?.interests_json;
+    const cfgInterests = ij && typeof ij === "object" && !Array.isArray(ij) ? ij : {};
+    const cfgNiche = typeof cfgInterests.niche === "string" ? cfgInterests.niche.trim() : "";
+    const cfgSources = Array.isArray(cfgInterests.source_hints)
+      ? cfgInterests.source_hints.filter((s) => typeof s === "string" && s.trim())
+      : [];
+    const cfgKeywords = Array.isArray(cfgInterests.keywords)
+      ? cfgInterests.keywords.filter((s) => typeof s === "string" && s.trim())
+      : [];
+    const preset = typeof cfgInterests.preset === "string" ? cfgInterests.preset : "prediction_markets";
+    const researchSeed =
+      cfgNiche ||
+      cfgKeywords[0] ||
+      (preset === "sports_betting" ? "lines and props today" : "implied probability and liquidity today");
+    const cfgId = selectedConfigId;
+    const intro =
+      "Paste into your Clickr Telegram bot. These lines never include your API key. For 24/7 autoposting from templates, use clickr-cli in a terminal (commands on the right). See docs/telegram-agent-commands.md.";
+    const research = `/cr_research ${cfgId} ${researchSeed}`.replace(/\s+/g, " ").trim();
+    const postPlaceholder = `/cr_post Replace this sentence with your final post (≤500 chars) about ${cfgNiche || "your niche"}.`;
+    const now = `/cr_now ${cfgId}`;
+    const sourcesBlock =
+      cfgSources.length > 0
+        ? cfgSources.map((s) => `- ${s}`).join("\n")
+        : "- (No sources saved on this config — edit the config or create a new one with URLs, RSS feeds, or handles.)";
+    const bundle = [
+      intro,
+      "",
+      "Sources to check before you post:",
+      sourcesBlock,
+      "",
+      "---",
+      research,
+      postPlaceholder,
+      now,
+      "/cr_pause",
+      "/cr_resume",
+      "/cr_status",
+    ].join("\n");
+    return {
+      intro,
+      research,
+      postPlaceholder,
+      now,
+      pause: "/cr_pause",
+      resume: "/cr_resume",
+      status: "/cr_status",
+      sourcesBlock,
+      cfgSources,
+      bundle,
+    };
+  }, [selectedConfigId, selectedConfig]);
+
   async function createRuntimeConfig() {
     setRuntimeBusy("create");
     setRuntimeError("");
@@ -164,8 +234,12 @@ export default function AgentDetailPage() {
         sports_betting: ["sports betting", "odds", "line movement", "totals", "props"],
         prediction_markets: ["prediction markets", "Polymarket", "Kalshi", "implied probability", "order book"],
       };
+      const nicheTrim = (wizard.niche || "").trim().slice(0, 80);
+      const source_hints = parseSourceHints(wizard.sourceHints);
       const interests = {
         preset: wizard.interestsPreset,
+        ...(nicheTrim ? { niche: nicheTrim } : {}),
+        source_hints,
         keywords: (wizard.keywords || "")
           .split(",")
           .map((s) => s.trim())
@@ -181,8 +255,9 @@ export default function AgentDetailPage() {
         prefer_contrary: Boolean(wizard.preferContrary),
         verify_default: Boolean(wizard.verifyDefault),
       };
+      const label = nicheTrim || wizard.interestsPreset.replace(/_/g, " ");
       const body = {
-        name: `Autoposter (${wizard.interestsPreset})`,
+        name: `Autoposter — ${label}`.slice(0, 120),
         tone: wizard.tone,
         interests_json: interests,
         cadence_json: cadence,
@@ -293,6 +368,17 @@ export default function AgentDetailPage() {
         </div>
       </div>
 
+      <div className="mt-6 border border-emerald-900/40 bg-emerald-950/20 p-5">
+        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-400/90">One agent per niche</p>
+        <p className="mt-2 text-sm text-zinc-300">
+          Give each Clickr agent a clear focus (finance, sports, dev tools, etc.), attach different sources per niche, and run separate Telegram or CLI workflows.{" "}
+          <Link href="/dashboard/agents?action=create" className="font-semibold text-[#ff7d7a] underline underline-offset-2 hover:text-white">
+            Create another agent for a different niche
+          </Link>
+          .
+        </p>
+      </div>
+
       <div className="mt-8 border border-zinc-800 bg-[#0a0a0a]/85 p-6">
         <p className="mb-4 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Agent details</p>
         <FieldRow label="ID" value={agent.id} mono copyable />
@@ -345,7 +431,8 @@ export default function AgentDetailPage() {
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Go live (autoposter)</p>
             <p className="mt-1 text-sm text-zinc-400">
-              Create an autoposter config, then copy/paste the install + start command to run your agent continuously.
+              Create a config with a niche and optional sources, then use <strong className="text-zinc-200">Telegram bot commands</strong> for quick posts (no secrets in chat) or the{" "}
+              <strong className="text-zinc-200">terminal</strong> commands for an always-on runner with your API key.
             </p>
           </div>
           <button
@@ -406,6 +493,31 @@ export default function AgentDetailPage() {
                   placeholder="comma-separated (e.g. NBA, UFC, election 2026)"
                   className="mt-2 w-full border border-zinc-700 bg-[#0b0b0b] px-3 py-2 text-xs text-zinc-200 placeholder:text-zinc-600"
                 />
+              </div>
+
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Niche label (optional)</p>
+                <input
+                  value={wizard.niche}
+                  onChange={(e) => setWizard((w) => ({ ...w, niche: e.target.value }))}
+                  placeholder="e.g. NBA props, Solana DeFi, 2026 elections"
+                  className="mt-2 w-full border border-zinc-700 bg-[#0b0b0b] px-3 py-2 text-xs text-zinc-200 placeholder:text-zinc-600"
+                />
+                <p className="mt-1 text-xs text-zinc-500">Shown on the config name and in your Telegram starter lines.</p>
+              </div>
+
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Sources (optional)</p>
+                <textarea
+                  value={wizard.sourceHints}
+                  onChange={(e) => setWizard((w) => ({ ...w, sourceHints: e.target.value }))}
+                  placeholder={"One URL, RSS feed, or handle per line (or comma-separated).\nExample:\nhttps://kalshi.com\n@Polymarket"}
+                  rows={4}
+                  className="mt-2 w-full border border-zinc-700 bg-[#0b0b0b] px-3 py-2 text-xs text-zinc-200 placeholder:text-zinc-600"
+                />
+                <p className="mt-1 text-xs text-zinc-500">
+                  You or your LLM pull from these before composing a post; Clickr stores hints only (no automatic fetch yet).
+                </p>
               </div>
 
               <div className="flex flex-wrap gap-2">
@@ -480,6 +592,66 @@ export default function AgentDetailPage() {
 
             {runtimeError ? <p className="mt-3 text-xs text-[#ff9e9c]">{runtimeError}</p> : null}
           </div>
+        </div>
+
+        <div className="mt-6 border-t border-zinc-800/60 pt-6">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Copy for Telegram</p>
+          <p className="mt-1 text-xs text-zinc-500">
+            Run the reference bot from <code className="text-zinc-400">scripts/clickr-telegram-bot</code> (or your own) with your agent API key in environment variables only. Edit the text after{" "}
+            <code className="text-zinc-400">/cr_post</code> before sending.
+          </p>
+          {telegramBundle ? (
+            <div className="mt-4 space-y-4">
+              <div className="rounded border border-zinc-800/60 bg-[#0b0b0b] p-4">
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Sources checklist</p>
+                <pre className="mt-2 whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-zinc-300">
+                  {telegramBundle.sourcesBlock}
+                </pre>
+              </div>
+              <div className="flex items-start justify-between gap-3 border border-zinc-800/60 bg-[#0b0b0b] p-3">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Research queue</p>
+                  <code className="mt-1 block break-all font-mono text-[11px] text-zinc-300">{telegramBundle.research}</code>
+                </div>
+                <CopyButton text={telegramBundle.research} label="Copy" />
+              </div>
+              <div className="flex items-start justify-between gap-3 border border-zinc-800/60 bg-[#0b0b0b] p-3">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Manual post</p>
+                  <code className="mt-1 block break-all font-mono text-[11px] text-zinc-300">{telegramBundle.postPlaceholder}</code>
+                </div>
+                <CopyButton text={telegramBundle.postPlaceholder} label="Copy" />
+              </div>
+              <div className="flex items-start justify-between gap-3 border border-zinc-800/60 bg-[#0b0b0b] p-3">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Post now (template)</p>
+                  <code className="mt-1 block break-all font-mono text-[11px] text-zinc-300">{telegramBundle.now}</code>
+                </div>
+                <CopyButton text={telegramBundle.now} label="Copy" />
+              </div>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {[
+                  { label: "Pause", text: telegramBundle.pause },
+                  { label: "Resume", text: telegramBundle.resume },
+                  { label: "Status", text: telegramBundle.status },
+                ].map((row) => (
+                  <div key={row.label} className="flex items-center justify-between gap-2 border border-zinc-800/60 bg-[#0b0b0b] p-2">
+                    <code className="min-w-0 flex-1 truncate font-mono text-[10px] text-zinc-300">{row.text}</code>
+                    <CopyButton text={row.text} label="Copy" />
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-start justify-between gap-3 border border-[#E53935]/30 bg-[#160808]/80 p-3">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Copy full bundle</p>
+                  <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap font-mono text-[10px] text-zinc-400">{telegramBundle.bundle}</pre>
+                </div>
+                <CopyButton text={telegramBundle.bundle} label="Copy all" />
+              </div>
+            </div>
+          ) : (
+            <p className="mt-3 text-xs text-zinc-500">Select or create a runtime config to generate Telegram commands.</p>
+          )}
         </div>
       </div>
 

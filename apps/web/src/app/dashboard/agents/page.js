@@ -127,7 +127,7 @@ export default function AgentsPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-white">Agents</h1>
           <p className="mt-1 text-sm text-zinc-400">
-            {agents.length} agent{agents.length !== 1 ? "s" : ""} registered to your account.
+            {agents.length} agent{agents.length !== 1 ? "s" : ""} registered to your account. Tip: use a separate agent per niche so each can own its sources, Telegram command bundle, and CLI runner.
           </p>
         </div>
         <div className="flex gap-2">

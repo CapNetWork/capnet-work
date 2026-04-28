@@ -270,7 +270,7 @@ function pick(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-function buildAutoposterPost({ preset, keywords = [], tone }) {
+function buildAutoposterPost({ preset, keywords = [], tone, niche = '', source_hints = [] }) {
   const now = new Date();
   const topic = pick(keywords) || (preset === 'sports_betting' ? "today's lines" : "today's market pricing");
   const stance = tone === 'skeptical' ? 'I’m skeptical' : tone === 'aggressive' ? 'I’m leaning in' : 'My read';
@@ -289,8 +289,36 @@ function buildAutoposterPost({ preset, keywords = [], tone }) {
     footer,
   ];
   let content = lines.join('\n');
+  const metaBits = [];
+  if (niche) metaBits.push(`Niche: ${niche}`);
+  if (source_hints.length) {
+    const shown = source_hints.slice(0, 3).join(' · ');
+    metaBits.push(`Sources: ${shown}${source_hints.length > 3 ? '…' : ''}`);
+  }
+  if (metaBits.length) {
+    content = `${content}\n${metaBits.join(' | ')}`;
+  }
   if (content.length > 500) content = content.slice(0, 497) + '...';
   return content;
+}
+
+function autoposterParamsFromConfig(cfg) {
+  const ij =
+    cfg?.interests_json && typeof cfg.interests_json === 'object' && !Array.isArray(cfg.interests_json)
+      ? cfg.interests_json
+      : {};
+  const preset = ij.preset || 'prediction_markets';
+  const seed = Array.isArray(ij.seed_keywords) ? ij.seed_keywords : [];
+  const kws = Array.isArray(ij.keywords) ? ij.keywords : [];
+  const niche = typeof ij.niche === 'string' ? ij.niche.trim() : '';
+  const source_hints = Array.isArray(ij.source_hints) ? ij.source_hints.filter((s) => typeof s === 'string' && s.trim()) : [];
+  return {
+    preset,
+    keywords: [...kws, ...seed].slice(0, 50),
+    tone: cfg?.tone || 'skeptical',
+    niche,
+    source_hints,
+  };
 }
 
 async function fetchRuntimeConfig(apiKey, configId) {
@@ -350,11 +378,7 @@ async function agentOnce() {
   try {
     const cfg = await fetchRuntimeConfig(apiKey, configId);
     const capnet = new CapNet(apiKey, BASE_URL);
-    const preset = cfg?.interests_json?.preset || 'prediction_markets';
-    const seed = Array.isArray(cfg?.interests_json?.seed_keywords) ? cfg.interests_json.seed_keywords : [];
-    const kws = Array.isArray(cfg?.interests_json?.keywords) ? cfg.interests_json.keywords : [];
-    const tone = cfg?.tone || 'skeptical';
-    const content = buildAutoposterPost({ preset, keywords: [...kws, ...seed].slice(0, 50), tone });
+    const content = buildAutoposterPost(autoposterParamsFromConfig(cfg));
     const post = await capnet.post(content, { metadata: { source_type: 'clickr-cli-agent', config_id: cfg.id } });
     console.log('✓ Autoposter test post published');
     console.log(`  Post ID:   ${post?.id || '—'}`);
@@ -458,11 +482,7 @@ async function agentStart() {
             continue;
           }
           if (type === 'post_now') {
-            const preset = cfg?.interests_json?.preset || 'prediction_markets';
-            const seed = Array.isArray(cfg?.interests_json?.seed_keywords) ? cfg.interests_json.seed_keywords : [];
-            const kws = Array.isArray(cfg?.interests_json?.keywords) ? cfg.interests_json.keywords : [];
-            const tone = cfg?.tone || 'skeptical';
-            const content = buildAutoposterPost({ preset, keywords: [...kws, ...seed].slice(0, 50), tone });
+            const content = buildAutoposterPost(autoposterParamsFromConfig(cfg));
             const post = await capnet.post(content, { metadata: { source_type: 'clickr-cli-agent', config_id: cfg.id } });
             posts += 1;
             lastPostedAt = new Date().toISOString();
@@ -473,9 +493,11 @@ async function agentStart() {
           }
           if (type === 'research') {
             const topic = typeof payload?.topic === 'string' ? payload.topic.trim().slice(0, 120) : '';
-            const preset = cfg?.interests_json?.preset || 'prediction_markets';
-            const tone = cfg?.tone || 'skeptical';
-            const content = buildAutoposterPost({ preset, keywords: topic ? [topic] : [], tone });
+            const ap = autoposterParamsFromConfig(cfg);
+            const content = buildAutoposterPost({
+              ...ap,
+              keywords: topic ? [topic] : ap.keywords,
+            });
             const post = await capnet.post(content, {
               metadata: { source_type: 'clickr-cli-agent', config_id: cfg.id, research_topic: topic || null },
             });
@@ -517,11 +539,7 @@ async function agentStart() {
           throw new Error('post_rate_limited_day');
         }
 
-        const preset = cfg?.interests_json?.preset || 'prediction_markets';
-        const seed = Array.isArray(cfg?.interests_json?.seed_keywords) ? cfg.interests_json.seed_keywords : [];
-        const kws = Array.isArray(cfg?.interests_json?.keywords) ? cfg.interests_json.keywords : [];
-        const tone = cfg?.tone || 'skeptical';
-        const content = buildAutoposterPost({ preset, keywords: [...kws, ...seed].slice(0, 50), tone });
+        const content = buildAutoposterPost(autoposterParamsFromConfig(cfg));
         await capnet.post(content, { metadata: { source_type: 'clickr-cli-agent', config_id: cfg.id } });
         posts += 1;
         lastPostedAt = new Date().toISOString();
