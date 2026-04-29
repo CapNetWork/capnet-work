@@ -9,6 +9,7 @@ const {
   Connection,
   PublicKey,
   LAMPORTS_PER_SOL,
+  SystemProgram,
   Transaction,
   TransactionInstruction,
 } = require("@solana/web3.js");
@@ -89,6 +90,34 @@ async function createWallet() {
   };
 }
 
+async function createWalletForChain(chainType) {
+  const t = String(chainType || "").trim().toLowerCase();
+  if (!t) {
+    const err = new Error("chainType is required");
+    err.code = "PRIVY_BAD_CHAIN";
+    throw err;
+  }
+  if (t !== "solana" && t !== "ethereum") {
+    const err = new Error("Unsupported Privy chainType (expected 'solana' or 'ethereum')");
+    err.code = "PRIVY_BAD_CHAIN";
+    throw err;
+  }
+
+  const privy = await getPrivyClient();
+  if (!privy?.wallets) {
+    const err = new Error("Privy SDK client is missing wallets() — check @privy-io/node version");
+    err.code = "PRIVY_SDK_INCOMPATIBLE";
+    throw err;
+  }
+  const wallet = await privy.wallets().create({ chain_type: t });
+  return {
+    address: wallet.address,
+    providerWalletId: wallet.id,
+    providerPolicyId: null,
+    chainType: t,
+  };
+}
+
 async function getBalance(address) {
   const conn = getSolanaConnection();
   const pubkey = new PublicKey(address);
@@ -155,6 +184,49 @@ async function buildMemoTransaction(walletAddress, memo) {
   };
 }
 
+async function buildTransferTransaction({ fromAddress, toAddress, lamports }) {
+  if (!validateSolanaAddress(fromAddress)) {
+    const err = new Error("fromAddress must be a valid Solana address");
+    err.code = "SOLANA_INVALID_ADDRESS";
+    throw err;
+  }
+  if (!validateSolanaAddress(toAddress)) {
+    const err = new Error("toAddress must be a valid Solana address");
+    err.code = "SOLANA_INVALID_ADDRESS";
+    throw err;
+  }
+  const amt = Number(lamports);
+  if (!Number.isFinite(amt) || amt <= 0) {
+    const err = new Error("lamports must be a positive number");
+    err.code = "SOLANA_BAD_TRANSFER_AMOUNT";
+    throw err;
+  }
+
+  const conn = getSolanaConnection();
+  const feePayer = new PublicKey(fromAddress);
+  const to = new PublicKey(toAddress);
+  const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash("confirmed");
+  const tx = new Transaction({
+    feePayer,
+    recentBlockhash: blockhash,
+  }).add(
+    SystemProgram.transfer({
+      fromPubkey: feePayer,
+      toPubkey: to,
+      lamports: Math.trunc(amt),
+    })
+  );
+
+  return {
+    transaction: tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64"),
+    programId: SystemProgram.programId.toBase58(),
+    recentBlockhash: blockhash,
+    lastValidBlockHeight,
+    destination: to.toBase58(),
+    amount_lamports: Math.trunc(amt),
+  };
+}
+
 async function signMessage(walletRow, messageBase64) {
   const privy = await getPrivyClient();
   if (!privy?.wallets) {
@@ -205,9 +277,11 @@ async function updatePolicy(walletRow, policyUpdate) {
 
 module.exports = {
   createWallet,
+  createWalletForChain,
   getBalance,
   requestDevnetAirdrop,
   buildMemoTransaction,
+  buildTransferTransaction,
   signMessage,
   signAndSend,
   getPolicy,

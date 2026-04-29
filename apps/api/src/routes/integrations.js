@@ -216,6 +216,52 @@ router.post("/privy_wallet/send", authenticateBySessionOrKey, walletUserLimiter,
   }
 });
 
+router.post("/privy_wallet/withdraw", authenticateBySessionOrKey, walletUserLimiter, walletSendLimiter, async (req, res, next) => {
+  const walletRow = await requirePrivyWallet(req, res);
+  if (!walletRow) return;
+  try {
+    const chainType = typeof req.body?.chain_type === "string" ? req.body.chain_type.trim().toLowerCase() : "solana";
+    if (chainType !== "solana") return res.status(400).json({ error: "Only chain_type='solana' is supported for withdrawals right now" });
+
+    const phantomRow = await phantomWalletAdapter.requirePhantomWallet(req, res);
+    if (!phantomRow) return;
+    const fallbackTo = phantomRow.wallet_address;
+    const toAddressRaw = typeof req.body?.to_address === "string" ? req.body.to_address.trim() : "";
+    const toAddress = toAddressRaw || fallbackTo;
+
+    const amountSolRaw = typeof req.body?.amount === "string" ? req.body.amount.trim() : "";
+    const amountSol = Number(amountSolRaw);
+    if (!Number.isFinite(amountSol) || amountSol <= 0) return res.status(400).json({ error: "amount must be a positive SOL decimal string" });
+    const lamports = Math.round(amountSol * 1_000_000_000);
+    if (lamports <= 0) return res.status(400).json({ error: "amount too small" });
+
+    const privyDriver = require("../lib/drivers/privy");
+    const built = await privyDriver.buildTransferTransaction({
+      fromAddress: walletRow.wallet_address,
+      toAddress,
+      lamports,
+    });
+
+    const authMethod = req.clickrUser ? "session" : "api_key";
+    const result = await privyWalletAdapter.send(
+      req.agent.id,
+      walletRow,
+      {
+        transaction: built.transaction,
+        amount_lamports: built.amount_lamports,
+        destination: built.destination,
+        program_id: built.programId,
+      },
+      authMethod
+    );
+    res.json({ ok: true, ...result, withdrawal_to: toAddress, amount_sol: amountSol });
+  } catch (err) {
+    const mapped = privyWalletAdapter.mapConnectError(err);
+    if (mapped) return res.status(mapped.status).json({ error: mapped.error, ...(mapped.rule ? { rule: mapped.rule } : {}) });
+    next(err);
+  }
+});
+
 router.post("/privy_wallet/devnet-memo-test", authenticateBySessionOrKey, walletUserLimiter, walletSendLimiter, async (req, res, next) => {
   const walletRow = await requirePrivyWallet(req, res);
   if (!walletRow) return;

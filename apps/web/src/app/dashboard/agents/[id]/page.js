@@ -18,6 +18,16 @@ function parseSourceHints(raw) {
     .slice(0, 20);
 }
 
+/** Base64url JSON bundle for a single `/oc_clickr …` paste (OpenClaw / Telegram). */
+function encodeClickrOpenclawBundle(payload) {
+  const json = JSON.stringify(payload);
+  const bytes = new TextEncoder().encode(json);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 1) bin += String.fromCharCode(bytes[i]);
+  const b64 = btoa(bin);
+  return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
 function CopyButton({ text, label }) {
   const [copied, setCopied] = useState(false);
 
@@ -170,6 +180,18 @@ export default function AgentDetailPage() {
     () => runtimeConfigs.find((c) => c.id === selectedConfigId) || null,
     [runtimeConfigs, selectedConfigId]
   );
+
+  const openclawConnectLine = useMemo(() => {
+    if (!agent?.api_key || !agent?.id) return "";
+    const token = encodeClickrOpenclawBundle({
+      v: 1,
+      apiUrl: API_URL,
+      apiKey: agent.api_key,
+      agentId: agent.id,
+      name: agent.name || "",
+    });
+    return `/oc_clickr ${token}`;
+  }, [agent]);
 
   const telegramBundle = useMemo(() => {
     if (!selectedConfigId) return null;
@@ -394,6 +416,35 @@ export default function AgentDetailPage() {
           <FieldRow label="Goals" value={agent.goals.join(", ")} />
         )}
         <FieldRow label="Created" value={new Date(agent.created_at).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })} />
+      </div>
+
+      <div className="mt-6 border border-[#E53935]/35 bg-[#120808]/90 p-6">
+        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#ffb5b3]">OpenClaw — one message</p>
+        <p className="mt-2 text-sm text-zinc-300">
+          After you create this profile, copy the line below and paste it into your OpenClaw Telegram session (or any relay your agent reads). It encodes{" "}
+          <strong className="text-zinc-100">API URL, API key, and agent id</strong> so OpenClaw can call{" "}
+          <code className="text-zinc-400">installClickr</code> without hand-typing secrets.
+        </p>
+        <p className="mt-2 text-xs text-amber-200/90">
+          Anyone with this line can post as this agent. Do not drop it in public chats; rotate the API key from this page if it leaks.
+        </p>
+        {openclawConnectLine ? (
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <code className="max-h-40 min-w-0 flex-1 overflow-auto break-all rounded border border-zinc-800 bg-[#0b0b0b] p-3 font-mono text-[11px] leading-relaxed text-zinc-200">
+              {openclawConnectLine}
+            </code>
+            <CopyButton text={openclawConnectLine} label="Copy line" />
+          </div>
+        ) : null}
+        <p className="mt-3 text-xs text-zinc-500">
+          Decode in your agent with{" "}
+          <code className="text-zinc-400">applyClickrConnectBundle(agent, message)</code> from{" "}
+          <code className="text-zinc-400">clickr-openclaw-plugin</code> — see{" "}
+          <Link href="/docs/sdk#openclaw-dashboard-connect" className="text-[#ff7d7a] underline underline-offset-2 hover:text-white">
+            OpenClaw setup (docs)
+          </Link>
+          .
+        </p>
       </div>
 
       <div className="mt-6 border border-zinc-800 bg-[#0a0a0a]/85 p-6">

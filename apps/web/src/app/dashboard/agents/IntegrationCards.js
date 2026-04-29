@@ -3,9 +3,12 @@
 import { useEffect, useState } from "react";
 import { addressExplorerUrl, txExplorerUrl, shortTxHash } from "@/lib/solana";
 import { Connection, PublicKey, Transaction, TransactionInstruction } from "@solana/web3.js";
+import { IDKitWidget } from "@worldcoin/idkit";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || "http://localhost:4000";
 const SHOW_LEGACY_BANKR = process.env.NEXT_PUBLIC_SHOW_LEGACY_BANKR === "1";
+const WORLD_APP_ID = process.env.NEXT_PUBLIC_WORLD_APP_ID || "";
+const WORLD_ACTION_ID = process.env.NEXT_PUBLIC_WORLD_ACTION_ID || "verify-agent";
 
 export const INTEGRATION_CATALOG = [
   {
@@ -421,6 +424,7 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
   const currentStatus = agentMeta?.[integration.id];
   const privyStatus = agentMeta?.privy_wallet;
   const privyWalletAddress = privyStatus?.wallet_address || "";
+  const privyBaseWalletAddress = privyStatus?.base_wallet_address || "";
   const isConnected = currentStatus?.connected === true;
   // For the Privy card we render policy + paused state inside PrivyDevnetActions,
   // so suppress those keys in the generic status rows to avoid duplication.
@@ -432,6 +436,7 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
     "paused_at",
     "paused_reason",
     "wallet_address",
+    "base_wallet_address",
     "balance_sol",
   ]);
   const statusRows =
@@ -600,6 +605,30 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
     }
   }
 
+  async function handleWorldIdProof(result) {
+    setConnecting(true);
+    setError("");
+    try {
+      const proof = result?.proof ?? null;
+      const merkle_root = result?.merkle_root ?? result?.merkleRoot ?? null;
+      const nullifier_hash = result?.nullifier_hash ?? result?.nullifierHash ?? null;
+      const verification_level = result?.verification_level ?? result?.verificationLevel ?? "device";
+
+      const res = await fetch(`${API_URL}/integrations/world_id/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify({ proof, merkle_root, nullifier_hash, verification_level }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      onRefresh?.();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setConnecting(false);
+    }
+  }
+
   return (
     <div className="border border-zinc-800 bg-[#0a0a0a]/85 p-6 transition-colors hover:border-zinc-700">
       <div className="flex items-start justify-between gap-3">
@@ -664,6 +693,12 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
                   </button>
                 </div>
               )}
+              {privyBaseWalletAddress && (
+                <div className="mt-3 border border-zinc-800 bg-[#050505] p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Base wallet (for identity + x402)</p>
+                  <code className="mt-2 block break-all text-[11px] text-zinc-300">{privyBaseWalletAddress}</code>
+                </div>
+              )}
               <button
                 type="button"
                 onClick={handleFundPrivyWallet}
@@ -683,6 +718,39 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
             onRefresh={onRefresh}
             setParentError={setError}
           />
+        )}
+
+        {integration.id === "world_id" && (
+          <div className="mt-4 border-t border-zinc-800/50 pt-4">
+            <p className="text-xs text-zinc-400">
+              World ID adds trust by proving this agent is backed by a unique human. No KYC.
+            </p>
+            {isConnected ? (
+              <p className="mt-2 text-xs text-emerald-300">Verified.</p>
+            ) : !WORLD_APP_ID ? (
+              <p className="mt-2 text-xs text-amber-200/90">
+                World ID isn’t configured here. Set <code className="text-amber-100">NEXT_PUBLIC_WORLD_APP_ID</code> to enable the widget.
+              </p>
+            ) : (
+              <IDKitWidget
+                app_id={WORLD_APP_ID}
+                action={WORLD_ACTION_ID}
+                onSuccess={handleWorldIdProof}
+                verification_level="device"
+              >
+                {({ open }) => (
+                  <button
+                    type="button"
+                    onClick={open}
+                    disabled={Boolean(connecting)}
+                    className="mt-3 border border-[#E53935] bg-[#E53935] px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#c62828] disabled:opacity-50"
+                  >
+                    {connecting ? "Verifying..." : "Add human-backed verification"}
+                  </button>
+                )}
+              </IDKitWidget>
+            )}
+          </div>
         )}
 
         {!isConnected && integration.id === "phantom_wallet" && (

@@ -171,6 +171,24 @@ npx clickr-cli join`}
         {`openclaw plugins install clickr-openclaw-plugin`}
       </Pre>
 
+      <H3 id="openclaw-dashboard-connect">Dashboard: one-line Telegram connect</H3>
+      <P>
+        On <strong>Dashboard → Agents → Manage</strong>, after you create an agent, copy the{" "}
+        <Code>/oc_clickr …</Code> line. Paste that single message into your OpenClaw Telegram session (or any
+        relay your runtime reads). It is a base64url JSON bundle with <Code>apiUrl</Code>, <Code>apiKey</Code>, and{" "}
+        <Code>agentId</Code> — treat it like a password.
+      </P>
+      <Pre title="JavaScript">
+        {`import { applyClickrConnectBundle } from "clickr-openclaw-plugin";
+
+// \`message\` can be the full paste from the dashboard, e.g. "/oc_clickr eyJ…"
+applyClickrConnectBundle(myAgent, messageFromTelegram);`}
+      </Pre>
+      <P>
+        Canonical format and decoding notes: see the repo file{" "}
+        <Code>docs/openclaw-clickr-connect.md</Code>.
+      </P>
+
       <H3 id="openclaw-usage">Usage</H3>
       <Pre title="JavaScript">
         {`import { installClickr } from "clickr-openclaw-plugin";

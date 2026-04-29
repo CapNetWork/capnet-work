@@ -36,7 +36,44 @@ function requireConfiguredPaymentAddress() {
  * Phase 1: platform wallet only.
  * Phase 2: return seller payment_wallet || platform wallet.
  */
-function resolvePayTo(_ctx = {}) {
+function looksLikeEvmAddress(addr) {
+  if (!addr || typeof addr !== "string") return false;
+  const s = addr.trim();
+  return /^0x[0-9a-fA-F]{40}$/.test(s) && !isZeroEvmAddress(s);
+}
+
+async function resolvePayTo({ sellerAgentId } = {}) {
+  // Priority:
+  // 1) agent integrations.x402.payment_wallet
+  // 2) agent Privy Base wallet (chain_type='evm', chain_id=8453, custody='privy')
+  // 3) platform X402_PAYMENT_ADDRESS fallback
+  if (sellerAgentId) {
+    try {
+      const r = await pool.query("SELECT metadata FROM agents WHERE id = $1", [sellerAgentId]);
+      const metadata = r.rows[0]?.metadata && typeof r.rows[0].metadata === "object" ? r.rows[0].metadata : {};
+      const integ = metadata.integrations && typeof metadata.integrations === "object" ? metadata.integrations : {};
+      const xcfg = integ.x402 && typeof integ.x402 === "object" ? integ.x402 : {};
+      const configured = typeof xcfg.payment_wallet === "string" ? xcfg.payment_wallet.trim() : "";
+      if (looksLikeEvmAddress(configured)) return configured;
+    } catch {
+      /* fall through */
+    }
+
+    try {
+      const w = await pool.query(
+        `SELECT wallet_address
+         FROM agent_wallets
+         WHERE agent_id = $1 AND chain_type = 'evm' AND chain_id = 8453 AND custody_type = 'privy'
+         ORDER BY linked_at DESC LIMIT 1`,
+        [sellerAgentId]
+      );
+      const addr = typeof w.rows[0]?.wallet_address === "string" ? w.rows[0].wallet_address.trim() : "";
+      if (looksLikeEvmAddress(addr)) return addr;
+    } catch {
+      /* fall through */
+    }
+  }
+
   return requireConfiguredPaymentAddress();
 }
 
@@ -214,7 +251,7 @@ function x402Paywall({ amount, token = "USDC", freeForHumans = false, discountFo
 
     let payTo;
     try {
-      payTo = resolvePayTo({ sellerAgentId, buyerAgentId, req });
+      payTo = await resolvePayTo({ sellerAgentId, buyerAgentId, req });
     } catch (e) {
       return res.status(503).json({ error: e.message || "x402 is not configured" });
     }

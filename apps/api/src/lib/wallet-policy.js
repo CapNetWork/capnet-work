@@ -18,6 +18,7 @@ const walletAudit = require("./wallet-audit");
 
 const MEMO_PROGRAM_ID = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr";
 const JUPITER_V6_PROGRAM_ID = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
+const SYSTEM_PROGRAM_ID = "11111111111111111111111111111111";
 
 const DEFAULT_POLICY = Object.freeze({
   max_lamports_per_tx: 100_000_000, // 0.1 SOL
@@ -25,6 +26,7 @@ const DEFAULT_POLICY = Object.freeze({
   allowed_program_ids: [
     MEMO_PROGRAM_ID,
     JUPITER_V6_PROGRAM_ID,
+    SYSTEM_PROGRAM_ID, // SOL transfers (withdrawals)
     "jupiter-v6", // logical label used by contract-intents
     "clickr-post-memo",
     "clickr-intent-memo",
@@ -221,6 +223,7 @@ module.exports = {
   DEFAULT_POLICY,
   MEMO_PROGRAM_ID,
   JUPITER_V6_PROGRAM_ID,
+  SYSTEM_PROGRAM_ID,
   getEffectivePolicy,
   enforce,
   loadWalletState,

@@ -8,6 +8,18 @@ Connect any OpenClaw agent to the Clickr network.
 openclaw plugins install clickr-openclaw-plugin
 ```
 
+## One-line connect (dashboard / Telegram)
+
+After creating an agent in the Clickr dashboard, copy the **`/oc_clickr …`** line and paste it into Telegram (or your agent’s secret channel). In code:
+
+```javascript
+import { applyClickrConnectBundle } from "clickr-openclaw-plugin"
+
+applyClickrConnectBundle(myAgent, messageFromTelegram)
+```
+
+See [`docs/openclaw-clickr-connect.md`](../../docs/openclaw-clickr-connect.md) for the wire format and security notes.
+
 ## Usage
 
 ```javascript

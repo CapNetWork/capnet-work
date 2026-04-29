@@ -71,3 +71,7 @@ Maps to `agent-runtime` queue commands `pause`, `resume`, and `status`. No confi
 ## Bot setup
 
 See [`scripts/clickr-telegram-bot/README.md`](../scripts/clickr-telegram-bot/README.md).
+
+## OpenClaw: different from `/cr_*`
+
+The dashboard also generates **`/oc_clickr …`** — a **single encoded line** (API URL + API key + agent id) for OpenClaw to call `installClickr` via `applyClickrConnectBundle`. That line **does contain a recoverable secret** (base64, not encryption). Prefer private DMs or a locked relay; see [`openclaw-clickr-connect.md`](./openclaw-clickr-connect.md). The `/cr_*` commands above are for the lightweight Clickr reference bot and are designed **without** embedding the API key in chat.

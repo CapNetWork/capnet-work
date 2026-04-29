@@ -10,6 +10,25 @@ const { refreshScore } = require("../../lib/reputation");
 
 const PROVIDER_ID = "privy_wallet";
 
+function normalizeConnectChainType(input) {
+  const raw = typeof input?.chain_type === "string" ? input.chain_type.trim().toLowerCase() : "";
+  if (!raw || raw === "solana") {
+    return { dbChainType: "solana", chainId: 0, privyChainType: "solana" };
+  }
+  if (raw === "base" || raw === "evm" || raw === "ethereum") {
+    return { dbChainType: "evm", chainId: 8453, privyChainType: "ethereum" };
+  }
+  const err = new Error("chain_type must be 'solana' or 'base'");
+  err.code = "PRIVY_BAD_CHAIN";
+  throw err;
+}
+
+function normalizeEvmAddress(addr) {
+  if (!addr || typeof addr !== "string") return addr;
+  const s = addr.trim();
+  return s.startsWith("0x") ? s.toLowerCase() : s;
+}
+
 async function connect(agentId, input = {}) {
   if (input.action && input.action !== "generate") {
     const err = new Error("Only action 'generate' is supported for Privy wallets");
@@ -17,13 +36,15 @@ async function connect(agentId, input = {}) {
     throw err;
   }
 
-  const wallet = await privyDriver.createWallet();
-  const defaultPolicy = { ...walletPolicy.DEFAULT_POLICY };
+  const { dbChainType, chainId, privyChainType } = normalizeConnectChainType(input);
+  const wallet = await privyDriver.createWalletForChain(privyChainType);
+  const defaultPolicy = dbChainType === "solana" ? { ...walletPolicy.DEFAULT_POLICY } : null;
+  const walletAddress = dbChainType === "evm" ? normalizeEvmAddress(wallet.address) : wallet.address;
 
   const r = await pool.query(
     `INSERT INTO agent_wallets (agent_id, wallet_address, chain_id, chain_type, custody_type,
                                 provider_wallet_id, provider_policy_id, label, policy_json)
-     VALUES ($1, $2, 0, 'solana', 'privy', $3, $4, $5, $6::jsonb)
+     VALUES ($1, $2, $3, $4, 'privy', $5, $6, $7, $8::jsonb)
      ON CONFLICT (wallet_address, chain_type, chain_id)
        DO UPDATE SET provider_wallet_id = EXCLUDED.provider_wallet_id,
                      policy_json        = COALESCE(agent_wallets.policy_json, EXCLUDED.policy_json)
@@ -32,30 +53,34 @@ async function connect(agentId, input = {}) {
                is_paused, paused_at, paused_reason, policy_json, linked_at`,
     [
       agentId,
-      wallet.publicKey,
+      walletAddress,
+      chainId,
+      dbChainType,
       wallet.providerWalletId,
       wallet.providerPolicyId,
       input.label || null,
-      JSON.stringify(defaultPolicy),
+      JSON.stringify(defaultPolicy || {}),
     ]
   );
 
   // Best-effort: also attach the policy to Privy so signing fails closed even
   // if our API is bypassed somehow. Privy's policy SDK shape varies between
   // versions — failures here are non-fatal because the API gate is the trusted one.
-  try {
-    await privyDriver.updatePolicy(r.rows[0], defaultPolicy);
-  } catch (err) {
-    if (err && err.code !== "PRIVY_SDK_INCOMPATIBLE") {
-      console.warn("[privy-wallet] best-effort policy attach failed:", err.message);
+  if (dbChainType === "solana" && defaultPolicy) {
+    try {
+      await privyDriver.updatePolicy(r.rows[0], defaultPolicy);
+    } catch (err) {
+      if (err && err.code !== "PRIVY_SDK_INCOMPATIBLE") {
+        console.warn("[privy-wallet] best-effort policy attach failed:", err.message);
+      }
     }
   }
 
   await audit.logAttempt({
     agentId,
     walletId: r.rows[0].id,
-    walletAddress: wallet.publicKey,
-    chainType: "solana",
+    walletAddress,
+    chainType: dbChainType,
     custodyType: "privy",
     txType: "wallet_created",
     authMethod: input._authMethod || "session",
@@ -69,57 +94,77 @@ async function connect(agentId, input = {}) {
 }
 
 async function getIntegrationStatus(agentId) {
-  const r = await pool.query(
-    `SELECT id, agent_id, wallet_address, chain_type, custody_type,
-            provider_wallet_id, is_paused, paused_at, paused_reason,
-            policy_json, linked_at
-     FROM agent_wallets
-     WHERE agent_id = $1 AND chain_type = 'solana' AND custody_type = 'privy'
-     ORDER BY linked_at DESC LIMIT 1`,
-    [agentId]
-  );
-  if (r.rows.length === 0) {
+  const [sol, evm] = await Promise.all([
+    pool.query(
+      `SELECT id, agent_id, wallet_address, chain_type, custody_type,
+              provider_wallet_id, is_paused, paused_at, paused_reason,
+              policy_json, linked_at
+       FROM agent_wallets
+       WHERE agent_id = $1 AND chain_type = 'solana' AND custody_type = 'privy'
+       ORDER BY linked_at DESC LIMIT 1`,
+      [agentId]
+    ),
+    pool.query(
+      `SELECT id, agent_id, wallet_address, chain_type, custody_type,
+              provider_wallet_id, provider_policy_id, linked_at
+       FROM agent_wallets
+       WHERE agent_id = $1 AND chain_type = 'evm' AND chain_id = 8453 AND custody_type = 'privy'
+       ORDER BY linked_at DESC LIMIT 1`,
+      [agentId]
+    ),
+  ]);
+
+  const solWallet = sol.rows[0] || null;
+  const baseWallet = evm.rows[0] || null;
+
+  if (!solWallet && !baseWallet) {
     return { connected: false, provider: PROVIDER_ID };
   }
-  const wallet = r.rows[0];
+
+  const wallet = solWallet || baseWallet;
   let balance = null;
   let policy_summary = null;
   let daily_spend_lamports = null;
-  try {
-    balance = await privyDriver.getBalance(wallet.wallet_address);
-  } catch {
-    /* RPC may be unavailable */
-  }
-  try {
-    const pol = await privyDriver.getPolicy(wallet);
-    if (pol && typeof pol === "object") {
-      policy_summary = Object.keys(pol).length ? { keys: Object.keys(pol).slice(0, 12) } : null;
-    } else if (pol != null) {
-      policy_summary = { raw: String(pol).slice(0, 200) };
+
+  if (solWallet) {
+    try {
+      balance = await privyDriver.getBalance(solWallet.wallet_address);
+    } catch {
+      /* RPC may be unavailable */
     }
-  } catch {
-    /* policy API optional */
+    try {
+      const pol = await privyDriver.getPolicy(solWallet);
+      if (pol && typeof pol === "object") {
+        policy_summary = Object.keys(pol).length ? { keys: Object.keys(pol).slice(0, 12) } : null;
+      } else if (pol != null) {
+        policy_summary = { raw: String(pol).slice(0, 200) };
+      }
+    } catch {
+      /* policy API optional */
+    }
+    try {
+      daily_spend_lamports = await audit.getDailySpend(agentId, solWallet.id);
+    } catch {
+      /* non-fatal */
+    }
   }
-  try {
-    daily_spend_lamports = await audit.getDailySpend(agentId, wallet.id);
-  } catch {
-    /* non-fatal */
-  }
-  const effectivePolicy = walletPolicy.getEffectivePolicy(wallet);
+
+  const effectivePolicy = solWallet ? walletPolicy.getEffectivePolicy(solWallet) : null;
   return {
     connected: true,
     provider: PROVIDER_ID,
     config: {
-      wallet_address: wallet.wallet_address,
+      wallet_address: solWallet?.wallet_address || null,
+      base_wallet_address: baseWallet?.wallet_address || null,
       chain_type: wallet.chain_type,
       custody_type: wallet.custody_type,
       balance_sol: balance ? balance.sol : null,
       policy_summary,
       policy: effectivePolicy,
       daily_spend_lamports,
-      is_paused: Boolean(wallet.is_paused),
-      paused_at: wallet.paused_at,
-      paused_reason: wallet.paused_reason,
+      is_paused: solWallet ? Boolean(solWallet.is_paused) : false,
+      paused_at: solWallet?.paused_at || null,
+      paused_reason: solWallet?.paused_reason || null,
       linked_at: wallet.linked_at,
     },
   };
@@ -351,7 +396,7 @@ function forbidDirectConfigPut() {
 
 function readConnectInput(body) {
   if (!body || typeof body !== "object") return {};
-  return { action: body.action || "generate", label: body.label };
+  return { action: body.action || "generate", label: body.label, chain_type: body.chain_type };
 }
 
 function mapConnectError(err) {
@@ -359,6 +404,7 @@ function mapConnectError(err) {
   if (err.code === "PRIVY_NOT_CONFIGURED") return { status: 503, error: err.message };
   if (err.code === "PRIVY_SDK_INCOMPATIBLE") return { status: 503, error: err.message };
   if (err.code === "PRIVY_BAD_ACTION") return { status: 400, error: err.message };
+  if (err.code === "PRIVY_BAD_CHAIN") return { status: 400, error: err.message };
   if (err.code === "PRIVY_MISSING_MESSAGE") return { status: 400, error: err.message };
   if (err.code === "PRIVY_MISSING_TX") return { status: 400, error: err.message };
   if (err.code === "SOLANA_DEVNET_REQUIRED") return { status: 400, error: err.message };
