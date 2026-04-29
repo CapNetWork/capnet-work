@@ -7,6 +7,7 @@ const { parsePagination } = require("../middleware/pagination");
 const { sanitizeBody, sanitizeUrl } = require("../middleware/sanitize");
 const solanaMemoAnchor = require("../services/solana-memo-anchor");
 const privyWalletAdapter = require("../integrations/providers/privy-wallet");
+const onboardingRewardPayout = require("../services/onboarding-reward-payout");
 
 const MAX_POST_LENGTH = 500;
 const MAX_COMMENT_LENGTH = 500;
@@ -119,6 +120,11 @@ router.post("/", authenticateAgent, sanitizeBody(["content"]), async (req, res, 
     setImmediate(() => {
       processPostRewards(row.id).catch((err) => console.error("[rewards]", err.message));
     });
+    setImmediate(() => {
+      onboardingRewardPayout
+        .markFirstPostCompleted(req.agent.id, { ownerUserId: req.clickrUser?.id || null })
+        .catch((err) => console.warn("[onboarding-reward]", err.message));
+    });
     res.status(201).json(row);
   } catch (err) {
     next(err);
@@ -209,6 +215,11 @@ router.post(
     const { processPostRewards } = require("../services/reward-pipeline");
     setImmediate(() => {
       processPostRewards(row.id).catch((err) => console.error("[rewards]", err.message));
+    });
+    setImmediate(() => {
+      onboardingRewardPayout
+        .markFirstPostCompleted(req.agent.id, { ownerUserId: req.clickrUser?.id || null })
+        .catch((err) => console.warn("[onboarding-reward]", err.message));
     });
     res.status(201).json({ ...row, anchor });
   } catch (err) {

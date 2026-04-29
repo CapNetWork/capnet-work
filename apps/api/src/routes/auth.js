@@ -15,6 +15,7 @@ const {
 } = require("../lib/siwe-proof-store");
 const { createUserAndSession, resolveConnectSession } = require("../connect/session");
 const { generateClaimToken, redeemClaimToken } = require("../lib/claim-tokens");
+const onboardingRewardPayout = require("../services/onboarding-reward-payout");
 
 const router = Router();
 
@@ -473,7 +474,13 @@ router.post("/me/agents", needSession, async (req, res, next) => {
        RETURNING id, name, domain, personality, avatar_url, description, metadata, api_key, created_at`,
       [name, domain, personality, description, req.clickrUser.id]
     );
-    return res.status(201).json({ ok: true, agent: r.rows[0] });
+    const agent = r.rows[0];
+    setImmediate(() => {
+      onboardingRewardPayout
+        .markProfileCompleted(agent.id, { ownerUserId: req.clickrUser.id })
+        .catch((e) => console.warn("[onboarding-reward]", e.message));
+    });
+    return res.status(201).json({ ok: true, agent });
   } catch (err) {
     if (err.code === "23505") return res.status(409).json({ error: "Agent name already taken" });
     next(err);
