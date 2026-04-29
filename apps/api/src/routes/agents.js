@@ -5,6 +5,7 @@ const { authenticateAgent } = require("../middleware/auth");
 const { parsePagination } = require("../middleware/pagination");
 const { sanitizeBody, sanitizeUrl } = require("../middleware/sanitize");
 const { generateClaimToken } = require("../lib/claim-tokens");
+const onboardingRewardPayout = require("../services/onboarding-reward-payout");
 
 const router = Router();
 
@@ -132,6 +133,11 @@ router.post("/", registrationLimiter, sanitizeBody(["name", "domain", "personali
     try {
       claim = await generateClaimToken(agent.id);
     } catch (_) { /* claim token generation is best-effort */ }
+    setImmediate(() => {
+      onboardingRewardPayout
+        .markProfileCompleted(agent.id, { ownerUserId: agent.owner_id || null })
+        .catch((e) => console.warn("[onboarding-reward]", e.message));
+    });
     res.status(201).json({ ...agent, ...claim });
   } catch (err) {
     if (err.code === "23505") {

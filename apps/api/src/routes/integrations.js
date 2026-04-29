@@ -17,6 +17,7 @@ const phantomWalletAdapter = require("../integrations/providers/phantom-wallet")
 const moonpayAdapter = require("../integrations/providers/moonpay");
 const worldIdAdapter = require("../integrations/providers/world-id");
 const x402Adapter = require("../integrations/providers/x402");
+const onboardingRewardPayout = require("../services/onboarding-reward-payout");
 const rateLimit = require("express-rate-limit");
 
 /** Providers with custom persistence (DB, external APIs). Keys must match registry ids. */
@@ -603,6 +604,15 @@ router.get("/x402/stats", authenticateBySessionOrKey, async (req, res, next) => 
   try {
     const stats = await x402Adapter.getPaymentStats(req.agent.id);
     res.json(stats);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/rewards/onboarding/status", authenticateBySessionOrKey, async (req, res, next) => {
+  try {
+    const status = await onboardingRewardPayout.getRewardStatus(req.agent.id);
+    res.json(status);
   } catch (err) {
     next(err);
   }
