@@ -25,6 +25,15 @@ const CONNECT_PROVIDERS = [
     doc: "docs/base-mini-app.md",
   },
   {
+    id: "solana_agent_identity",
+    kind: "web3",
+    implementation: "live_agent_scoped",
+    display_name: "Solana + Metaplex Core",
+    description:
+      "Optional paid devnet SOL fee + Metaplex Core mint to attach an on-chain identity asset to a Clickr agent profile.",
+    api_surfaces: ["/integrations/metaplex_identity"],
+  },
+  {
     id: "google_gmail",
     kind: "oauth",
     implementation: "planned",

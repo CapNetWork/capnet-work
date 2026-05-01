@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { addressExplorerUrl, txExplorerUrl, shortTxHash } from "@/lib/solana";
-import { Connection, PublicKey, Transaction, TransactionInstruction } from "@solana/web3.js";
+import { Connection, PublicKey, SystemProgram, Transaction, TransactionInstruction } from "@solana/web3.js";
 import { IDKitWidget } from "@worldcoin/idkit";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || "http://localhost:4000";
@@ -12,9 +12,18 @@ const WORLD_ACTION_ID = process.env.NEXT_PUBLIC_WORLD_ACTION_ID || "verify-agent
 
 export const INTEGRATION_CATALOG = [
   {
+    id: "metaplex_identity",
+    name: "Solana Identity (Metaplex Core)",
+    description:
+      "Optional: pay a small Solana devnet SOL fee to mint a Metaplex Core asset for this agent. Gives a clear on-chain identity badge on your profile.",
+    category: "Identity",
+    connectLabel: "Mint Solana Agent Identity",
+    fields: [],
+  },
+  {
     id: "erc8004",
-    name: "ERC-8004 Identity",
-    description: "Mint an on-chain identity anchor for your agent on Base. Proves ownership and enables verifiable agent identity.",
+    name: "Base Identity (ERC-8004)",
+    description: "Optional: mint an on-chain identity anchor for your agent on Base. Useful for Base mini apps and EVM-native flows.",
     category: "Identity",
     connectLabel: "Mint identity",
     fields: [
@@ -310,6 +319,13 @@ function PhantomActions({ walletAddress, authHeaders, onRefresh, setParentError 
     return p?.isPhantom ? p : null;
   }
 
+  function solanaRpcEndpoint() {
+    const custom = String(process.env.NEXT_PUBLIC_SOLANA_RPC_URL || "").trim();
+    if (custom) return custom;
+    const cluster = String(process.env.NEXT_PUBLIC_SOLANA_CLUSTER || "mainnet-beta").toLowerCase();
+    return cluster === "devnet" ? "https://api.devnet.solana.com" : "https://api.mainnet-beta.solana.com";
+  }
+
   function openInPhantom() {
     if (typeof window === "undefined") return;
     const url = window.location.href;
@@ -331,10 +347,7 @@ function PhantomActions({ walletAddress, authHeaders, onRefresh, setParentError 
       const pubkey = provider?.publicKey;
       if (!pubkey) throw new Error("Connect Phantom first.");
 
-      const rpc =
-        (process.env.NEXT_PUBLIC_SOLANA_CLUSTER || "mainnet-beta").toLowerCase() === "devnet"
-          ? "https://api.devnet.solana.com"
-          : "https://api.mainnet-beta.solana.com";
+      const rpc = solanaRpcEndpoint();
       const conn = new Connection(rpc, "confirmed");
 
       const feePayer = new PublicKey(walletAddress || pubkey.toString());
@@ -406,6 +419,210 @@ function PhantomActions({ walletAddress, authHeaders, onRefresh, setParentError 
           </a>
         </p>
       )}
+    </div>
+  );
+}
+
+function MetaplexIdentityActions({ agentId, agentMeta, authHeaders, onRefresh, setParentError }) {
+  const [busy, setBusy] = useState("");
+  const [quote, setQuote] = useState(null);
+  const [feeSig, setFeeSig] = useState("");
+
+  const phantomCfg = agentMeta?.phantom_wallet || null;
+  const phantomAddress = phantomCfg?.wallet_address || "";
+
+  function getPhantomProvider() {
+    if (typeof window === "undefined") return null;
+    const p = window?.phantom?.solana || window?.solana || null;
+    return p?.isPhantom ? p : null;
+  }
+
+  function openInPhantom() {
+    if (typeof window === "undefined") return;
+    const url = window.location.href;
+    const deeplink = `https://phantom.app/ul/browse/${encodeURIComponent(url)}`;
+    window.location.assign(deeplink);
+  }
+
+  function solanaRpcEndpoint() {
+    const custom = String(process.env.NEXT_PUBLIC_SOLANA_RPC_URL || "").trim();
+    if (custom) return custom;
+    const cluster = String(process.env.NEXT_PUBLIC_SOLANA_CLUSTER || "mainnet-beta").toLowerCase();
+    return cluster === "devnet" ? "https://api.devnet.solana.com" : "https://api.mainnet-beta.solana.com";
+  }
+
+  async function loadQuote() {
+    setBusy("quote");
+    setParentError("");
+    try {
+      const res = await fetch(`${API_URL}/integrations/metaplex_identity/quote?agent_id=${encodeURIComponent(agentId)}`, {
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        cache: "no-store",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      setQuote(data);
+      return data;
+    } catch (e) {
+      setQuote(null);
+      setParentError(e.message);
+      return null;
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function mint() {
+    setBusy("mint");
+    setFeeSig("");
+    setParentError("");
+    try {
+      const provider = getPhantomProvider();
+      if (!provider) {
+        openInPhantom();
+        throw new Error("Phantom provider not available here. Opening Phantom…");
+      }
+      if (!phantomAddress) throw new Error("Link Phantom first (dashboard → Phantom integration).");
+
+      let q = quote;
+      if (!q) q = await loadQuote();
+      if (!q) throw new Error("Could not load quote");
+      const treasury = String(q.treasuryWallet || "").trim();
+      const lamports = String(q.feeAmountLamports || "").trim();
+      if (!treasury || !/^\d+$/.test(lamports)) throw new Error("Quote missing treasury/fee lamports.");
+
+      const fromPubkey = new PublicKey(phantomAddress);
+      const toPubkey = new PublicKey(treasury);
+
+      const conn = new Connection(solanaRpcEndpoint(), "confirmed");
+      const { blockhash } = await conn.getLatestBlockhash("confirmed");
+      const tx = new Transaction({ feePayer: fromPubkey, recentBlockhash: blockhash }).add(
+        SystemProgram.transfer({
+          fromPubkey,
+          toPubkey,
+          lamports: BigInt(lamports),
+        })
+      );
+
+      const signed = await provider.signAndSendTransaction(tx);
+      const signature = signed?.signature || signed?.hash || signed;
+      if (!signature) throw new Error("Phantom did not return a transaction signature.");
+
+      const sigStr = String(signature);
+      setFeeSig(sigStr);
+
+      const claimRes = await fetch(`${API_URL}/integrations/metaplex_identity/claim`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify({
+          agent_id: agentId,
+          owner_wallet: phantomAddress,
+          fee_tx_signature: sigStr,
+        }),
+      });
+      const claimData = await claimRes.json().catch(() => ({}));
+      if (!claimRes.ok || claimData.ok === false) {
+        throw new Error(claimData.error || claimRes.statusText || "Mint failed");
+      }
+
+      await onRefresh?.();
+    } catch (e) {
+      setParentError(e.message);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  useEffect(() => {
+    void loadQuote();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentId]);
+
+  async function retryMintOnly() {
+    if (!feeSig) return;
+    setBusy("retry");
+    setParentError("");
+    try {
+      const claimRes = await fetch(`${API_URL}/integrations/metaplex_identity/claim`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify({
+          agent_id: agentId,
+          owner_wallet: phantomAddress,
+          fee_tx_signature: feeSig,
+        }),
+      });
+      const claimData = await claimRes.json().catch(() => ({}));
+      if (!claimRes.ok || claimData.ok === false) {
+        throw new Error(claimData.error || claimRes.statusText || "Mint failed");
+      }
+      await onRefresh?.();
+    } catch (e) {
+      setParentError(e.message);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  const verified = agentMeta?.metaplex_identity?.verification_status === "verified";
+  const status = agentMeta?.metaplex_identity?.status || "";
+
+  return (
+    <div className="mt-4 border-t border-zinc-800/50 pt-4">
+      <p className="text-xs leading-relaxed text-zinc-400">
+        Frontier hackathon flow: Phantom pays a tiny devnet SOL fee, Clickr verifies the tx server-side, then mints a{" "}
+        <span className="text-zinc-200">Metaplex Core</span> asset for this agent.
+      </p>
+
+      {!phantomAddress ? (
+        <p className="mt-3 text-xs text-amber-200/90">
+          Link Phantom first (Phantom integration card above).
+        </p>
+      ) : null}
+
+      <div className="mt-3 space-y-1 border border-zinc-800 bg-[#050505] p-3">
+        <StatusRow label="network" value={quote?.network} />
+        <StatusRow label="fee" value={quote ? `${quote.feeAmount} ${quote.feeAsset}` : null} />
+        <StatusRow label="treasury" value={quote?.treasuryWallet} href={addressExplorerUrl(quote?.treasuryWallet)} />
+        <StatusRow label="phantom" value={phantomAddress || null} href={addressExplorerUrl(phantomAddress)} />
+        {!verified ? <StatusRow label="status" value={status || "not_minted"} /> : null}
+        {verified ? <StatusRow label="asset id" value={agentMeta?.metaplex_identity?.asset_id} /> : null}
+        {verified ? (
+          <StatusRow label="mint tx" value={agentMeta?.metaplex_identity?.mint_tx_signature} href={txExplorerUrl(agentMeta?.metaplex_identity?.mint_tx_signature)} />
+        ) : null}
+        {feeSig ? (
+          <StatusRow label="fee tx" value={feeSig} href={txExplorerUrl(feeSig)} />
+        ) : null}
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => loadQuote()}
+          disabled={Boolean(busy)}
+          className="border border-zinc-700 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white disabled:opacity-50"
+        >
+          {busy === "quote" ? "Loading..." : "Refresh quote"}
+        </button>
+        <button
+          type="button"
+          onClick={() => mint()}
+          disabled={Boolean(busy) || verified || !phantomAddress}
+          className="border border-[#E53935] bg-[#E53935] px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#c62828] disabled:opacity-50"
+        >
+          {busy === "mint" ? "Minting..." : verified ? "Minted" : "Mint Solana Agent Identity"}
+        </button>
+        {!verified && feeSig ? (
+          <button
+            type="button"
+            onClick={() => retryMintOnly()}
+            disabled={Boolean(busy)}
+            className="border border-zinc-700 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-zinc-300 transition-colors hover:border-zinc-500 disabled:opacity-50"
+          >
+            {busy === "retry" ? "Retrying..." : "Retry mint (same fee tx)"}
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -648,6 +865,16 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
         </div>
       </div>
 
+      {integration.id === "metaplex_identity" && (
+        <MetaplexIdentityActions
+          agentId={agentId}
+          agentMeta={agentMeta}
+          authHeaders={authHeaders}
+          onRefresh={onRefresh}
+          setParentError={setError}
+        />
+      )}
+
       {statusRows.length > 0 && (
         <div className="mt-4 space-y-1 border-t border-zinc-800/50 pt-4">
           {statusRows.map(([key, val]) => (
@@ -815,7 +1042,7 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
           </div>
         )}
 
-        {!isConnected && !showForm && (
+        {!isConnected && !showForm && integration.id !== "metaplex_identity" && (
           <button
             type="button"
             onClick={() => setShowForm(true)}

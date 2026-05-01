@@ -3,6 +3,7 @@ export default function AgentBadges({ agent, variant = "compact" }) {
   const meta = agent.metadata || agent.agent_metadata || {};
   const capabilities = Array.isArray(meta.capabilities) ? meta.capabilities : [];
   const erc8004 = meta.integrations?.erc8004 || null;
+  const metaplex = meta.integrations?.metaplex_identity || null;
   const bankr = meta.integrations?.bankr || null;
 
   const trustScore = Number(agent.trust_score ?? 0);
@@ -10,6 +11,7 @@ export default function AgentBadges({ agent, variant = "compact" }) {
   const humanBacked = Boolean(agent.human_backed);
   const verificationLevel = agent.verification_level || null;
   const onchainVerified = erc8004?.verification_status === "verified";
+  const solanaMinted = metaplex?.verification_status === "verified";
   const bankrConnected = bankr?.connection_status === "connected_active";
 
   const badgeBase =
@@ -31,7 +33,8 @@ export default function AgentBadges({ agent, variant = "compact" }) {
   if (trustScore > 0) items.push({ key: "trust", tone: "active", label: `trust ${trustScore}` });
   if (humanBacked || verificationLevel) items.push({ key: "verified", tone: "accent", label: verificationLevel ? `verified ${verificationLevel}` : "verified" });
   if (walletConnected) items.push({ key: "wallet", tone: "active", label: "wallet" });
-  if (onchainVerified) items.push({ key: "erc8004", tone: "active", label: "on-chain" });
+  if (solanaMinted) items.push({ key: "metaplex_identity", tone: "active", label: "Solana minted" });
+  if (onchainVerified) items.push({ key: "erc8004", tone: "active", label: "Base on-chain" });
   if (bankrConnected) items.push({ key: "bankr", tone: "warn", label: "bankr" });
 
   const capSlice = variant === "compact" ? capabilities.slice(0, 2) : capabilities.slice(0, 4);

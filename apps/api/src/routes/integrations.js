@@ -17,6 +17,7 @@ const phantomWalletAdapter = require("../integrations/providers/phantom-wallet")
 const moonpayAdapter = require("../integrations/providers/moonpay");
 const worldIdAdapter = require("../integrations/providers/world-id");
 const x402Adapter = require("../integrations/providers/x402");
+const metaplexIdentityAdapter = require("../integrations/providers/metaplex-identity");
 const onboardingRewardPayout = require("../services/onboarding-reward-payout");
 const rateLimit = require("express-rate-limit");
 
@@ -24,6 +25,7 @@ const rateLimit = require("express-rate-limit");
 const ADAPTERS = {
   bankr: bankrAdapter,
   erc8004: erc8004Adapter,
+  metaplex_identity: metaplexIdentityAdapter,
   privy_wallet: privyWalletAdapter,
   phantom_wallet: phantomWalletAdapter,
   moonpay: moonpayAdapter,
@@ -579,6 +581,61 @@ router.post("/world_id/verify", authenticateBySessionOrKey, async (req, res, nex
 router.get("/world_id/status", authenticateBySessionOrKey, async (req, res, next) => {
   try {
     const status = await worldIdAdapter.getIntegrationStatus(req.agent.id);
+    res.json(status);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Metaplex Identity (Solana) custom routes
+// ---------------------------------------------------------------------------
+
+router.get("/metaplex_identity/quote", authenticateBySessionOrKey, async (req, res, next) => {
+  try {
+    const agentId = String(req.query.agent_id || req.agent.id || "").trim();
+    if (!agentId || agentId !== req.agent.id) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    const out = await metaplexIdentityAdapter.quote(agentId);
+    res.json(out);
+  } catch (err) {
+    const mapped = metaplexIdentityAdapter.mapConnectError?.(err);
+    if (mapped) return res.status(mapped.status || 400).json({ error: mapped.error });
+    next(err);
+  }
+});
+
+router.post(
+  "/metaplex_identity/claim",
+  authenticateBySessionOrKey,
+  sanitizeBody(["agent_id", "owner_wallet", "fee_tx_signature"]),
+  async (req, res, next) => {
+  try {
+    const agentId = String(req.body?.agent_id || req.agent.id || "").trim();
+    if (!agentId || agentId !== req.agent.id) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    const ownerWallet = req.body?.owner_wallet;
+    const feeTx = req.body?.fee_tx_signature;
+    const out = await metaplexIdentityAdapter.claim({ agentId, ownerWallet, feeTxSignature: feeTx });
+    if (out?.ok === false) return res.status(502).json(out);
+    res.json(out);
+  } catch (err) {
+    const mapped = metaplexIdentityAdapter.mapConnectError?.(err);
+    if (mapped) return res.status(mapped.status || 400).json({ error: mapped.error });
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    next(err);
+  }
+});
+
+router.get("/metaplex_identity/status", authenticateBySessionOrKey, async (req, res, next) => {
+  try {
+    const agentId = String(req.query.agent_id || req.agent.id || "").trim();
+    if (!agentId || agentId !== req.agent.id) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    const status = await metaplexIdentityAdapter.getIntegrationStatus(agentId);
     res.json(status);
   } catch (err) {
     next(err);

@@ -45,6 +45,7 @@ export default function IntegrationsWorkflow({ agentId, integrations, authHeader
   const phantom = integrations?.phantom_wallet || null;
   const moonpay = integrations?.moonpay || null;
   const erc8004 = integrations?.erc8004 || null;
+  const metaplex = integrations?.metaplex_identity || null;
   const x402 = integrations?.x402 || null;
 
   const solPrivyAddress = privy?.wallet_address || "";
@@ -57,7 +58,7 @@ export default function IntegrationsWorkflow({ agentId, integrations, authHeader
   const [telegramBundle, setTelegramBundle] = useState("");
 
   const step1Done = Boolean(solPrivyAddress);
-  const step2Done = Boolean(erc8004?.token_id);
+  const step2Done = Boolean(metaplex?.verification_status === "verified" || erc8004?.token_id);
   const step3Done = Boolean(integrations?.world_id?.verified === true || integrations?.world_id?.connected === true);
   const step4Done = Boolean(moonpay?.connected || x402?.connected);
 
@@ -191,31 +192,50 @@ export default function IntegrationsWorkflow({ agentId, integrations, authHeader
 
         <StepShell
           index={2}
-          title="Mint agent identity (recommended)"
-          subtitle="Mint an ERC-8004 identity for on-chain verification. This is optional but recommended."
+          title="Mint agent identity (optional)"
+          subtitle="Solana identity (Metaplex Core) is recommended for Frontier. Base identity (ERC-8004) remains optional alongside it."
           done={step2Done}
         >
-          <div className="grid gap-3 sm:grid-cols-3">
-            <label className="sm:col-span-2">
-              <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Owner wallet (Base)</span>
-              <input
-                value={ownerWallet}
-                onChange={(e) => setOwnerWallet(e.target.value)}
-                placeholder={basePrivyAddress || "0x..."}
-                className="w-full border border-zinc-700 bg-[#050505] px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:border-[#E53935]/50 focus:outline-none"
-              />
-              <p className="mt-1 text-[11px] text-zinc-500">
-                Default: Privy Base wallet. You can override with any 0x address.
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="border border-zinc-800 bg-[#050505] p-4">
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Solana identity</p>
+              <p className="mt-2 text-xs leading-relaxed text-zinc-400">
+                Use the integrations section below (<span className="text-zinc-200">Mint Solana Agent Identity</span>) after Phantom is linked. This badges your profile as{" "}
+                <span className="text-emerald-200">Solana minted</span>.
               </p>
-            </label>
-            <button
-              type="button"
-              onClick={() => call("/integrations/erc8004/connect", { owner_wallet: ownerWallet || basePrivyAddress })}
-              disabled={Boolean(busy)}
-              className="border border-[#E53935] bg-[#E53935] px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#c62828] disabled:opacity-50"
-            >
-              Mint identity
-            </button>
+              <p className="mt-3 font-mono text-[11px] text-zinc-300">
+                status:{" "}
+                {metaplex?.verification_status === "verified"
+                  ? "verified"
+                  : metaplex?.asset_id
+                    ? "in_progress"
+                    : "not_started"}
+              </p>
+            </div>
+
+            <div className="border border-zinc-800 bg-[#050505] p-4">
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Base identity (optional)</p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                <label className="sm:col-span-2">
+                  <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Owner wallet (Base)</span>
+                  <input
+                    value={ownerWallet}
+                    onChange={(e) => setOwnerWallet(e.target.value)}
+                    placeholder={basePrivyAddress || "0x..."}
+                    className="w-full border border-zinc-700 bg-[#050505] px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:border-[#E53935]/50 focus:outline-none"
+                  />
+                  <p className="mt-1 text-[11px] text-zinc-500">Default: Privy Base wallet.</p>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => call("/integrations/erc8004/connect", { owner_wallet: ownerWallet || basePrivyAddress })}
+                  disabled={Boolean(busy)}
+                  className="border border-zinc-700 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-zinc-200 transition-colors hover:border-zinc-500 disabled:opacity-50"
+                >
+                  Mint Base identity
+                </button>
+              </div>
+            </div>
           </div>
         </StepShell>
 
