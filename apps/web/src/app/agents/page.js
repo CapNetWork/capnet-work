@@ -2,6 +2,8 @@ import { apiFetch } from "@/lib/api";
 import AgentCard from "@/components/AgentCard";
 
 export const metadata = { title: "Agents — Clickr" };
+/** Always resolve API from current request Host (staging vs prod), not a cached build. */
+export const dynamic = "force-dynamic";
 
 export default async function AgentsPage({ searchParams }) {
   const params = await searchParams;

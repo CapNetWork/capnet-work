@@ -3,15 +3,16 @@
  * Prefer `API_URL` on the server (runtime, not inlined) so SSR matches your deploy.
  * `NEXT_PUBLIC_API_URL` is inlined at build time; set both on production web per deploy docs.
  *
- * On the server, pass `hostHint` from the incoming request (e.g. `Host` / `X-Forwarded-Host`)
- * so staging web (`staging.clickr.cc`) talks to `staging-api.clickr.cc` even when deploy
- * env vars omit `API_URL`. Without this, SSR defaults to production API and arena detail
- * pages 404 right after creating a contract on staging.
+ * On the server, pass `host` and `forwardedHost` from the request. We check **both** and
+ * treat either as authoritative for staging so a mis-set `X-Forwarded-Host` (e.g. apex
+ * `clickr.cc` in front of staging) does not force SSR to call production API while
+ * `Host: staging.clickr.cc` is correct.
  *
  * @see docs/deploy-railway.md
- * @param {string} [hostHint] Request host header (server / apiFetch only).
+ * @param {string} [host] `Host` header (first value).
+ * @param {string} [forwardedHost] `X-Forwarded-Host` header (first value).
  */
-function resolveApiBaseUrl(hostHint = "") {
+function resolveApiBaseUrl(host = "", forwardedHost = "") {
   const candidates = [
     process.env.API_URL,
     process.env.NEXT_PUBLIC_API_URL,
@@ -22,8 +23,11 @@ function resolveApiBaseUrl(hostHint = "") {
     if (v) return v.replace(/\/$/, "");
   }
 
-  const fromHint = apiBaseUrlFromHostHeader(hostHint);
-  if (fromHint) return fromHint;
+  const fromHints = apiBaseUrlFromRequestHostHints(host, forwardedHost);
+  if (fromHints) return fromHints;
+
+  const fromBranch = inferStagingApiFromGitBranch();
+  if (fromBranch) return fromBranch;
 
   const inferred = inferApiBaseUrlFromDeployHost();
   if (inferred) return inferred;
@@ -39,6 +43,43 @@ function resolveApiBaseUrl(hostHint = "") {
     return "https://api.clickr.cc";
   }
   return "http://localhost:4000";
+}
+
+/** Vercel/Railway often expose the git branch; use when Host headers are missing or generic. */
+function inferStagingApiFromGitBranch() {
+  const b = (process.env.VERCEL_GIT_COMMIT_REF || process.env.RAILWAY_GIT_BRANCH || "").trim().toLowerCase();
+  if (b === "staging") return "https://staging-api.clickr.cc";
+  return null;
+}
+
+/**
+ * Prefer staging when **any** of Host / X-Forwarded-Host clearly indicates the staging site,
+ * then fall back to existing per-host rules (so prod clickr.cc still maps to prod API).
+ */
+function apiBaseUrlFromRequestHostHints(hostRaw, forwardedRaw) {
+  const first = (v) => (typeof v === "string" ? v.split(",")[0].trim() : "");
+  const hosts = [first(hostRaw), first(forwardedRaw)].filter(Boolean);
+  for (const raw of hosts) {
+    if (hostImpliesStagingClickrWeb(raw)) return "https://staging-api.clickr.cc";
+  }
+  for (const raw of hosts) {
+    const mapped = apiBaseUrlFromHostHeader(raw);
+    if (mapped) return mapped;
+  }
+  return null;
+}
+
+function hostImpliesStagingClickrWeb(rawHost) {
+  let hostname = "";
+  try {
+    hostname = new URL(rawHost.includes("://") ? rawHost : `https://${rawHost}`).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  if (hostname === "staging.clickr.cc") return true;
+  if (hostname.endsWith(".staging.clickr.cc")) return true;
+  if (hostname.startsWith("staging.")) return true;
+  return false;
 }
 
 /** @param {string} rawHost Host or X-Forwarded-Host (first value if comma-separated). */
@@ -98,21 +139,24 @@ function hostnameFromEnvUrl(value) {
 }
 
 export function getApiBaseUrl() {
-  return resolveApiBaseUrl();
+  return resolveApiBaseUrl("", "");
 }
 
 export async function apiFetch(path, options = {}) {
-  let hostHint = "";
+  let host = "";
+  let forwardedHost = "";
   if (typeof window === "undefined") {
     try {
       const { headers } = await import("next/headers");
       const h = await headers();
-      hostHint = h.get("x-forwarded-host") || h.get("host") || "";
+      // Prefer Host first for our own hostname; X-Forwarded-Host second (CDN may rewrite).
+      host = h.get("host") || "";
+      forwardedHost = h.get("x-forwarded-host") || "";
     } catch {
       // Outside a Next.js request (tests, scripts) or headers unavailable.
     }
   }
-  const API_URL = resolveApiBaseUrl(hostHint);
+  const API_URL = resolveApiBaseUrl(host, forwardedHost);
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
     headers: {
