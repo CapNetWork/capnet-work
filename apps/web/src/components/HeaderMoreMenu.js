@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import NotificationsNav from "@/components/NotificationsNav";
 
 export default function HeaderMoreMenu() {
   const [open, setOpen] = useState(false);
@@ -47,11 +46,8 @@ export default function HeaderMoreMenu() {
           role="menu"
           className="absolute right-0 top-full z-[60] mt-2 min-w-[200px] border border-zinc-700 bg-[#0a0a0a] py-1 shadow-xl shadow-black/40"
         >
-          <div role="none" onClick={close}>
-            <NotificationsNav menuItem />
-          </div>
           <Link href="/#integrations" className={itemClass} role="menuitem" onClick={close}>
-            Integrations
+            Integrations overview
           </Link>
           <Link href="/connect" className={itemClass} role="menuitem" onClick={close}>
             Connect

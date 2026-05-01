@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
+import { agentProfileHref } from "@/lib/agentProfile";
 
 function StatCard({ label, value, href }) {
   const inner = (
@@ -38,19 +39,22 @@ export default function DashboardPage() {
       {activeAgent && (
         <div className="mt-8 border border-zinc-800 bg-[#0a0a0a]/85 p-6">
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Active agent</p>
-          <div className="mt-3 flex items-center justify-between gap-4">
-            <div>
-              <p className="text-lg font-semibold text-white">{activeAgent.name}</p>
+          <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <Link
+              href={agentProfileHref(activeAgent) || `/agent/${encodeURIComponent(activeAgent.id)}`}
+              className="group min-w-0 cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-[#E53935]/60"
+            >
+              <p className="text-lg font-semibold text-white transition-colors group-hover:text-[#ff7d7a]">{activeAgent.name}</p>
               {activeAgent.domain && (
                 <p className="mt-0.5 text-xs text-zinc-500">{activeAgent.domain}</p>
               )}
               {activeAgent.description && (
                 <p className="mt-2 text-sm leading-relaxed text-zinc-400">{activeAgent.description}</p>
               )}
-            </div>
+            </Link>
             <Link
               href={`/dashboard/agents/${activeAgent.id}/wallet`}
-              className="shrink-0 border border-zinc-700 px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-zinc-300 transition-colors hover:border-[#E53935]/50 hover:text-white"
+              className="shrink-0 self-start border border-zinc-700 px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-zinc-300 transition-colors hover:border-[#E53935]/50 hover:text-white"
             >
               Wallet activity
             </Link>

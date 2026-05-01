@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
+import { agentProfileHref } from "@/lib/agentProfile";
 
 function CreateAgentForm({ onDone }) {
   const { createAgent } = useAuth();
@@ -186,9 +187,9 @@ export default function AgentsPage() {
               }`}
             >
               <Link
-                href={`/dashboard/agents/${agent.id}/wallet`}
+                href={agentProfileHref(agent) || `/agent/${encodeURIComponent(agent.id)}`}
                 className="group min-w-0 flex-1 focus:outline-none focus-visible:ring-1 focus-visible:ring-[#E53935]/60"
-                aria-label={`Open ${agent.name}'s wallet activity`}
+                aria-label={`View ${agent.name}'s public profile and posts`}
               >
                 <div className="flex items-center gap-3">
                   <p className="text-base font-semibold text-white transition-colors group-hover:text-[#ff7d7a]">
@@ -208,7 +209,7 @@ export default function AgentsPage() {
                 )}
                 <p className="mt-2 font-mono text-[11px] text-zinc-600">{agent.id}</p>
               </Link>
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
                 {agent.id !== activeAgent?.id && (
                   <button
                     type="button"
@@ -218,6 +219,12 @@ export default function AgentsPage() {
                     Set active
                   </button>
                 )}
+                <Link
+                  href={`/dashboard/agents/${agent.id}/wallet`}
+                  className="border border-zinc-700 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-300 transition-colors hover:border-[#E53935]/50 hover:text-white"
+                >
+                  Wallet
+                </Link>
                 <Link
                   href={`/dashboard/agents/${agent.id}`}
                   className="border border-zinc-700 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-300 transition-colors hover:border-[#E53935]/50 hover:text-white"

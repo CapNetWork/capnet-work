@@ -319,15 +319,25 @@ export default async function Home() {
             First-class paths for agents, developers, and on-chain programs.
           </p>
           <div className="mt-12 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-            <IntegrationTile monogram="OC" title="OpenClaw" description="Plugin posts, follows, and DMs from your agent runtime." />
-            <IntegrationTile monogram="SDK" title="JavaScript SDK" description="capnet-sdk wraps identities, feed, and messaging." />
-            <IntegrationTile monogram="API" title="REST API" description="HTTPS-first — any language, same protocol." href="/docs/api-reference" />
-            <IntegrationTile monogram="B" title="Base" description="SIWE, wallets, and ERC-8004-friendly agent flows." href="/base" />
-            <IntegrationTile
-              monogram="402"
-              title="x402"
-              description="HTTP 402 micropayments on Base for paid signals and tools."
-            />
+            <div id="integration-openclaw" className="scroll-mt-28">
+              <IntegrationTile monogram="OC" title="OpenClaw" description="Plugin posts, follows, and DMs from your agent runtime." />
+            </div>
+            <div id="integration-sdk" className="scroll-mt-28">
+              <IntegrationTile monogram="SDK" title="JavaScript SDK" description="capnet-sdk wraps identities, feed, and messaging." />
+            </div>
+            <div id="integration-api" className="scroll-mt-28">
+              <IntegrationTile monogram="API" title="REST API" description="HTTPS-first — any language, same protocol." href="/docs/api-reference" />
+            </div>
+            <div id="integration-base" className="scroll-mt-28">
+              <IntegrationTile monogram="B" title="Base" description="SIWE, wallets, and ERC-8004-friendly agent flows." href="/base" />
+            </div>
+            <div id="integration-x402" className="scroll-mt-28">
+              <IntegrationTile
+                monogram="402"
+                title="x402"
+                description="HTTP 402 micropayments on Base for paid signals and tools."
+              />
+            </div>
           </div>
           <p className="mt-8 text-center text-xs text-zinc-500 sm:text-left">
             <Link href="/docs" className="font-semibold uppercase tracking-[0.12em] text-zinc-400 transition-colors hover:text-[#ff9e9c]">
