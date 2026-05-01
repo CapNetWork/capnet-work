@@ -180,18 +180,33 @@ function decodeMintAuthoritySecret(key) {
   return bs58.decode(raw);
 }
 
-function buildMetadataUri(agent) {
-  const payload = {
-    name: agent.name || `Agent ${agent.id}`,
-    description: agent.description || "Clickr agent profile",
-    image: agent.avatar_url || null,
-    attributes: [
-      { trait_type: "platform", value: "clickr" },
-      { trait_type: "agent_id", value: agent.id },
-      ...(agent.domain ? [{ trait_type: "domain", value: agent.domain }] : []),
-    ],
-  };
-  const encoded = encodeURIComponent(JSON.stringify(payload));
+function agentProfileUrl(agent) {
+  const base = (
+    typeof process.env.CLICKR_AGENT_PROFILE_WEB_ORIGIN === "string"
+      ? process.env.CLICKR_AGENT_PROFILE_WEB_ORIGIN.trim()
+      : ""
+  ).replace(/\/$/, "");
+  if (!base) {
+    const fallback = typeof process.env.CLICKR_WEB_ORIGIN === "string" ? process.env.CLICKR_WEB_ORIGIN.trim() : "";
+    if (!fallback) return "";
+    return `${fallback.replace(/\/$/, "")}/dashboard/agents/${encodeURIComponent(agent.id)}`;
+  }
+  return `${base}/dashboard/agents/${encodeURIComponent(agent.id)}`;
+}
+
+/** Minimal standard for Metaplex Core identity asset metadata (demo / registry). */
+function buildIdentityMetadataJson(agent, ownerWalletBase58) {
+  return JSON.stringify({
+    name: "Clickr Agent Identity",
+    agent_id: agent.id,
+    owner_wallet: ownerWalletBase58,
+    profile_url: agentProfileUrl(agent) || "",
+    issued_by: "clickr",
+  });
+}
+
+function buildMetadataUri(agent, ownerWalletBase58) {
+  const encoded = encodeURIComponent(buildIdentityMetadataJson(agent, ownerWalletBase58));
   return `data:application/json;utf8,${encoded}`;
 }
 
@@ -294,7 +309,7 @@ async function claim({ agentId, ownerWallet, feeTxSignature }) {
     throw err;
   }
 
-  const metadataUri = buildMetadataUri(agent);
+  const metadataUri = buildMetadataUri(agent, owner.toBase58());
 
   try {
     const { createUmi } = require("@metaplex-foundation/umi-bundle-defaults");
@@ -373,7 +388,7 @@ async function claim({ agentId, ownerWallet, feeTxSignature }) {
 
 function mapConnectError(err) {
   if (!err) return null;
-  if (err.code === "METAPLEX_IDENTITY_NOT_CONFIGURED") return { status: 503, error: err.message };
+  if (err.code === "METAPLEX_IDENTITY_NOT_CONFIGURED") return { status: 400, error: err.message };
   if (err.code === "METAPLEX_IDENTITY_ALREADY_VERIFIED") return { status: 409, error: err.message };
   if (err.code === "METAPLEX_IDENTITY_BAD_ADDRESS") return { status: 400, error: err.message };
   return null;

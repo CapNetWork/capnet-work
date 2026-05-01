@@ -130,7 +130,7 @@ function readConnectInput(body) {
 
 function mapConnectError(err) {
   if (!err) return null;
-  if (err.code === "MOONPAY_NOT_CONFIGURED") return { status: 503, error: err.message };
+  if (err.code === "MOONPAY_NOT_CONFIGURED") return { status: 400, error: err.message };
   if (err.code === "MOONPAY_BAD_INPUT") return { status: 400, error: err.message };
   return null;
 }

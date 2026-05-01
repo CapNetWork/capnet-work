@@ -339,7 +339,7 @@ function PhantomActions({ walletAddress, authHeaders, onRefresh, setParentError 
   );
 }
 
-function MetaplexIdentityActions({ agentId, agentMeta, authHeaders, onRefresh, setParentError }) {
+function MetaplexIdentityActions({ agentId, agentMeta, authHeaders, onRefresh, setParentError, providerUnconfigured }) {
   const [busy, setBusy] = useState("");
   const [quote, setQuote] = useState(null);
   const [feeSig, setFeeSig] = useState("");
@@ -490,6 +490,14 @@ function MetaplexIdentityActions({ agentId, agentMeta, authHeaders, onRefresh, s
         <span className="text-zinc-200">Metaplex Core</span> asset for this agent.
       </p>
 
+      {providerUnconfigured ? (
+        <p className="mt-3 text-xs text-amber-200/90">
+          Metaplex is not configured on the API (set{" "}
+          <code className="text-amber-100">SOLANA_RPC_URL</code>, <code className="text-amber-100">METAPLEX_TREASURY_OWNER</code>,{" "}
+          <code className="text-amber-100">METAPLEX_MINT_AUTHORITY_PRIVATE_KEY</code>). Mint is disabled until then.
+        </p>
+      ) : null}
+
       {!phantomAddress ? (
         <p className="mt-3 text-xs text-amber-200/90">
           Link Phantom first (Phantom integration card above).
@@ -515,7 +523,7 @@ function MetaplexIdentityActions({ agentId, agentMeta, authHeaders, onRefresh, s
         <button
           type="button"
           onClick={() => loadQuote()}
-          disabled={Boolean(busy)}
+          disabled={providerUnconfigured || Boolean(busy)}
           className="border border-zinc-700 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white disabled:opacity-50"
         >
           {busy === "quote" ? "Loading..." : "Refresh quote"}
@@ -523,7 +531,7 @@ function MetaplexIdentityActions({ agentId, agentMeta, authHeaders, onRefresh, s
         <button
           type="button"
           onClick={() => mint()}
-          disabled={Boolean(busy) || verified || !phantomAddress}
+          disabled={providerUnconfigured || Boolean(busy) || verified || !phantomAddress}
           className="border border-[#E53935] bg-[#E53935] px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#c62828] disabled:opacity-50"
         >
           {busy === "mint" ? "Minting..." : verified ? "Minted" : "Mint Solana Agent Identity"}
@@ -532,7 +540,7 @@ function MetaplexIdentityActions({ agentId, agentMeta, authHeaders, onRefresh, s
           <button
             type="button"
             onClick={() => retryMintOnly()}
-            disabled={Boolean(busy)}
+            disabled={providerUnconfigured || Boolean(busy)}
             className="border border-zinc-700 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-zinc-300 transition-colors hover:border-zinc-500 disabled:opacity-50"
           >
             {busy === "retry" ? "Retrying..." : "Retry mint (same fee tx)"}
@@ -543,7 +551,15 @@ function MetaplexIdentityActions({ agentId, agentMeta, authHeaders, onRefresh, s
   );
 }
 
-export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, onRefresh }) {
+export function IntegrationCard({
+  integration,
+  providerRow = null,
+  registryById = {},
+  agentId,
+  agentMeta,
+  authHeaders,
+  onRefresh,
+}) {
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState("");
   const [formValues, setFormValues] = useState({});
@@ -553,6 +569,10 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
   const [moonpayWidgetParams, setMoonpayWidgetParams] = useState({ currencyCode: "", walletAddress: "" });
   const [fundingBusy, setFundingBusy] = useState(false);
   const [copiedWallet, setCopiedWallet] = useState(false);
+
+  const connectUnavailable = providerRow?.status === "unconfigured";
+  const connectPath = providerRow?.connect_endpoint || `/integrations/${integration.id}/connect`;
+  const moonpayDisabled = registryById.moonpay?.status === "unconfigured";
 
   const currentStatus = agentMeta?.[integration.id];
   const privyStatus = agentMeta?.privy_wallet;
@@ -613,16 +633,16 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
       if (!pubkey) throw new Error("Phantom did not return a public key.");
 
       const nonceRes = await fetch(`${API_URL}/integrations/phantom_wallet/nonce`, {
-        method: "GET",
+        method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders },
         cache: "no-store",
+        body: JSON.stringify({ agent_id: agentId, wallet_address: pubkey }),
       });
       const nonceData = await nonceRes.json().catch(() => ({}));
       if (!nonceRes.ok) throw new Error(nonceData.error || nonceRes.statusText);
 
       const message = String(nonceData?.message || "");
       const nonce = String(nonceData?.nonce || "");
-      const userId = nonceData?.user_id != null ? String(nonceData.user_id) : "";
       if (!message || !nonce) throw new Error("Nonce response missing message/nonce.");
 
       const encoder = new TextEncoder();
@@ -641,7 +661,6 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
           nonce,
           message,
           signature: signatureBase64,
-          user_id: userId,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -662,7 +681,7 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
     setConnecting(true);
     setError("");
     try {
-      const path = integration.connectPath || `/integrations/${integration.id}/connect`;
+      const path = integration.connectPath || connectPath;
       const res = await fetch(`${API_URL}${path}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders },
@@ -788,6 +807,7 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
           authHeaders={authHeaders}
           onRefresh={onRefresh}
           setParentError={setError}
+          providerUnconfigured={connectUnavailable}
         />
       )}
 
@@ -845,7 +865,8 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
               <button
                 type="button"
                 onClick={handleFundPrivyWallet}
-                disabled={fundingBusy}
+                disabled={fundingBusy || moonpayDisabled}
+                title={moonpayDisabled ? "MoonPay keys not set on the API (MOONPAY_PUBLISHABLE_KEY / MOONPAY_SECRET_KEY)" : undefined}
                 className="mt-3 border border-[#E53935] bg-[#E53935] px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#c62828] disabled:opacity-50"
               >
                 {fundingBusy ? "Opening..." : "Fund SOL with MoonPay"}
@@ -950,7 +971,8 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
             <button
               type="button"
               onClick={handleMoonpayOpen}
-              disabled={moonpayBusy}
+              disabled={moonpayBusy || moonpayDisabled}
+              title={moonpayDisabled ? "MoonPay not configured on the API" : undefined}
               className="mt-3 border border-zinc-700 px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-zinc-300 transition-colors hover:border-[#E53935]/50 hover:text-white disabled:opacity-50"
             >
               {moonpayBusy ? "Opening..." : "Open MoonPay"}
@@ -958,11 +980,22 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
           </div>
         )}
 
-        {!isConnected && !showForm && integration.id !== "metaplex_identity" && (
+        {connectUnavailable &&
+        integration.id !== "metaplex_identity" &&
+        integration.id !== "world_id" &&
+        integration.id !== "phantom_wallet" ? (
+          <p className="mt-4 text-xs text-amber-200/90">
+            This integration is not configured on the server (missing env). You can skip it for the core demo path.
+          </p>
+        ) : null}
+
+        {!isConnected && !showForm && integration.id !== "metaplex_identity" && integration.id !== "world_id" && (
           <button
             type="button"
             onClick={() => setShowForm(true)}
-            className="border border-[#E53935] bg-[#E53935] px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#c62828]"
+            disabled={connectUnavailable}
+            title={connectUnavailable ? "Provider not configured on API" : undefined}
+            className="border border-[#E53935] bg-[#E53935] px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#c62828] disabled:opacity-50"
           >
             {integration.connectLabel}
           </button>
@@ -986,7 +1019,7 @@ export function IntegrationCard({ integration, agentId, agentMeta, authHeaders, 
             <div className="flex gap-2">
               <button
                 type="submit"
-                disabled={connecting}
+                disabled={connecting || connectUnavailable}
                 className="border border-[#E53935] bg-[#E53935] px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#c62828] disabled:opacity-50"
               >
                 {connecting ? "Connecting..." : integration.connectLabel}

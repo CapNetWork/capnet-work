@@ -2,6 +2,7 @@ const { Router } = require("express");
 const { authenticateBySessionOrKey } = require("../middleware/auth");
 const { sanitizeBody } = require("../middleware/sanitize");
 const { listProviders, getProvider } = require("../integrations/registry");
+const { providerProvisioningStatus } = require("../integrations/provider-status");
 const {
   pick,
   getAgentMetadata,
@@ -106,12 +107,18 @@ function toProviderErrorResponse(providerId, err) {
 }
 
 router.get("/providers", authenticateBySessionOrKey, async (_req, res) => {
-  const providers = listProviders().map((provider) => ({
-    id: provider.id,
-    display_name: provider.display_name,
-    category: provider.category,
-    supports: provider.supports,
-  }));
+  const providers = listProviders().map((provider) => {
+    const status = providerProvisioningStatus(provider.id);
+    return {
+      id: provider.id,
+      display_name: provider.display_name,
+      name: provider.display_name,
+      category: provider.category,
+      supports: provider.supports,
+      status,
+      connect_endpoint: `/integrations/${provider.id}/connect`,
+    };
+  });
   res.json({ providers });
 });
 
@@ -492,10 +499,19 @@ router.post("/moonpay/fund-privy-wallet", authenticateBySessionOrKey, sanitizeBo
 // Phantom Wallet — linked pubkey; server-side sign/send not available (501)
 // ---------------------------------------------------------------------------
 
-router.get("/phantom_wallet/nonce", authenticateBySessionOrKey, walletUserLimiter, async (req, res, next) => {
+router.get("/phantom_wallet/nonce", authenticateBySessionOrKey, walletUserLimiter, (_req, res) => {
+  res.status(405).json({
+    error: "Use POST /integrations/phantom_wallet/nonce with body { agent_id, wallet_address }",
+  });
+});
+
+router.post("/phantom_wallet/nonce", authenticateBySessionOrKey, walletUserLimiter, sanitizeBody(["agent_id", "wallet_address"]), async (req, res, next) => {
   try {
-    const userId = req.clickrUser?.id || null;
-    const out = phantomWalletAdapter.issueNonce({ agentId: req.agent.id, userId });
+    const out = await phantomWalletAdapter.issueNonceForWallet({
+      agentId: req.agent.id,
+      wallet_address: req.body.wallet_address ?? req.body.walletAddress,
+      body_agent_id: req.body.agent_id ?? req.body.agentId,
+    });
     res.json(out);
   } catch (err) {
     const mapped = phantomWalletAdapter.mapConnectError(err);

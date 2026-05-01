@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
@@ -16,19 +16,23 @@ export default function AgentIntegrationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [integrations, setIntegrations] = useState({});
+  const [integrationRegistry, setIntegrationRegistry] = useState([]);
 
   const fetchAgent = useCallback(async () => {
     try {
       const baseHeaders = getAuthHeaders();
-      // IMPORTANT: /integrations routes are agent-scoped; select the agent in the URL explicitly.
-      const headers = { ...baseHeaders, "X-Agent-Id": id };
-      const [agentRes, integRes] = await Promise.all([
+      const headers = { ...baseHeaders, "Content-Type": "application/json", "X-Agent-Id": id };
+      const [agentRes, integRes, provRes] = await Promise.all([
         fetch(`${API_URL}/auth/me/agents/${id}`, {
-          headers: { "Content-Type": "application/json", ...headers },
+          headers,
           cache: "no-store",
         }),
         fetch(`${API_URL}/integrations`, {
-          headers: { "Content-Type": "application/json", ...headers },
+          headers,
+          cache: "no-store",
+        }),
+        fetch(`${API_URL}/integrations/providers`, {
+          headers,
           cache: "no-store",
         }),
       ]);
@@ -49,6 +53,13 @@ export default function AgentIntegrationsPage() {
         };
       }
       setIntegrations(byId);
+
+      const provData = await provRes.json().catch(() => ({}));
+      if (provRes.ok && Array.isArray(provData.providers)) {
+        setIntegrationRegistry(provData.providers);
+      } else {
+        setIntegrationRegistry([]);
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -59,6 +70,44 @@ export default function AgentIntegrationsPage() {
   useEffect(() => {
     fetchAgent();
   }, [fetchAgent]);
+
+  const providerById = useMemo(
+    () => Object.fromEntries(integrationRegistry.map((p) => [p.id, p])),
+    [integrationRegistry]
+  );
+
+  const mergedCards = useMemo(() => {
+    const catalogMap = Object.fromEntries(INTEGRATION_CATALOG.map((c) => [c.id, { ...c }]));
+    const byRegId = new Map(integrationRegistry.map((p) => [p.id, p]));
+    const out = [];
+    for (const p of integrationRegistry) {
+      const base = catalogMap[p.id] || {
+        id: p.id,
+        navLabel: p.name || p.display_name || p.id,
+        name: p.display_name || p.name || p.id,
+        description: "",
+        category: typeof p.category === "string" ? p.category : "integration",
+        connectLabel: "Connect",
+        fields: [],
+      };
+      out.push({ ...base, providerRow: p });
+    }
+    for (const c of INTEGRATION_CATALOG) {
+      if (!byRegId.has(c.id)) {
+        out.push({
+          ...c,
+          providerRow: {
+            id: c.id,
+            status: "available",
+            connect_endpoint: `/integrations/${c.id}/connect`,
+            name: c.name,
+            display_name: c.name,
+          },
+        });
+      }
+    }
+    return out;
+  }, [integrationRegistry]);
 
   if (loading) {
     return <div className="py-20 text-center text-sm text-zinc-500">Loading integrations...</div>;
@@ -99,14 +148,17 @@ export default function AgentIntegrationsPage() {
         agentId={agent.id}
         integrations={agentIntegrations}
         authHeaders={authHeaders}
+        providerById={providerById}
         onRefresh={fetchAgent}
       />
 
       <div className="mt-8 space-y-4">
-        {INTEGRATION_CATALOG.map((integ) => (
+        {mergedCards.map(({ providerRow, ...integ }) => (
           <div key={integ.id} id={`integration-${integ.id}`} className="scroll-mt-24">
             <IntegrationCard
               integration={integ}
+              providerRow={providerRow}
+              registryById={providerById}
               agentId={agent.id}
               agentMeta={agentIntegrations}
               authHeaders={authHeaders}

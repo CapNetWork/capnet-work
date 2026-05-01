@@ -40,7 +40,11 @@ function formatAddr(addr) {
   return `${s.slice(0, 6)}…${s.slice(-4)}`;
 }
 
-export default function IntegrationsWorkflow({ agentId, integrations, authHeaders, onRefresh }) {
+export default function IntegrationsWorkflow({ agentId, integrations, authHeaders, onRefresh, providerById = {} }) {
+  function connectEndpoint(providerId) {
+    return providerById[providerId]?.connect_endpoint || `/integrations/${providerId}/connect`;
+  }
+
   const privy = integrations?.privy_wallet || null;
   const phantom = integrations?.phantom_wallet || null;
   const moonpay = integrations?.moonpay || null;
@@ -68,8 +72,9 @@ export default function IntegrationsWorkflow({ agentId, integrations, authHeader
     return x402Wallet || basePrivyAddress || "";
   }, [x402Wallet, basePrivyAddress]);
 
-  async function call(path, body) {
-    setBusy(path);
+  async function call(path, body, busyTag) {
+    const label = busyTag || path;
+    setBusy(label);
     setErr("");
     try {
       const res = await fetch(`${API_URL}${path}`, {
@@ -87,6 +92,22 @@ export default function IntegrationsWorkflow({ agentId, integrations, authHeader
     } finally {
       setBusy("");
     }
+  }
+
+  function mintErc8004Identity() {
+    call(
+      connectEndpoint("erc8004"),
+      { owner_wallet: ownerWallet || basePrivyAddress },
+      "erc8004_mint"
+    );
+  }
+
+  function routeX402Payments() {
+    call(
+      connectEndpoint("x402"),
+      { payment_wallet: x402DefaultWallet || basePrivyAddress },
+      "x402_connect"
+    );
   }
 
   async function buildTelegramStarterBundle() {
@@ -143,19 +164,25 @@ export default function IntegrationsWorkflow({ agentId, integrations, authHeader
           <div className="grid gap-3 sm:grid-cols-3">
             <button
               type="button"
-              onClick={() => call("/integrations/privy_wallet/connect", { chain_type: "solana" })}
-              disabled={Boolean(busy)}
+              onClick={() =>
+                call(connectEndpoint("privy_wallet"), { chain_type: "solana" }, "privy_wallet_solana")
+              }
+              disabled={providerById.privy_wallet?.status === "unconfigured" || Boolean(busy)}
+              title={providerById.privy_wallet?.status === "unconfigured" ? "Set PRIVY_APP_ID and PRIVY_APP_SECRET on the API" : undefined}
               className="border border-[#E53935] bg-[#E53935] px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#c62828] disabled:opacity-50"
             >
-              {busy === "/integrations/privy_wallet/connect" ? "Working..." : solPrivyAddress ? "Privy Solana wallet created" : "Create Privy Solana wallet"}
+              {busy === "privy_wallet_solana" ? "Working..." : solPrivyAddress ? "Privy Solana wallet created" : "Create Privy Solana wallet"}
             </button>
             <button
               type="button"
-              onClick={() => call("/integrations/privy_wallet/connect", { chain_type: "base" })}
-              disabled={Boolean(busy)}
+              onClick={() =>
+                call(connectEndpoint("privy_wallet"), { chain_type: "base" }, "privy_wallet_base")
+              }
+              disabled={providerById.privy_wallet?.status === "unconfigured" || Boolean(busy)}
+              title={providerById.privy_wallet?.status === "unconfigured" ? "Set PRIVY_APP_ID and PRIVY_APP_SECRET on the API" : undefined}
               className="border border-zinc-700 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-zinc-200 transition-colors hover:border-zinc-500 disabled:opacity-50"
             >
-              {basePrivyAddress ? "Base wallet created" : "Create Privy Base wallet"}
+              {busy === "privy_wallet_base" ? "Working..." : basePrivyAddress ? "Base wallet created" : "Create Privy Base wallet"}
             </button>
             <a
               href="#integration-phantom_wallet"
@@ -228,11 +255,16 @@ export default function IntegrationsWorkflow({ agentId, integrations, authHeader
                 </label>
                 <button
                   type="button"
-                  onClick={() => call("/integrations/erc8004/connect", { owner_wallet: ownerWallet || basePrivyAddress })}
-                  disabled={Boolean(busy)}
+                  onClick={mintErc8004Identity}
+                  disabled={providerById.erc8004?.status === "unconfigured" || Boolean(busy)}
+                  title={
+                    providerById.erc8004?.status === "unconfigured"
+                      ? "Set ERC8004_RPC_URL, ERC8004_CONTRACT_ADDRESS, ERC8004_MINTER_PRIVATE_KEY"
+                      : undefined
+                  }
                   className="border border-zinc-700 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-zinc-200 transition-colors hover:border-zinc-500 disabled:opacity-50"
                 >
-                  Mint Base identity
+                  {busy === "erc8004_mint" ? "Working…" : "Mint Base identity"}
                 </button>
               </div>
             </div>
@@ -285,11 +317,11 @@ export default function IntegrationsWorkflow({ agentId, integrations, authHeader
               </a>
               <button
                 type="button"
-                onClick={() => call("/integrations/x402/connect", { payment_wallet: x402DefaultWallet || basePrivyAddress })}
-                disabled={Boolean(busy)}
+                onClick={routeX402Payments}
+                disabled={providerById.x402?.status === "unconfigured" || Boolean(busy)}
                 className="border border-[#E53935]/60 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-[#ffb5b3] transition-colors hover:bg-[#E53935]/10 disabled:opacity-50"
               >
-                Route x402 payments to agent
+                {busy === "x402_connect" ? "Working…" : "Route x402 payments to agent"}
               </button>
             </div>
           </div>
