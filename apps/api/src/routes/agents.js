@@ -51,6 +51,48 @@ function generateBio({ name, domain, personality, skills, goals, tasks }) {
   return parts.join(" ") || null;
 }
 
+/** Staging / older DBs: return directory rows with safe defaults when optional columns or joins are missing. */
+function withAgentDirectoryDefaults(row) {
+  return {
+    ...row,
+    trust_score: row.trust_score != null ? row.trust_score : 0,
+    reputation_updated_at: row.reputation_updated_at ?? null,
+    human_backed: Boolean(row.human_backed),
+    verification_level: row.verification_level ?? null,
+    wallet_connected: Boolean(row.wallet_connected),
+  };
+}
+
+async function listAgentsBare(pool, { domain, capability, limit, offset }) {
+  let query = `SELECT ${AGENT_FIELDS} FROM agents`;
+  const params = [];
+  const conditions = [];
+  if (domain) {
+    conditions.push(`domain ILIKE $${params.length + 1}`);
+    params.push(`%${domain}%`);
+  }
+  if (capability) {
+    conditions.push(`metadata->'capabilities' ? $${params.length + 1}`);
+    params.push(capability);
+  }
+  if (conditions.length > 0) {
+    query += ` WHERE ${conditions.join(" AND ")}`;
+  }
+  query += ` ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+  params.push(limit, offset);
+  const result = await pool.query(query, params);
+  return result.rows.map((row) =>
+    withAgentDirectoryDefaults({
+      ...row,
+      trust_score: 0,
+      reputation_updated_at: null,
+      human_backed: false,
+      verification_level: null,
+      wallet_connected: false,
+    })
+  );
+}
+
 function sanitizeAgentMetadata(metadata) {
   if (!metadata || typeof metadata !== "object") return null;
   const out = {};
@@ -184,9 +226,11 @@ router.get("/", async (req, res, next) => {
       res.json(result.rows);
       return;
     } catch (err) {
-      // Staging / fresh DBs may not have optional tables yet.
-      // Fall back to a minimal query so the directory still works.
-      if (err && err.code === "42P01") {
+      const missingRel = err && err.code === "42P01";
+      const missingCol = err && err.code === "42703";
+
+      // Staging / fresh DBs may not have optional tables (42P01) or reputation columns (42703).
+      if (missingRel) {
         let fallbackQuery = `SELECT ${AGENT_FIELDS}, trust_score, reputation_updated_at
           FROM agents`;
         const fallbackParams = [];
@@ -205,15 +249,30 @@ router.get("/", async (req, res, next) => {
         fallbackQuery += ` ORDER BY created_at DESC LIMIT $${fallbackParams.length + 1} OFFSET $${fallbackParams.length + 2}`;
         fallbackParams.push(limit, offset);
 
-        const result = await pool.query(fallbackQuery, fallbackParams);
-        res.json(
-          result.rows.map((row) => ({
-            ...row,
-            human_backed: false,
-            verification_level: null,
-            wallet_connected: false,
-          }))
-        );
+        try {
+          const result = await pool.query(fallbackQuery, fallbackParams);
+          res.json(
+            result.rows.map((row) =>
+              withAgentDirectoryDefaults({
+                ...row,
+                human_backed: false,
+                verification_level: null,
+                wallet_connected: false,
+              })
+            )
+          );
+          return;
+        } catch (err2) {
+          if (err2 && err2.code === "42703") {
+            res.json(await listAgentsBare(pool, { domain, capability, limit, offset }));
+            return;
+          }
+          throw err2;
+        }
+      }
+
+      if (missingCol) {
+        res.json(await listAgentsBare(pool, { domain, capability, limit, offset }));
         return;
       }
       throw err;
