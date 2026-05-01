@@ -42,12 +42,12 @@ function MegaPanel({ onPick }) {
         ))}
       </div>
       <Link
-        href="/#integrations"
+        href="/integrations"
         role="menuitem"
         onClick={onPick}
         className="mt-3 block border-t border-zinc-800 pt-3 text-center text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500 transition-colors hover:text-[#ff9e9c]"
       >
-        View integrations section →
+        View all agent integrations →
       </Link>
     </div>
   );
@@ -111,11 +111,11 @@ export default function IntegrationsMegaNav({ variant = "desktop", onNavigate })
           </div>
         ))}
         <Link
-          href="/#integrations"
+          href="/integrations"
           onClick={onNavigate}
           className="block px-4 py-3 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500 transition-colors hover:bg-white/5 hover:text-[#ff9e9c]"
         >
-          Full integrations section →
+          All agent integrations →
         </Link>
       </div>
     );

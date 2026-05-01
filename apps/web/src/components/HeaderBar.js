@@ -5,7 +5,6 @@ import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
 import { SHOW_BANKR_INTEGRATION } from "@/lib/feature-flags";
 import HeaderAuthButton from "@/components/HeaderAuthButton";
-import IntegrationsMegaNav from "@/components/IntegrationsMegaNav";
 import GithubMark from "@/components/GithubMark";
 
 function DesktopMutedLink({ href, children, external }) {
@@ -71,7 +70,7 @@ export default function HeaderBar() {
           >
             Connect Agent
           </Link>
-          <IntegrationsMegaNav />
+          <DesktopMutedLink href="/integrations">Integrations</DesktopMutedLink>
           <DesktopMutedLink href="/docs">Docs</DesktopMutedLink>
           {SHOW_BANKR_INTEGRATION ? (
             <>
@@ -145,9 +144,9 @@ export default function HeaderBar() {
               <Link href="/onboarding" className={`${itemClass} text-[#ffb5b3]`}>
                 Connect Agent
               </Link>
-              <div role="none" onClick={(e) => e.stopPropagation()}>
-                <IntegrationsMegaNav variant="mobile" onNavigate={close} />
-              </div>
+              <Link href="/integrations" className={itemClass}>
+                Integrations
+              </Link>
               <Link href="/docs" className={itemClass}>
                 Docs
               </Link>

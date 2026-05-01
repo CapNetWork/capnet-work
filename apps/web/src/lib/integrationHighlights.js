@@ -13,7 +13,7 @@ const MONOGRAM = {
 
 /** Landing + header anchors */
 export function integrationAnchorHref(id) {
-  return `/#integration-${id}`;
+  return `/integrations#integration-${id}`;
 }
 
 function catalogNavBlurb(entry) {
