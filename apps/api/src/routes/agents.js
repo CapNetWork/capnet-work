@@ -63,6 +63,10 @@ function withAgentDirectoryDefaults(row) {
   };
 }
 
+/**
+ * Minimal agents directory query (core columns only).
+ * Uses metadata::jsonb so TEXT/JSON/JSONB metadata columns all work on older DBs.
+ */
 async function listAgentsBare(pool, { domain, capability, limit, offset }) {
   let query = `SELECT ${AGENT_FIELDS} FROM agents`;
   const params = [];
@@ -72,7 +76,7 @@ async function listAgentsBare(pool, { domain, capability, limit, offset }) {
     params.push(`%${domain}%`);
   }
   if (capability) {
-    conditions.push(`metadata->'capabilities' ? $${params.length + 1}`);
+    conditions.push(`(metadata::jsonb)->'capabilities' ? $${params.length + 1}`);
     params.push(capability);
   }
   if (conditions.length > 0) {
@@ -192,8 +196,27 @@ router.post("/", registrationLimiter, sanitizeBody(["name", "domain", "personali
 router.get("/", async (req, res, next) => {
   const { domain, capability } = req.query;
   const { limit, offset } = parsePagination(req.query);
+  const ctx = { domain, capability, limit, offset };
+
+  function appendFilters(baseParams, conditions) {
+    const params = [...baseParams];
+    if (domain) {
+      conditions.push(`domain ILIKE $${params.length + 1}`);
+      params.push(`%${domain}%`);
+    }
+    if (capability) {
+      conditions.push(`(metadata::jsonb)->'capabilities' ? $${params.length + 1}`);
+      params.push(capability);
+    }
+    return { params, conditions };
+  }
+
+  let lastErr = null;
+
   try {
-    let query = `SELECT ${AGENT_FIELDS}, trust_score, reputation_updated_at,
+    // 1) Full query (joins + trust + wallet flag)
+    try {
+      let query = `SELECT ${AGENT_FIELDS}, trust_score, reputation_updated_at,
       (wv.agent_id IS NOT NULL) AS human_backed,
       wv.verification_level,
       EXISTS (
@@ -203,80 +226,67 @@ router.get("/", async (req, res, next) => {
       ) AS wallet_connected
       FROM agents
       LEFT JOIN agent_verifications wv ON wv.agent_id = agents.id AND wv.provider = 'world_id'`;
-    const params = [];
-    const conditions = [];
-
-    if (domain) {
-      conditions.push(`domain ILIKE $${params.length + 1}`);
-      params.push(`%${domain}%`);
-    }
-    if (capability) {
-      conditions.push(`metadata->'capabilities' ? $${params.length + 1}`);
-      params.push(capability);
-    }
-    if (conditions.length > 0) {
-      query += " WHERE " + conditions.join(" AND ");
-    }
-
-    query += ` ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
-    params.push(limit, offset);
-
-    try {
+      const { params, conditions } = appendFilters([], []);
+      if (conditions.length > 0) {
+        query += " WHERE " + conditions.join(" AND ");
+      }
+      query += ` ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+      params.push(limit, offset);
       const result = await pool.query(query, params);
       res.json(result.rows);
       return;
     } catch (err) {
-      const missingRel = err && err.code === "42P01";
-      const missingCol = err && err.code === "42703";
-
-      // Staging / fresh DBs may not have optional tables (42P01) or reputation columns (42703).
-      if (missingRel) {
-        let fallbackQuery = `SELECT ${AGENT_FIELDS}, trust_score, reputation_updated_at
-          FROM agents`;
-        const fallbackParams = [];
-        const fallbackConditions = [];
-        if (domain) {
-          fallbackConditions.push(`domain ILIKE $${fallbackParams.length + 1}`);
-          fallbackParams.push(`%${domain}%`);
-        }
-        if (capability) {
-          fallbackConditions.push(`metadata->'capabilities' ? $${fallbackParams.length + 1}`);
-          fallbackParams.push(capability);
-        }
-        if (fallbackConditions.length > 0) {
-          fallbackQuery += " WHERE " + fallbackConditions.join(" AND ");
-        }
-        fallbackQuery += ` ORDER BY created_at DESC LIMIT $${fallbackParams.length + 1} OFFSET $${fallbackParams.length + 2}`;
-        fallbackParams.push(limit, offset);
-
-        try {
-          const result = await pool.query(fallbackQuery, fallbackParams);
-          res.json(
-            result.rows.map((row) =>
-              withAgentDirectoryDefaults({
-                ...row,
-                human_backed: false,
-                verification_level: null,
-                wallet_connected: false,
-              })
-            )
-          );
-          return;
-        } catch (err2) {
-          if (err2 && err2.code === "42703") {
-            res.json(await listAgentsBare(pool, { domain, capability, limit, offset }));
-            return;
-          }
-          throw err2;
-        }
-      }
-
-      if (missingCol) {
-        res.json(await listAgentsBare(pool, { domain, capability, limit, offset }));
-        return;
-      }
-      throw err;
+      lastErr = err;
+      console.warn("[GET /agents] full query failed:", err.code || "", err.message);
     }
+
+    // 2) No joins (optional tables / columns missing)
+    try {
+      let fallbackQuery = `SELECT ${AGENT_FIELDS}, trust_score, reputation_updated_at FROM agents`;
+      const { params: fp, conditions: fc } = appendFilters([], []);
+      if (fc.length > 0) {
+        fallbackQuery += " WHERE " + fc.join(" AND ");
+      }
+      fallbackQuery += ` ORDER BY created_at DESC LIMIT $${fp.length + 1} OFFSET $${fp.length + 2}`;
+      fp.push(limit, offset);
+      const result = await pool.query(fallbackQuery, fp);
+      res.json(
+        result.rows.map((row) =>
+          withAgentDirectoryDefaults({
+            ...row,
+            human_backed: false,
+            verification_level: null,
+            wallet_connected: false,
+          })
+        )
+      );
+      return;
+    } catch (err) {
+      lastErr = err;
+      console.warn("[GET /agents] no-join query failed:", err.code || "", err.message);
+    }
+
+    // 3) Core columns only (+ safe metadata cast)
+    try {
+      res.json(await listAgentsBare(pool, ctx));
+      return;
+    } catch (err) {
+      lastErr = err;
+      console.warn("[GET /agents] bare query failed:", err.code || "", err.message);
+    }
+
+    // 4) Ignore capability filter if it is what breaks (invalid JSON, etc.)
+    if (capability) {
+      try {
+        res.json(await listAgentsBare(pool, { ...ctx, capability: null }));
+        return;
+      } catch (err) {
+        lastErr = err;
+        console.warn("[GET /agents] bare without capability failed:", err.code || "", err.message);
+      }
+    }
+
+    return next(lastErr || new Error("GET /agents failed"));
   } catch (err) {
     next(err);
   }
