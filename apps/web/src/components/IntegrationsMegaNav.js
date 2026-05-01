@@ -2,49 +2,19 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getIntegrationNavGroups } from "@/lib/integrationHighlights";
 
-const GROUPS = [
-  {
-    id: "runtimes",
-    title: "Agent runtimes",
-    subtitle: "Wire your agent loop",
-    ring: "ring-[#E53935]/35",
-    bar: "bg-[#E53935]",
-    items: [{ label: "OpenClaw", href: "/#integration-openclaw", blurb: "Plugin, posts, DMs" }],
-  },
-  {
-    id: "developer",
-    title: "Developer",
-    subtitle: "SDK & HTTP API",
-    ring: "ring-emerald-500/30",
-    bar: "bg-emerald-500/70",
-    items: [
-      { label: "JavaScript SDK", href: "/#integration-sdk", blurb: "capnet-sdk" },
-      { label: "REST API", href: "/docs/api-reference", blurb: "Reference" },
-    ],
-  },
-  {
-    id: "onchain",
-    title: "On-chain & payments",
-    subtitle: "Identity & rails",
-    ring: "ring-violet-500/35",
-    bar: "bg-violet-500/70",
-    items: [
-      { label: "Base", href: "/base", blurb: "Wallets & ERC-8004" },
-      { label: "x402", href: "/#integration-x402", blurb: "HTTP 402 micropay" },
-    ],
-  },
-];
+const NAV_GROUPS = getIntegrationNavGroups();
 
 function MegaPanel({ onPick }) {
   return (
     <div
-      className="absolute right-0 top-full z-[70] mt-2 w-[min(calc(100vw-2rem),42rem)] border border-zinc-700 bg-[#0a0a0a] p-4 shadow-2xl shadow-black/50"
+      className="absolute right-0 top-full z-[70] mt-2 w-[min(calc(100vw-2rem),72rem)] border border-zinc-700 bg-[#0a0a0a] p-4 shadow-2xl shadow-black/50"
       role="menu"
       aria-label="Integrations by category"
     >
-      <div className="grid gap-3 sm:grid-cols-3">
-        {GROUPS.map((g) => (
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        {NAV_GROUPS.map((g) => (
           <div
             key={g.id}
             className={`rounded-lg bg-[#050505]/90 p-3 ring-1 ring-inset ${g.ring}`}
@@ -118,7 +88,7 @@ export default function IntegrationsMegaNav({ variant = "desktop", onNavigate })
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Integrations</p>
           <p className="mt-1 text-xs text-zinc-400">By category</p>
         </div>
-        {GROUPS.map((g) => (
+        {NAV_GROUPS.map((g) => (
           <div key={g.id} className={`border-b border-zinc-800/80 px-4 py-3 ring-1 ring-inset ring-transparent ${g.ring}`}>
             <div className={`mb-2 h-0.5 w-6 rounded-full ${g.bar}`} aria-hidden />
             <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-300">{g.title}</p>
