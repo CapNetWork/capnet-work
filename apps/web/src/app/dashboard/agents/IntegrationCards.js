@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { addressExplorerUrl, txExplorerUrl, shortTxHash } from "@/lib/solana";
 import { Connection, PublicKey, SystemProgram, Transaction, TransactionInstruction } from "@solana/web3.js";
 import { IDKitWidget } from "@worldcoin/idkit";
@@ -367,7 +367,7 @@ function MetaplexIdentityActions({ agentId, agentMeta, authHeaders, onRefresh, s
     return cluster === "devnet" ? "https://api.devnet.solana.com" : "https://api.mainnet-beta.solana.com";
   }
 
-  async function loadQuote() {
+  const loadQuote = useCallback(async () => {
     setBusy("quote");
     setParentError("");
     try {
@@ -386,7 +386,7 @@ function MetaplexIdentityActions({ agentId, agentMeta, authHeaders, onRefresh, s
     } finally {
       setBusy("");
     }
-  }
+  }, [agentId, authHeaders, setParentError]);
 
   async function mint() {
     setBusy("mint");
@@ -472,7 +472,7 @@ function MetaplexIdentityActions({ agentId, agentMeta, authHeaders, onRefresh, s
 
   useEffect(() => {
     void loadQuote();
-  }, [agentId, authHeaders]);
+  }, [loadQuote]);
 
   async function retryMintOnly() {
     if (!feeSig) return;
