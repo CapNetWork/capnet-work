@@ -342,7 +342,7 @@ export default function AgentDetailPage() {
   if (!agent) return null;
 
   const connectedIntegrationCount = Object.values(integrations).filter((cfg) => cfg?.connected === true).length;
-  const authHeaders = { ...getAuthHeaders(), "X-Agent-Id": id };
+  const authHeaders = useMemo(() => ({ ...getAuthHeaders(), "X-Agent-Id": id }), [getAuthHeaders, id]);
   const byCategory = INTEGRATION_CATALOG.reduce((acc, integ) => {
     const key = integ.category || "Other";
     if (!acc[key]) acc[key] = [];

@@ -410,8 +410,29 @@ function MetaplexIdentityActions({ agentId, agentMeta, authHeaders, onRefresh, s
       const fromPubkey = new PublicKey(phantomAddress);
       const toPubkey = new PublicKey(treasury);
 
-      const conn = new Connection(solanaRpcEndpoint(), "confirmed");
-      const { blockhash } = await conn.getLatestBlockhash("confirmed");
+      const primaryRpc = solanaRpcEndpoint();
+      const cluster = String(process.env.NEXT_PUBLIC_SOLANA_CLUSTER || "mainnet-beta").toLowerCase();
+      const publicFallback =
+        cluster === "devnet" ? "https://api.devnet.solana.com" : "https://api.mainnet-beta.solana.com";
+
+      let conn = new Connection(primaryRpc, "confirmed");
+      let blockhash;
+      try {
+        ({ blockhash } = await conn.getLatestBlockhash("confirmed"));
+      } catch (rpcErr) {
+        // Custom NEXT_PUBLIC_SOLANA_RPC_URL often 403s from the browser (bad key, wrong network, origin rules).
+        // One retry on the public Anza RPC for the same cluster before failing.
+        if (primaryRpc !== publicFallback) {
+          try {
+            conn = new Connection(publicFallback, "confirmed");
+            ({ blockhash } = await conn.getLatestBlockhash("confirmed"));
+          } catch {
+            throw rpcErr;
+          }
+        } else {
+          throw rpcErr;
+        }
+      }
       const tx = new Transaction({ feePayer: fromPubkey, recentBlockhash: blockhash }).add(
         SystemProgram.transfer({
           fromPubkey,
@@ -451,8 +472,7 @@ function MetaplexIdentityActions({ agentId, agentMeta, authHeaders, onRefresh, s
 
   useEffect(() => {
     void loadQuote();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agentId]);
+  }, [agentId, authHeaders]);
 
   async function retryMintOnly() {
     if (!feeSig) return;
