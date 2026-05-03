@@ -1,29 +1,43 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import {
+  buildTelegramStarterBundle,
+  isRunnerHeartbeating,
+  resolveRuntimeConfigId,
+} from "@/lib/agentConnectBundles";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || "http://localhost:4000";
 
-function StepShell({ index, title, subtitle, done, children }) {
+/** @param {{ index: number, title: string, subtitle?: string, pill: 'done'|'next'|'ongoing', children?: import('react').ReactNode }} props */
+function StepShell({ index, title, subtitle, pill, children }) {
+  const pillEl =
+    pill === "done" ? (
+      <span className="border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-emerald-300">
+        Done
+      </span>
+    ) : pill === "ongoing" ? (
+      <span className="border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-amber-200">
+        Ongoing
+      </span>
+    ) : (
+      <span className="border border-zinc-700 bg-[#050505] px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-zinc-400">
+        Next
+      </span>
+    );
+
   return (
     <div className="border border-zinc-800 bg-[#0a0a0a]/85 p-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <span className="border border-zinc-700 bg-[#050505] px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-zinc-400">
               Step {index}
             </span>
             <h2 className="text-base font-semibold text-white">{title}</h2>
-            {done ? (
-              <span className="border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-emerald-300">
-                Done
-              </span>
-            ) : (
-              <span className="border border-zinc-700 bg-[#050505] px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-zinc-400">
-                Next
-              </span>
-            )}
+            {pillEl}
           </div>
           {subtitle ? <p className="mt-2 text-sm leading-relaxed text-zinc-400">{subtitle}</p> : null}
         </div>
@@ -41,6 +55,8 @@ function formatAddr(addr) {
 }
 
 export default function IntegrationsWorkflow({ agentId, integrations, authHeaders, onRefresh, providerById = {} }) {
+  const pathname = usePathname();
+
   function connectEndpoint(providerId) {
     return providerById[providerId]?.connect_endpoint || `/integrations/${providerId}/connect`;
   }
@@ -60,6 +76,39 @@ export default function IntegrationsWorkflow({ agentId, integrations, authHeader
   const [err, setErr] = useState("");
   const [ownerWallet, setOwnerWallet] = useState(basePrivyAddress || "");
   const [telegramBundle, setTelegramBundle] = useState("");
+  const [runtimeConfigs, setRuntimeConfigs] = useState([]);
+  const [selectedRuntimeCfgId, setSelectedRuntimeCfgId] = useState("");
+  const [runnerRecord, setRunnerRecord] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadRuntime() {
+      try {
+        const headers = { "Content-Type": "application/json", ...authHeaders };
+        const [cfgRes, statusRes] = await Promise.all([
+          fetch(`${API_URL}/agent-runtime/configs`, { headers, cache: "no-store" }),
+          fetch(`${API_URL}/agent-runtime/status`, { headers, cache: "no-store" }),
+        ]);
+        const cfgData = await cfgRes.json().catch(() => ({}));
+        const list = cfgRes.ok && Array.isArray(cfgData.configs) ? cfgData.configs : [];
+        const statusData = await statusRes.json().catch(() => ({}));
+        if (cancelled) return;
+        setRuntimeConfigs(list);
+        setSelectedRuntimeCfgId((prev) => resolveRuntimeConfigId(list, prev || undefined) || "");
+        if (statusRes.ok) setRunnerRecord(statusData.runner || null);
+        else setRunnerRecord(null);
+      } catch {
+        if (!cancelled) {
+          setRuntimeConfigs([]);
+          setRunnerRecord(null);
+        }
+      }
+    }
+    loadRuntime();
+    return () => {
+      cancelled = true;
+    };
+  }, [authHeaders, agentId, pathname]);
 
   const step1Done = Boolean(solPrivyAddress);
   const step2Done = Boolean(metaplex?.verification_status === "verified" || erc8004?.token_id);
@@ -110,32 +159,17 @@ export default function IntegrationsWorkflow({ agentId, integrations, authHeader
     );
   }
 
-  async function buildTelegramStarterBundle() {
+  const runnerConnected = isRunnerHeartbeating(runnerRecord);
+
+  async function copyTelegramStarterBundle() {
     setBusy("telegram");
     setErr("");
     try {
-      const res = await fetch(`${API_URL}/agent-runtime/configs`, {
-        headers: { "Content-Type": "application/json", ...authHeaders },
-        cache: "no-store",
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || res.statusText);
-      const cfg = Array.isArray(data.configs) ? data.configs[0] : null;
-      const cfgId = cfg?.id || null;
+      const cfgId = resolveRuntimeConfigId(runtimeConfigs, selectedRuntimeCfgId || undefined);
       if (!cfgId) {
-        throw new Error("No runtime config found yet. Create a config first on the agent page.");
+        throw new Error("No runtime config yet. Open the Go Live toolkit on the agent page and create a config.");
       }
-      const bundle = [
-        "Paste into your Clickr Telegram bot (no API key in chat).",
-        `config_id=${cfgId}`,
-        "---",
-        `/cr_research ${cfgId} implied probability and liquidity today`,
-        "/cr_post Replace this sentence with your final post (≤500 chars).",
-        `/cr_now ${cfgId}`,
-        "/cr_pause",
-        "/cr_resume",
-        "/cr_status",
-      ].join("\n");
+      const bundle = buildTelegramStarterBundle(cfgId);
       setTelegramBundle(bundle);
       await navigator.clipboard.writeText(bundle);
     } catch (e) {
@@ -146,11 +180,11 @@ export default function IntegrationsWorkflow({ agentId, integrations, authHeader
   }
 
   return (
-    <section className="mt-8">
+    <section className="mt-10">
       <div className="mb-4">
-        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Agent activation</p>
+        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Activation workflow</p>
         <p className="mt-1 text-sm text-zinc-400">
-          Complete the minimum steps to make this agent economically active: connect wallets, mint identity (optional), add trust, route payments, and start the agent.
+          Connect rails (wallets, identity, trust, payments), then use the Go Live toolkit for posting (Telegram, CLI, OpenClaw).
         </p>
       </div>
 
@@ -159,7 +193,7 @@ export default function IntegrationsWorkflow({ agentId, integrations, authHeader
           index={1}
           title="Connect control wallet + create agent wallet"
           subtitle="Phantom = your control wallet. Privy = your agent execution wallet. Use Phantom to approve, fund, and withdraw; use Privy so the agent can act automatically."
-          done={step1Done && Boolean(phantomAddress)}
+          pill={step1Done && Boolean(phantomAddress) ? "done" : "next"}
         >
           <div className="grid gap-3 sm:grid-cols-3">
             <button
@@ -221,7 +255,7 @@ export default function IntegrationsWorkflow({ agentId, integrations, authHeader
           index={2}
           title="Mint agent identity (optional)"
           subtitle="Solana identity (Metaplex Core) is recommended for Frontier. Base identity (ERC-8004) remains optional alongside it."
-          done={step2Done}
+          pill={step2Done ? "done" : "next"}
         >
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="border border-zinc-800 bg-[#050505] p-4">
@@ -275,7 +309,7 @@ export default function IntegrationsWorkflow({ agentId, integrations, authHeader
           index={3}
           title="Add human-backed verification"
           subtitle="World ID adds trust by proving the agent is backed by a unique human. (Setup requires a World ID proof widget.)"
-          done={step3Done}
+          pill={step3Done ? "done" : "next"}
         >
           <a
             href="#integration-world_id"
@@ -292,7 +326,7 @@ export default function IntegrationsWorkflow({ agentId, integrations, authHeader
           index={4}
           title="Fund, route, and withdraw payments"
           subtitle="Fund the agent wallet, route x402 payments to the agent, and withdraw funds back to your Phantom wallet."
-          done={step4Done}
+          pill={step4Done ? "done" : "next"}
         >
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="border border-zinc-800 bg-[#050505] p-3">
@@ -329,38 +363,70 @@ export default function IntegrationsWorkflow({ agentId, integrations, authHeader
 
         <StepShell
           index={5}
-          title="Start agent"
-          subtitle="Copy Telegram commands or start the always-on runner."
-          done={false}
+          title="Install runtime & start posting"
+          subtitle={
+            runnerConnected
+              ? "Runner has sent a heartbeat. Use the Go Live toolkit for full Telegram templates, CLI commands, and live controls."
+              : "Runtime and posting are ongoing: create a config, wire Telegram or CLI, or use OpenClaw from Quick Start. Open the toolkit for everything in one place."
+          }
+          pill="ongoing"
         >
-          <div className="flex flex-wrap gap-2">
+          {runnerConnected ? (
+            <p className="flex flex-wrap items-center gap-2 text-xs font-semibold text-emerald-300">
+              <span className="h-2 w-2 rounded-full bg-emerald-400" aria-hidden />
+              Runner connected (heartbeat seen)
+            </p>
+          ) : (
+            <p className="text-xs text-zinc-500">
+              No runner heartbeat yet—that is normal until you start the CLI runner or automation.
+            </p>
+          )}
+
+          {runtimeConfigs.length > 1 ? (
+            <label className="mt-4 block max-w-md">
+              <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Runtime config for starter bundle</span>
+              <select
+                value={selectedRuntimeCfgId}
+                onChange={(e) => setSelectedRuntimeCfgId(e.target.value)}
+                className="mt-2 w-full border border-zinc-700 bg-[#050505] px-3 py-2 text-sm text-white focus:border-[#E53935]/50 focus:outline-none"
+              >
+                {runtimeConfigs.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name || c.id}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Link
+              href={`/dashboard/agents/${encodeURIComponent(agentId)}#go-live`}
+              className="border border-[#E53935] bg-[#E53935] px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#c62828]"
+            >
+              Open Go Live toolkit
+            </Link>
             <button
               type="button"
-              onClick={buildTelegramStarterBundle}
+              onClick={copyTelegramStarterBundle}
               disabled={Boolean(busy)}
-              className="border border-[#E53935] bg-[#E53935] px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#c62828] disabled:opacity-50"
+              className="border border-zinc-700 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white disabled:opacity-50"
             >
-              {busy === "telegram" ? "Building..." : "Copy Telegram command bundle"}
+              {busy === "telegram" ? "Copying…" : "Copy Telegram starter bundle"}
             </button>
             <Link
-              href={`/dashboard/agents/${agentId}`}
+              href={`/dashboard/agents/${encodeURIComponent(agentId)}`}
               className="border border-zinc-700 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white"
             >
               Open Command Center
             </Link>
-            <Link
-              href={`/dashboard/agents/${agentId}#integrations`}
-              className="border border-zinc-700 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white"
-            >
-              Review integrations
-            </Link>
           </div>
           {telegramBundle ? (
             <div className="mt-4 border border-zinc-800 bg-[#050505] p-4">
-              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Telegram bundle (copied)</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Telegram starter (last copied)</p>
               <pre className="mt-2 whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-zinc-300">{telegramBundle}</pre>
               <p className="mt-2 text-xs text-zinc-500">
-                For a richer bundle (sources checklist + templates), use the agent page’s “Go live (autoposter)” section.
+                For sources checklist, full bundle, and CLI commands, use the Go Live toolkit.
               </p>
             </div>
           ) : null}

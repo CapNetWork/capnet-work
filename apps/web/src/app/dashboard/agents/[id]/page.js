@@ -7,6 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import { INTEGRATION_CATALOG } from "../IntegrationCards";
 import IntegrationsHub from "../IntegrationsHub";
 import { agentProfileHref } from "@/lib/agentProfile";
+import { buildManagePageTelegramBundle, buildOpenClawConnectLine } from "@/lib/agentConnectBundles";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || "http://localhost:4000";
 
@@ -17,16 +18,6 @@ function parseSourceHints(raw) {
     .map((s) => s.trim())
     .filter(Boolean)
     .slice(0, 20);
-}
-
-/** Base64url JSON bundle for a single `/oc_clickr …` paste (OpenClaw / Telegram). */
-function encodeClickrOpenclawBundle(payload) {
-  const json = JSON.stringify(payload);
-  const bytes = new TextEncoder().encode(json);
-  let bin = "";
-  for (let i = 0; i < bytes.length; i += 1) bin += String.fromCharCode(bytes[i]);
-  const b64 = btoa(bin);
-  return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 function CopyButton({ text, label }) {
@@ -182,71 +173,12 @@ export default function AgentDetailPage() {
     [runtimeConfigs, selectedConfigId]
   );
 
-  const openclawConnectLine = useMemo(() => {
-    if (!agent?.api_key || !agent?.id) return "";
-    const token = encodeClickrOpenclawBundle({
-      v: 1,
-      apiUrl: API_URL,
-      apiKey: agent.api_key,
-      agentId: agent.id,
-      name: agent.name || "",
-    });
-    return `/oc_clickr ${token}`;
-  }, [agent]);
+  const openclawConnectLine = useMemo(() => buildOpenClawConnectLine(agent, API_URL), [agent]);
 
-  const telegramBundle = useMemo(() => {
-    if (!selectedConfigId) return null;
-    const ij = selectedConfig?.interests_json;
-    const cfgInterests = ij && typeof ij === "object" && !Array.isArray(ij) ? ij : {};
-    const cfgNiche = typeof cfgInterests.niche === "string" ? cfgInterests.niche.trim() : "";
-    const cfgSources = Array.isArray(cfgInterests.source_hints)
-      ? cfgInterests.source_hints.filter((s) => typeof s === "string" && s.trim())
-      : [];
-    const cfgKeywords = Array.isArray(cfgInterests.keywords)
-      ? cfgInterests.keywords.filter((s) => typeof s === "string" && s.trim())
-      : [];
-    const preset = typeof cfgInterests.preset === "string" ? cfgInterests.preset : "prediction_markets";
-    const researchSeed =
-      cfgNiche ||
-      cfgKeywords[0] ||
-      (preset === "sports_betting" ? "lines and props today" : "implied probability and liquidity today");
-    const cfgId = selectedConfigId;
-    const intro =
-      "Paste into your Clickr Telegram bot. These lines never include your API key. For 24/7 autoposting from templates, use clickr-cli in a terminal (commands on the right). See docs/telegram-agent-commands.md.";
-    const research = `/cr_research ${cfgId} ${researchSeed}`.replace(/\s+/g, " ").trim();
-    const postPlaceholder = `/cr_post Replace this sentence with your final post (≤500 chars) about ${cfgNiche || "your niche"}.`;
-    const now = `/cr_now ${cfgId}`;
-    const sourcesBlock =
-      cfgSources.length > 0
-        ? cfgSources.map((s) => `- ${s}`).join("\n")
-        : "- (No sources saved on this config — edit the config or create a new one with URLs, RSS feeds, or handles.)";
-    const bundle = [
-      intro,
-      "",
-      "Sources to check before you post:",
-      sourcesBlock,
-      "",
-      "---",
-      research,
-      postPlaceholder,
-      now,
-      "/cr_pause",
-      "/cr_resume",
-      "/cr_status",
-    ].join("\n");
-    return {
-      intro,
-      research,
-      postPlaceholder,
-      now,
-      pause: "/cr_pause",
-      resume: "/cr_resume",
-      status: "/cr_status",
-      sourcesBlock,
-      cfgSources,
-      bundle,
-    };
-  }, [selectedConfigId, selectedConfig]);
+  const telegramBundle = useMemo(
+    () => buildManagePageTelegramBundle(selectedConfigId, selectedConfig),
+    [selectedConfigId, selectedConfig]
+  );
 
   const authHeaders = useMemo(() => ({ ...getAuthHeaders(), "X-Agent-Id": id }), [getAuthHeaders, id]);
 
@@ -473,7 +405,7 @@ export default function AgentDetailPage() {
         )}
       </div>
 
-      <div className="mt-6 border border-zinc-800 bg-[#0a0a0a]/85 p-6">
+      <div id="go-live" className="scroll-mt-24 mt-6 border border-zinc-800 bg-[#0a0a0a]/85 p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Go live (autoposter)</p>

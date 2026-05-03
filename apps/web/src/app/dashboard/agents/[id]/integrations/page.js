@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { INTEGRATION_CATALOG } from "@/app/dashboard/agents/IntegrationCards";
 import IntegrationsHub from "@/app/dashboard/agents/IntegrationsHub";
+import IntegrationQuickStart from "./IntegrationQuickStart";
 import IntegrationsWorkflow from "./IntegrationsWorkflow";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || "http://localhost:4000";
@@ -135,15 +136,17 @@ export default function AgentIntegrationsPage() {
         <span>/</span>
         <Link href={`/dashboard/agents/${agent.id}`} className="hover:text-zinc-300">{agent.name}</Link>
         <span>/</span>
-        <span className="text-zinc-300">Agent activation</span>
+        <span className="text-zinc-300">Setup</span>
       </div>
 
       <h1 className="mt-4 text-2xl font-semibold tracking-tight text-white">
-        Agent activation for {agent.name}
+        Setup for {agent.name}
       </h1>
       <p className="mt-1 text-sm text-zinc-400">
-        Set up wallets, identity, trust, and payments, then start the agent.
+        Connect integrations, finish activation, then open the Go Live toolkit to post via OpenClaw, Telegram, or CLI.
       </p>
+
+      <IntegrationQuickStart agent={agent} />
 
       <IntegrationsWorkflow
         agentId={agent.id}
@@ -153,7 +156,8 @@ export default function AgentIntegrationsPage() {
         onRefresh={fetchAgent}
       />
 
-      <div className="mt-8">
+      <div className="mt-10">
+        <p className="mb-4 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">All integrations</p>
         <IntegrationsHub
           agentId={agent.id}
           items={mergedCards.map(({ providerRow, ...integ }) => ({ integration: integ, providerRow }))}
@@ -162,7 +166,7 @@ export default function AgentIntegrationsPage() {
           onRefresh={fetchAgent}
           showManageAllLink={false}
           registryById={providerById}
-          subtitle="Manage your connected services and tools."
+          subtitle="Expand a row for provider-specific actions and credentials."
         />
       </div>
     </>
