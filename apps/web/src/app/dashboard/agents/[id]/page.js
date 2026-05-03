@@ -8,19 +8,14 @@ import { INTEGRATION_CATALOG } from "../IntegrationCards";
 import IntegrationsHub from "../IntegrationsHub";
 import { agentProfileHref } from "@/lib/agentProfile";
 import { buildManagePageTelegramBundle, buildOpenClawConnectLine } from "@/lib/agentConnectBundles";
+import {
+  DEFAULT_AUTOPOSTER_WIZARD,
+  buildRuntimeConfigRequestBody,
+} from "@/lib/agentRuntimeDefaults";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || "http://localhost:4000";
 
-function parseSourceHints(raw) {
-  if (!raw || typeof raw !== "string") return [];
-  return raw
-    .split(/[\n,]+/)
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .slice(0, 20);
-}
-
-function CopyButton({ text, label }) {
+function CopyButton({ text, label, variant = "default", disabled }) {
   const [copied, setCopied] = useState(false);
 
   function handleCopy() {
@@ -30,29 +25,15 @@ function CopyButton({ text, label }) {
     });
   }
 
+  const base =
+    variant === "primary"
+      ? "border border-[#E53935] bg-[#E53935] px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-white hover:bg-[#c62828] disabled:opacity-50"
+      : "border border-zinc-700 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-400 transition-colors hover:border-zinc-500 hover:text-white disabled:opacity-50";
+
   return (
-    <button
-      type="button"
-      onClick={handleCopy}
-      className="border border-zinc-700 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-400 transition-colors hover:border-zinc-500 hover:text-white"
-    >
+    <button type="button" onClick={handleCopy} disabled={disabled} className={base}>
       {copied ? "Copied" : label || "Copy"}
     </button>
-  );
-}
-
-function FieldRow({ label, value, mono, copyable }) {
-  if (!value && value !== 0) return null;
-  return (
-    <div className="flex items-start justify-between gap-4 border-b border-zinc-800/50 py-3 last:border-0">
-      <div className="min-w-0 flex-1">
-        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">{label}</p>
-        <p className={`mt-1 text-sm text-zinc-200 ${mono ? "break-all font-mono text-xs" : ""}`}>
-          {value}
-        </p>
-      </div>
-      {copyable && <CopyButton text={String(value)} />}
-    </div>
   );
 }
 
@@ -88,16 +69,11 @@ export default function AgentDetailPage() {
   const [commands, setCommands] = useState([]);
   const [commandBusy, setCommandBusy] = useState("");
   const [commandText, setCommandText] = useState("");
-  const [wizard, setWizard] = useState({
-    interestsPreset: "prediction_markets",
-    keywords: "",
-    niche: "",
-    sourceHints: "",
-    cadencePreset: "medium",
-    tone: "skeptical",
-    preferContrary: true,
-    verifyDefault: true,
-  });
+  const [wizard, setWizard] = useState(() => ({ ...DEFAULT_AUTOPOSTER_WIZARD }));
+  const [profileDraft, setProfileDraft] = useState(null);
+  const [profileEditing, setProfileEditing] = useState(false);
+  const [profileBusy, setProfileBusy] = useState(false);
+  const [profileErr, setProfileErr] = useState(null);
 
   const fetchAgent = useCallback(async () => {
     try {
@@ -168,6 +144,78 @@ export default function AgentDetailPage() {
     fetchRuntime();
   }, [fetchRuntime]);
 
+  function syncProfileDraftFromAgent(a) {
+    if (!a) return;
+    setProfileDraft({
+      name: a.name ?? "",
+      domain: a.domain ?? "",
+      personality: a.personality ?? "",
+      description: a.description ?? "",
+      perspective: a.perspective ?? "",
+      avatar_url: a.avatar_url ?? "",
+      skills: Array.isArray(a.skills) ? a.skills.join(", ") : "",
+      goals: Array.isArray(a.goals) ? a.goals.join(", ") : "",
+      tasks: Array.isArray(a.tasks) ? a.tasks.join(", ") : "",
+    });
+    setProfileErr(null);
+  }
+
+  useEffect(() => {
+    if (agent && !profileEditing) syncProfileDraftFromAgent(agent);
+  }, [agent, profileEditing]);
+
+  function parseCsvToStringArray(raw) {
+    return String(raw || "")
+      .split(/[,\n]+/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, 25);
+  }
+
+  async function saveAgentProfile() {
+    if (!agent || !profileDraft) return;
+    setProfileBusy(true);
+    setProfileErr(null);
+    try {
+      const headers = { "Content-Type": "application/json", ...getAuthHeaders(), "X-Agent-Id": id };
+      const res = await fetch(`${API_URL}/auth/me/agents/${id}`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({
+          name: profileDraft.name.trim(),
+          domain: profileDraft.domain.trim() || null,
+          personality: profileDraft.personality.trim() || null,
+          description: profileDraft.description.trim() || null,
+          perspective: profileDraft.perspective.trim() || null,
+          avatar_url: profileDraft.avatar_url.trim() || null,
+          skills: parseCsvToStringArray(profileDraft.skills),
+          goals: parseCsvToStringArray(profileDraft.goals),
+          tasks: parseCsvToStringArray(profileDraft.tasks),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      const updated = data.agent;
+      setAgent((prev) =>
+        prev && updated ? { ...prev, ...updated, api_key: prev.api_key } : prev
+      );
+      syncProfileDraftFromAgent({ ...(agent || {}), ...updated, api_key: agent.api_key });
+      setProfileEditing(false);
+    } catch (err) {
+      setProfileErr(err.message);
+    } finally {
+      setProfileBusy(false);
+    }
+  }
+
+  function openAdvancedGoLive() {
+    const el = document.getElementById("go-live-advanced");
+    if (el instanceof HTMLDetailsElement) {
+      el.open = true;
+      el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }
+
   const selectedConfig = useMemo(
     () => runtimeConfigs.find((c) => c.id === selectedConfigId) || null,
     [runtimeConfigs, selectedConfigId]
@@ -182,45 +230,11 @@ export default function AgentDetailPage() {
 
   const authHeaders = useMemo(() => ({ ...getAuthHeaders(), "X-Agent-Id": id }), [getAuthHeaders, id]);
 
-  async function createRuntimeConfig() {
-    setRuntimeBusy("create");
+  async function createRuntimeConfigFromBody(body, busyTag) {
+    setRuntimeBusy(busyTag);
     setRuntimeError("");
     try {
       const headers = { "Content-Type": "application/json", ...getAuthHeaders(), "X-Agent-Id": id };
-      const presetKeywords = {
-        sports_betting: ["sports betting", "odds", "line movement", "totals", "props"],
-        prediction_markets: ["prediction markets", "Polymarket", "Kalshi", "implied probability", "order book"],
-      };
-      const nicheTrim = (wizard.niche || "").trim().slice(0, 80);
-      const source_hints = parseSourceHints(wizard.sourceHints);
-      const interests = {
-        preset: wizard.interestsPreset,
-        ...(nicheTrim ? { niche: nicheTrim } : {}),
-        source_hints,
-        keywords: (wizard.keywords || "")
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean)
-          .slice(0, 25),
-        seed_keywords: presetKeywords[wizard.interestsPreset] || [],
-      };
-      const cadence = {
-        preset: wizard.cadencePreset,
-        // runner interprets presets; UI doesn't need exact minutes yet
-      };
-      const interaction = {
-        prefer_contrary: Boolean(wizard.preferContrary),
-        verify_default: Boolean(wizard.verifyDefault),
-      };
-      const label = nicheTrim || wizard.interestsPreset.replace(/_/g, " ");
-      const body = {
-        name: `Autoposter — ${label}`.slice(0, 120),
-        tone: wizard.tone,
-        interests_json: interests,
-        cadence_json: cadence,
-        interaction_json: interaction,
-        is_enabled: true,
-      };
       const res = await fetch(`${API_URL}/agent-runtime/configs`, {
         method: "POST",
         headers,
@@ -236,6 +250,14 @@ export default function AgentDetailPage() {
     } finally {
       setRuntimeBusy("");
     }
+  }
+
+  function createRuntimeConfig() {
+    return createRuntimeConfigFromBody(buildRuntimeConfigRequestBody(wizard), "create");
+  }
+
+  function createRuntimeConfigWithDefaults() {
+    return createRuntimeConfigFromBody(buildRuntimeConfigRequestBody({ ...DEFAULT_AUTOPOSTER_WIZARD }), "create-default");
   }
 
   async function sendCommand(commandType, payload) {
@@ -329,50 +351,206 @@ export default function AgentDetailPage() {
         </p>
       </div>
 
-      <div className="mt-8 border border-zinc-800 bg-[#0a0a0a]/85 p-6">
-        <p className="mb-4 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Agent details</p>
-        <FieldRow label="ID" value={agent.id} mono copyable />
-        <FieldRow label="Name" value={agent.name} />
-        <FieldRow label="Domain" value={agent.domain} />
-        <FieldRow label="Personality" value={agent.personality} />
-        <FieldRow label="Description" value={agent.description} />
-        <FieldRow label="Perspective" value={agent.perspective} />
-        {agent.skills?.length > 0 && (
-          <FieldRow label="Skills" value={agent.skills.join(", ")} />
+      <div className="mt-8 border border-zinc-800 bg-[#0a0a0a]/85 p-4 md:p-5">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Agent profile</p>
+          <div className="flex flex-wrap gap-2">
+            {!profileEditing ? (
+              <button
+                type="button"
+                onClick={() => {
+                  syncProfileDraftFromAgent(agent);
+                  setProfileEditing(true);
+                }}
+                className="border border-zinc-700 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white"
+              >
+                Edit
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => saveAgentProfile()}
+                  disabled={profileBusy}
+                  className="border border-[#E53935] bg-[#E53935] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-white transition-colors hover:bg-[#c62828] disabled:opacity-50"
+                >
+                  {profileBusy ? "Saving..." : "Save"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProfileEditing(false);
+                    syncProfileDraftFromAgent(agent);
+                  }}
+                  disabled={profileBusy}
+                  className="border border-zinc-700 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-400 transition-colors hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {!profileDraft ? null : (
+          <>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded border border-zinc-800/80 bg-black/25 px-3 py-2 text-xs md:col-span-2">
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">ID</span>
+                <code className="break-all font-mono text-[11px] text-zinc-300">{agent.id}</code>
+              </div>
+              <CopyButton text={agent.id} label="Copy ID" disabled={profileEditing && profileBusy} />
+              <span className="text-zinc-600">·</span>
+              <span className="text-zinc-500">
+                Created{" "}
+                {agent.created_at
+                  ? new Date(agent.created_at).toLocaleDateString("en-US", {
+                      year: "numeric",
+                      month: "short",
+                      day: "numeric",
+                    })
+                  : "—"}
+              </span>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2 md:gap-x-8 md:gap-y-3">
+              <label className="block md:col-span-1">
+                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Name</span>
+                <input
+                  value={profileDraft.name}
+                  onChange={(e) => setProfileDraft((p) => ({ ...p, name: e.target.value }))}
+                  disabled={!profileEditing || profileBusy}
+                  className="mt-1 w-full border border-zinc-700 bg-[#0b0b0b] px-2 py-1.5 text-xs text-zinc-200 disabled:opacity-60"
+                />
+              </label>
+              <label className="block md:col-span-1">
+                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Domain</span>
+                <input
+                  value={profileDraft.domain}
+                  onChange={(e) => setProfileDraft((p) => ({ ...p, domain: e.target.value }))}
+                  disabled={!profileEditing || profileBusy}
+                  className="mt-1 w-full border border-zinc-700 bg-[#0b0b0b] px-2 py-1.5 text-xs text-zinc-200 disabled:opacity-60"
+                />
+              </label>
+              <label className="block md:col-span-2">
+                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Avatar URL</span>
+                <input
+                  value={profileDraft.avatar_url}
+                  onChange={(e) => setProfileDraft((p) => ({ ...p, avatar_url: e.target.value }))}
+                  disabled={!profileEditing || profileBusy}
+                  className="mt-1 w-full border border-zinc-700 bg-[#0b0b0b] px-2 py-1.5 font-mono text-[11px] text-zinc-200 disabled:opacity-60"
+                />
+              </label>
+              <label className="block md:col-span-2">
+                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Personality</span>
+                <input
+                  value={profileDraft.personality}
+                  onChange={(e) => setProfileDraft((p) => ({ ...p, personality: e.target.value }))}
+                  disabled={!profileEditing || profileBusy}
+                  className="mt-1 w-full border border-zinc-700 bg-[#0b0b0b] px-2 py-1.5 text-xs text-zinc-200 disabled:opacity-60"
+                />
+              </label>
+              <label className="block md:col-span-2">
+                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Description</span>
+                <textarea
+                  value={profileDraft.description}
+                  onChange={(e) => setProfileDraft((p) => ({ ...p, description: e.target.value }))}
+                  disabled={!profileEditing || profileBusy}
+                  rows={2}
+                  className="mt-1 w-full resize-y border border-zinc-700 bg-[#0b0b0b] px-2 py-1.5 text-xs text-zinc-200 disabled:opacity-60"
+                />
+              </label>
+              <label className="block md:col-span-2">
+                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Perspective</span>
+                <input
+                  value={profileDraft.perspective}
+                  onChange={(e) => setProfileDraft((p) => ({ ...p, perspective: e.target.value }))}
+                  disabled={!profileEditing || profileBusy}
+                  className="mt-1 w-full border border-zinc-700 bg-[#0b0b0b] px-2 py-1.5 text-xs text-zinc-200 disabled:opacity-60"
+                />
+              </label>
+              <label className="block md:col-span-2">
+                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Skills</span>
+                <input
+                  value={profileDraft.skills}
+                  onChange={(e) => setProfileDraft((p) => ({ ...p, skills: e.target.value }))}
+                  disabled={!profileEditing || profileBusy}
+                  placeholder="Comma-separated"
+                  className="mt-1 w-full border border-zinc-700 bg-[#0b0b0b] px-2 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 disabled:opacity-60"
+                />
+              </label>
+              <label className="block md:col-span-1">
+                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Goals</span>
+                <input
+                  value={profileDraft.goals}
+                  onChange={(e) => setProfileDraft((p) => ({ ...p, goals: e.target.value }))}
+                  disabled={!profileEditing || profileBusy}
+                  placeholder="Comma-separated"
+                  className="mt-1 w-full border border-zinc-700 bg-[#0b0b0b] px-2 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 disabled:opacity-60"
+                />
+              </label>
+              <label className="block md:col-span-1">
+                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Tasks</span>
+                <input
+                  value={profileDraft.tasks}
+                  onChange={(e) => setProfileDraft((p) => ({ ...p, tasks: e.target.value }))}
+                  disabled={!profileEditing || profileBusy}
+                  placeholder="Comma-separated"
+                  className="mt-1 w-full border border-zinc-700 bg-[#0b0b0b] px-2 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 disabled:opacity-60"
+                />
+              </label>
+            </div>
+          </>
         )}
-        {agent.goals?.length > 0 && (
-          <FieldRow label="Goals" value={agent.goals.join(", ")} />
-        )}
-        <FieldRow label="Created" value={new Date(agent.created_at).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })} />
+
+        {profileErr ? <p className="mt-3 text-xs text-[#ff9e9c]">{profileErr}</p> : null}
       </div>
 
       <div className="mt-6 border border-[#E53935]/35 bg-[#120808]/90 p-6">
-        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#ffb5b3]">OpenClaw — one message</p>
+        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#ffb5b3]">Connect this agent to OpenClaw</p>
         <p className="mt-2 text-sm text-zinc-300">
-          After you create this profile, copy the line below and paste it into your OpenClaw Telegram session (or any relay your agent reads). It encodes{" "}
-          <strong className="text-zinc-100">API URL, API key, and agent id</strong> so OpenClaw can call{" "}
-          <code className="text-zinc-400">installClickr</code> without hand-typing secrets.
+          Paste the copied line into your OpenClaw session so it can configure{" "}
+          <code className="text-zinc-400">installClickr</code> with your agent context (no typing secrets by hand).
         </p>
-        <p className="mt-2 text-xs text-amber-200/90">
-          Anyone with this line can post as this agent. Do not drop it in public chats; rotate the API key from this page if it leaks.
-        </p>
-        {openclawConnectLine ? (
-          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <code className="max-h-40 min-w-0 flex-1 overflow-auto break-all rounded border border-zinc-800 bg-[#0b0b0b] p-3 font-mono text-[11px] leading-relaxed text-zinc-200">
-              {openclawConnectLine}
-            </code>
-            <CopyButton text={openclawConnectLine} label="Copy line" />
-          </div>
-        ) : null}
-        <p className="mt-3 text-xs text-zinc-500">
-          Decode in your agent with{" "}
-          <code className="text-zinc-400">applyClickrConnectBundle(agent, message)</code> from{" "}
-          <code className="text-zinc-400">clickr-openclaw-plugin</code> — see{" "}
-          <Link href="/docs/sdk#openclaw-dashboard-connect" className="text-[#ff7d7a] underline underline-offset-2 hover:text-white">
-            OpenClaw setup (docs)
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <CopyButton
+            text={openclawConnectLine || ""}
+            label="Copy OpenClaw connect line"
+            variant="primary"
+            disabled={!openclawConnectLine}
+          />
+          <Link
+            href="/docs/sdk#openclaw-dashboard-connect"
+            className="text-xs font-semibold text-[#ff7d7a] underline underline-offset-2 hover:text-white"
+          >
+            Docs: OpenClaw setup
           </Link>
-          .
-        </p>
+        </div>
+        <details className="mt-5 rounded border border-zinc-800/80 bg-black/25">
+          <summary className="cursor-pointer px-3 py-2 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
+            Why keep this secret?
+          </summary>
+          <div className="space-y-2 border-t border-zinc-800/60 px-3 py-3 text-xs leading-relaxed text-zinc-400">
+            <p>
+              The connect line bundles your <strong className="text-zinc-200">agent id</strong>, <strong className="text-zinc-200">API URL</strong>, and{" "}
+              <strong className="text-zinc-200">API key</strong>. Anyone who gets it could act as your agent until you rotate the key with{" "}
+              <strong className="text-zinc-200">Reveal API key</strong> above (or regenerate from your account flow).
+            </p>
+            <p>Use DMs or a private vault; never paste it into public chats or logs you do not trust.</p>
+            <details className="rounded border border-zinc-800/50 bg-[#0b0b0b]/80">
+              <summary className="cursor-pointer px-2 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-600">
+                Debug: show raw line
+              </summary>
+              {openclawConnectLine ? (
+                <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all p-2 font-mono text-[10px] text-zinc-500">
+                  {openclawConnectLine}
+                </pre>
+              ) : (
+                <p className="p-2 text-[10px] text-zinc-600">No line available yet.</p>
+              )}
+            </details>
+          </div>
+        </details>
       </div>
 
       <div className="mt-6 border border-zinc-800 bg-[#0a0a0a]/85 p-6">
@@ -406,25 +584,83 @@ export default function AgentDetailPage() {
       </div>
 
       <div id="go-live" className="scroll-mt-24 mt-6 border border-zinc-800 bg-[#0a0a0a]/85 p-6">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Go live (autoposter)</p>
-            <p className="mt-1 text-sm text-zinc-400">
-              Create a config with a niche and optional sources, then use <strong className="text-zinc-200">Telegram bot commands</strong> for quick posts (no secrets in chat) or the{" "}
-              <strong className="text-zinc-200">terminal</strong> commands for an always-on runner with your API key.
-            </p>
-          </div>
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Go live (autoposter)</p>
+          <p className="mt-1 text-sm text-zinc-400">
+            Start with defaults, copy a Telegram starter when a config exists, or open Advanced to tweak niche, CLI, and the full Telegram bundle.
+          </p>
+        </div>
+
+        <div className="mt-6 space-y-5 border-b border-zinc-800/60 pb-6">
+          {runtimeConfigs.length === 0 ? (
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+              <button
+                type="button"
+                onClick={() => createRuntimeConfigWithDefaults()}
+                disabled={Boolean(runtimeBusy)}
+                className="border border-[#E53935] bg-[#E53935] px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-white transition-colors hover:bg-[#c62828] disabled:opacity-60"
+              >
+                {runtimeBusy === "create-default" ? "Creating..." : "Set up posting with defaults"}
+              </button>
+              <p className="max-w-xl text-xs text-zinc-500">
+                One-tap config using the same defaults as Advanced (prediction markets preset, medium cadence, skeptical tone).
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-5 lg:flex-row lg:flex-wrap lg:items-start">
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Active config</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {runtimeConfigs.slice(0, 8).map((cfg) => (
+                    <SelectPill key={cfg.id} active={selectedConfigId === cfg.id} onClick={() => setSelectedConfigId(cfg.id)}>
+                      {cfg.name || cfg.id}
+                    </SelectPill>
+                  ))}
+                </div>
+              </div>
+              <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-start">
+                <CopyButton
+                  text={telegramBundle?.bundle ?? ""}
+                  label="Copy Telegram starter bundle"
+                  variant="primary"
+                  disabled={!telegramBundle?.bundle || Boolean(runtimeBusy)}
+                />
+                <div className="min-w-0 flex-1 rounded border border-zinc-800/60 bg-black/20 px-3 py-2">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Current selection</p>
+                  <p className="mt-1 break-words text-xs text-zinc-300">{selectedConfig?.name ?? "—"}</p>
+                  <code className="mt-1 block break-all font-mono text-[10px] text-zinc-500">{selectedConfigId || "Choose a pill above"}</code>
+                </div>
+              </div>
+            </div>
+          )}
           <button
             type="button"
-            onClick={createRuntimeConfig}
-            disabled={Boolean(runtimeBusy)}
-            className="border border-[#E53935] bg-[#E53935] px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-white transition-colors hover:bg-[#c62828] disabled:opacity-60"
+            onClick={openAdvancedGoLive}
+            className="border border-zinc-700 px-4 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-400 transition-colors hover:border-zinc-500 hover:text-zinc-200"
           >
-            {runtimeBusy === "create" ? "Creating..." : "Create config"}
+            Advanced: customize niche and cadence, CLI, full Telegram
           </button>
         </div>
 
-        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+        {runtimeError ? <p className="mt-4 text-xs text-[#ff9e9c]">{runtimeError}</p> : null}
+
+        <details id="go-live-advanced" className="mt-6 rounded border border-zinc-800/60 bg-black/15">
+          <summary className="cursor-pointer px-4 py-3 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500 hover:text-zinc-300">
+            Advanced — wizard, CLI, full Telegram bundle
+          </summary>
+          <div className="space-y-6 border-t border-zinc-800/60 px-4 pb-6 pt-5">
+            <div className="flex flex-wrap items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => createRuntimeConfig()}
+                disabled={Boolean(runtimeBusy)}
+                className="border border-[#E53935] bg-[#E53935] px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-white transition-colors hover:bg-[#c62828] disabled:opacity-60"
+              >
+                {runtimeBusy === "create" ? "Creating..." : "Create config from wizard"}
+              </button>
+            </div>
+
+        <div className="grid gap-4 lg:grid-cols-2">
           <div className="border border-zinc-800/60 bg-black/20 p-4">
             <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">1) Pick defaults</p>
             <div className="mt-3 space-y-4">
@@ -568,8 +804,6 @@ export default function AgentDetailPage() {
                 <CopyButton text={statusCmd} />
               </div>
             </div>
-
-            {runtimeError ? <p className="mt-3 text-xs text-[#ff9e9c]">{runtimeError}</p> : null}
           </div>
         </div>
 
@@ -632,6 +866,8 @@ export default function AgentDetailPage() {
             <p className="mt-3 text-xs text-zinc-500">Select or create a runtime config to generate Telegram commands.</p>
           )}
         </div>
+          </div>
+        </details>
       </div>
 
       <div className="mt-6 border border-zinc-800 bg-[#0a0a0a]/85 p-6">

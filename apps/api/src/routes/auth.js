@@ -459,6 +459,86 @@ router.get("/me/agents/:agentId", needSession, async (req, res, next) => {
   }
 });
 
+const AGENT_PATCH_STRING_ARRAY_LIMIT = 25;
+
+function normalizeStringArrayField(raw, label) {
+  if (raw === undefined) return { ok: true, omit: true, value: null };
+  if (!Array.isArray(raw)) return { ok: false, status: 400, error: `${label} must be an array of strings` };
+  if (!raw.every((x) => typeof x === "string")) {
+    return { ok: false, status: 400, error: `${label} entries must be strings` };
+  }
+  const trimmed = raw.map((s) => s.trim()).filter(Boolean).slice(0, AGENT_PATCH_STRING_ARRAY_LIMIT);
+  return { ok: true, omit: false, value: trimmed };
+}
+
+router.patch("/me/agents/:agentId", needSession, async (req, res, next) => {
+  const agentId = req.params.agentId;
+  const body = req.body && typeof req.body === "object" ? req.body : {};
+
+  try {
+    const ownership = await pool.query(
+      `SELECT id FROM agents WHERE id = $1 AND owner_id = $2`,
+      [agentId, req.clickrUser.id]
+    );
+    if (ownership.rows.length === 0) {
+      return res.status(403).json({ error: "Agent not found or not owned by you" });
+    }
+
+    const sets = [];
+    const values = [];
+
+    function push(col, val) {
+      sets.push(`${col} = $${values.length + 1}`);
+      values.push(val);
+    }
+
+    const nameProvided = Object.prototype.hasOwnProperty.call(body, "name");
+    if (nameProvided) {
+      if (typeof body.name !== "string") {
+        return res.status(400).json({ error: "name must be a string" });
+      }
+      const nameTrim = body.name.trim();
+      if (!nameTrim) return res.status(400).json({ error: "name cannot be empty" });
+      push("name", nameTrim);
+    }
+
+    const stringFields = ["domain", "personality", "description", "perspective", "avatar_url"];
+    for (const key of stringFields) {
+      if (!Object.prototype.hasOwnProperty.call(body, key)) continue;
+      const v = body[key];
+      if (v != null && typeof v !== "string") return res.status(400).json({ error: `${key} must be a string or omitted` });
+      push(key, v == null ? null : String(v).trim() || null);
+    }
+
+    for (const key of ["skills", "goals", "tasks"]) {
+      const n = normalizeStringArrayField(body[key], key);
+      if (!n.ok) return res.status(n.status).json({ error: n.error });
+      if (!n.omit) push(key, n.value);
+    }
+
+    if (sets.length === 0) return res.status(400).json({ error: "No valid fields to update" });
+
+    values.push(agentId, req.clickrUser.id);
+
+    await pool.query(
+      `UPDATE agents SET ${sets.join(", ")}
+       WHERE id = $${values.length - 1} AND owner_id = $${values.length}`,
+      values
+    );
+
+    const r = await pool.query(
+      `SELECT id, name, domain, personality, description, avatar_url, perspective, skills, goals, tasks, metadata, created_at
+       FROM agents WHERE id = $1 AND owner_id = $2`,
+      [agentId, req.clickrUser.id]
+    );
+    const row = r.rows[0];
+    return res.json({ agent: row });
+  } catch (err) {
+    if (err.code === "23505") return res.status(409).json({ error: "Agent name already taken" });
+    next(err);
+  }
+});
+
 router.post("/me/agents", needSession, async (req, res, next) => {
   const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
   const domain = typeof req.body?.domain === "string" ? req.body.domain.trim() : null;
