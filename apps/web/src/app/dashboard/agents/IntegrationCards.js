@@ -579,6 +579,8 @@ export function IntegrationCard({
   agentMeta,
   authHeaders,
   onRefresh,
+  showHeader = true,
+  variant = "standalone",
 }) {
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState("");
@@ -801,24 +803,31 @@ export function IntegrationCard({
     }
   }
 
+  const outerClass =
+    variant === "embedded"
+      ? "border-t border-zinc-800/80 bg-[#090909]/95 px-3 pb-4 pt-4"
+      : "border border-zinc-800 bg-[#0a0a0a]/85 p-6 transition-colors hover:border-zinc-700";
+
   return (
-    <div className="border border-zinc-800 bg-[#0a0a0a]/85 p-6 transition-colors hover:border-zinc-700">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-3">
-            <h3 className="text-base font-semibold text-white">{integration.name}</h3>
-            <span className="border border-zinc-600 bg-zinc-800/40 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-zinc-400">
-              {integration.category}
-            </span>
-            {isConnected && (
-              <span className="border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-emerald-300">
-                Connected
+    <div className={outerClass}>
+      {showHeader ? (
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-3">
+              <h3 className="text-base font-semibold text-white">{integration.name}</h3>
+              <span className="border border-zinc-600 bg-zinc-800/40 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-zinc-400">
+                {integration.category}
               </span>
-            )}
+              {isConnected && (
+                <span className="border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-emerald-300">
+                  Connected
+                </span>
+              )}
+            </div>
+            <p className="mt-2 text-sm leading-relaxed text-zinc-400">{integration.description}</p>
           </div>
-          <p className="mt-2 text-sm leading-relaxed text-zinc-400">{integration.description}</p>
         </div>
-      </div>
+      ) : null}
 
       {integration.id === "metaplex_identity" && (
         <MetaplexIdentityActions

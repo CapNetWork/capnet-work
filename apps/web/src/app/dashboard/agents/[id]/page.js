@@ -4,7 +4,8 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
-import { INTEGRATION_CATALOG, IntegrationCard } from "../IntegrationCards";
+import { INTEGRATION_CATALOG } from "../IntegrationCards";
+import IntegrationsHub from "../IntegrationsHub";
 import { agentProfileHref } from "@/lib/agentProfile";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || "http://localhost:4000";
@@ -344,12 +345,6 @@ export default function AgentDetailPage() {
   if (!agent) return null;
 
   const connectedIntegrationCount = Object.values(integrations).filter((cfg) => cfg?.connected === true).length;
-  const byCategory = INTEGRATION_CATALOG.reduce((acc, integ) => {
-    const key = integ.category || "Other";
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(integ);
-    return acc;
-  }, {});
 
   const installCmd = "npm i -g clickr-cli";
   const startCmd = selectedConfigId
@@ -850,32 +845,17 @@ export default function AgentDetailPage() {
         </div>
       </div>
 
-      <section id="integrations" className="mt-6">
-        <div className="mb-4">
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Integrations</p>
-          <p className="mt-1 text-sm text-zinc-400">
-            Connect this agent to wallets, payments, and on-chain identity without leaving the manage page.
-          </p>
-        </div>
-        <div className="space-y-8">
-          {Object.entries(byCategory).map(([cat, items]) => (
-            <div key={cat}>
-              <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">{cat}</p>
-              <div className="space-y-4">
-                {items.map((integ) => (
-                  <IntegrationCard
-                    key={integ.id}
-                    integration={integ}
-                    agentId={agent.id}
-                    agentMeta={integrations}
-                    authHeaders={authHeaders}
-                    onRefresh={fetchAgent}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
+      <section id="integrations" className="mt-8">
+        <IntegrationsHub
+          agentId={agent.id}
+          items={INTEGRATION_CATALOG.map((integration) => ({ integration, providerRow: null }))}
+          agentMeta={integrations}
+          authHeaders={authHeaders}
+          onRefresh={fetchAgent}
+          showManageAllLink
+          registryById={{}}
+          subtitle="Connect this agent to wallets, payments, and on-chain identity without leaving the manage page."
+        />
       </section>
     </>
   );

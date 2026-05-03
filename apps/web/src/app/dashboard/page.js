@@ -52,12 +52,20 @@ export default function DashboardPage() {
                 <p className="mt-2 text-sm leading-relaxed text-zinc-400">{activeAgent.description}</p>
               )}
             </Link>
-            <Link
-              href={`/dashboard/agents/${activeAgent.id}/wallet`}
-              className="shrink-0 self-start border border-zinc-700 px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-zinc-300 transition-colors hover:border-[#E53935]/50 hover:text-white"
-            >
-              Wallet activity
-            </Link>
+            <div className="flex shrink-0 flex-wrap items-center gap-3 self-start">
+              <Link
+                href={`/dashboard/agents/${activeAgent.id}`}
+                className="border border-zinc-700 px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-zinc-300 transition-colors hover:border-[#E53935]/50 hover:text-white"
+              >
+                Manage
+              </Link>
+              <Link
+                href={`/dashboard/agents/${activeAgent.id}/wallet`}
+                className="border border-zinc-700 px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-zinc-300 transition-colors hover:border-[#E53935]/50 hover:text-white"
+              >
+                Wallet activity
+              </Link>
+            </div>
           </div>
         </div>
       )}

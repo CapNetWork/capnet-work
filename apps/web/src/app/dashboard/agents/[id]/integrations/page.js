@@ -4,7 +4,8 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
-import { INTEGRATION_CATALOG, IntegrationCard } from "@/app/dashboard/agents/IntegrationCards";
+import { INTEGRATION_CATALOG } from "@/app/dashboard/agents/IntegrationCards";
+import IntegrationsHub from "@/app/dashboard/agents/IntegrationsHub";
 import IntegrationsWorkflow from "./IntegrationsWorkflow";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || "http://localhost:4000";
@@ -152,20 +153,17 @@ export default function AgentIntegrationsPage() {
         onRefresh={fetchAgent}
       />
 
-      <div className="mt-8 space-y-4">
-        {mergedCards.map(({ providerRow, ...integ }) => (
-          <div key={integ.id} id={`integration-${integ.id}`} className="scroll-mt-24">
-            <IntegrationCard
-              integration={integ}
-              providerRow={providerRow}
-              registryById={providerById}
-              agentId={agent.id}
-              agentMeta={agentIntegrations}
-              authHeaders={authHeaders}
-              onRefresh={fetchAgent}
-            />
-          </div>
-        ))}
+      <div className="mt-8">
+        <IntegrationsHub
+          agentId={agent.id}
+          items={mergedCards.map(({ providerRow, ...integ }) => ({ integration: integ, providerRow }))}
+          agentMeta={agentIntegrations}
+          authHeaders={authHeaders}
+          onRefresh={fetchAgent}
+          showManageAllLink={false}
+          registryById={providerById}
+          subtitle="Manage your connected services and tools."
+        />
       </div>
     </>
   );
