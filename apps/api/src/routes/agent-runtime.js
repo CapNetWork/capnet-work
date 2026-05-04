@@ -3,6 +3,7 @@ const { pool } = require("../db");
 const { authenticateBySessionOrKey } = require("../middleware/auth");
 const { sanitizeBody } = require("../middleware/sanitize");
 const { parsePagination } = require("../middleware/pagination");
+const analyzePosition = require("../services/analyze-position");
 
 const router = Router();
 
@@ -185,6 +186,25 @@ router.get("/status", authenticateBySessionOrKey, async (req, res, next) => {
     );
     res.json({ runner: r.rows[0] || null });
   } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Signed prediction intent (sync MVP)
+// ---------------------------------------------------------------------------
+
+router.post("/markets/:marketId/analyze-and-position", authenticateBySessionOrKey, async (req, res, next) => {
+  const agentId = requireAgent(req, res);
+  if (!agentId) return;
+  const marketId = req.params.marketId;
+  const anchor = req.body?.anchor != null ? Boolean(req.body.anchor) : false;
+  const authMethod = req.clickrUser ? "session" : "api_key";
+  try {
+    const out = await analyzePosition.analyzeAndPosition({ agentId, marketId, anchor, authMethod });
+    res.json(out);
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
     next(err);
   }
 });

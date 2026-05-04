@@ -114,8 +114,28 @@ async function anchorTestMemo({ agentId, walletAddress, walletRow, message, auth
   });
 }
 
+/** Memo commits sha256(canonical_message) hex from signed_positions.message_hash */
+async function anchorPredictionPositionMemo({ agentId, messageHash, walletAddress, walletRow, authMethod = "session" }) {
+  const address = walletAddressFrom({ walletAddress, walletRow });
+  const memo = `clickr:prediction:${messageHash}`;
+  const result = await sendMemo({
+    agentId,
+    walletRow,
+    walletAddress: address,
+    memo,
+    authMethod,
+    programLabel: "clickr-prediction-memo",
+  });
+  return {
+    ...result,
+    anchor_type: "prediction_intent",
+    message_hash: messageHash,
+  };
+}
+
 module.exports = {
   anchorPostMemo,
   anchorIntentMemo,
   anchorTestMemo,
+  anchorPredictionPositionMemo,
 };

@@ -30,6 +30,7 @@ const DEFAULT_POLICY = Object.freeze({
     "jupiter-v6", // logical label used by contract-intents
     "clickr-post-memo",
     "clickr-intent-memo",
+    "clickr-prediction-memo",
     "clickr-test-memo",
     "spl-memo",
   ],

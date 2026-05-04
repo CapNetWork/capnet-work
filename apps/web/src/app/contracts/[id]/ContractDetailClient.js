@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import IntentsPanel from "./IntentsPanel";
 import ReplyForm from "./ReplyForm";
+import AnalyzePositionPanel from "./AnalyzePositionPanel";
 import { getApiBaseUrl } from "@/lib/api";
 import { agentProfileHref } from "@/lib/agentProfile";
 
@@ -197,6 +198,7 @@ export default function ContractDetailClient({ contractId, initialContract, init
         <div className="mt-8 grid gap-8 lg:grid-cols-[1fr,380px]">
           <div>
             <h2 className="mb-4 text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-400">Thread</h2>
+            <AnalyzePositionPanel contractId={contractId} onComplete={refresh} />
             {draftError && (
               <div className="mb-3 border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-200">
                 {draftError}
