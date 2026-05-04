@@ -167,7 +167,7 @@ export default function IntegrationsWorkflow({ agentId, integrations, authHeader
     try {
       const cfgId = resolveRuntimeConfigId(runtimeConfigs, selectedRuntimeCfgId || undefined);
       if (!cfgId) {
-        throw new Error("No runtime config yet. Open the Go Live toolkit on the agent page and create a config.");
+        throw new Error("No runtime config yet. Open the Runtime card on the agent page and set a topic.");
       }
       const bundle = buildTelegramStarterBundle(cfgId);
       setTelegramBundle(bundle);
@@ -184,7 +184,7 @@ export default function IntegrationsWorkflow({ agentId, integrations, authHeader
       <div className="mb-4">
         <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Activation workflow</p>
         <p className="mt-1 text-sm text-zinc-400">
-          Connect rails (wallets, identity, trust, payments), then use the Go Live toolkit for posting (Telegram, CLI, OpenClaw).
+          Connect rails (wallets, identity, trust, payments), then use the Runtime card on the agent page to set a topic and start posting.
         </p>
       </div>
 
@@ -366,8 +366,8 @@ export default function IntegrationsWorkflow({ agentId, integrations, authHeader
           title="Install runtime & start posting"
           subtitle={
             runnerConnected
-              ? "Runner has sent a heartbeat. Use the Go Live toolkit for full Telegram templates, CLI commands, and live controls."
-              : "Runtime and posting are ongoing: create a config, wire Telegram or CLI, or use OpenClaw from Quick Start. Open the toolkit for everything in one place."
+              ? "Runner has sent a heartbeat. Use the Runtime card on the agent page for live controls, or copy the Telegram starter below."
+              : "Runtime and posting are ongoing: open the Runtime card on the agent page to set a topic, or wire Telegram, CLI, or OpenClaw from Quick Start."
           }
           pill="ongoing"
         >
@@ -401,10 +401,10 @@ export default function IntegrationsWorkflow({ agentId, integrations, authHeader
 
           <div className="mt-4 flex flex-wrap gap-2">
             <Link
-              href={`/dashboard/agents/${encodeURIComponent(agentId)}#go-live`}
+              href={`/dashboard/agents/${encodeURIComponent(agentId)}#runtime`}
               className="border border-[#E53935] bg-[#E53935] px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#c62828]"
             >
-              Open Go Live toolkit
+              Open Runtime card
             </Link>
             <button
               type="button"
@@ -414,19 +414,13 @@ export default function IntegrationsWorkflow({ agentId, integrations, authHeader
             >
               {busy === "telegram" ? "Copying…" : "Copy Telegram starter bundle"}
             </button>
-            <Link
-              href={`/dashboard/agents/${encodeURIComponent(agentId)}`}
-              className="border border-zinc-700 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white"
-            >
-              Open Command Center
-            </Link>
           </div>
           {telegramBundle ? (
             <div className="mt-4 border border-zinc-800 bg-[#050505] p-4">
               <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Telegram starter (last copied)</p>
               <pre className="mt-2 whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-zinc-300">{telegramBundle}</pre>
               <p className="mt-2 text-xs text-zinc-500">
-                For sources checklist, full bundle, and CLI commands, use the Go Live toolkit.
+                For full Telegram and CLI control, see the docs.
               </p>
             </div>
           ) : null}

@@ -144,6 +144,201 @@ router.patch(
 );
 
 // ---------------------------------------------------------------------------
+// Phase 1: single per-agent Runtime view
+// ---------------------------------------------------------------------------
+
+// UI cadence label <-> cadence_json mapping. "Off" only flips is_enabled
+// and leaves cadence_json untouched so re-enabling restores the prior pace.
+const CADENCE_BY_LABEL = {
+  Slow: { preset: "low", max_posts_per_day: 1 },
+  Normal: { preset: "medium", max_posts_per_day: 3 },
+  Fast: { preset: "high", max_posts_per_day: 8 },
+};
+
+function cadenceLabelFromConfig(row) {
+  if (!row) return "Off";
+  if (row.is_enabled === false) return "Off";
+  const preset = row.cadence_json?.preset;
+  if (preset === "low") return "Slow";
+  if (preset === "high") return "Fast";
+  return "Normal";
+}
+
+function topicFromConfig(row) {
+  const niche = row?.interests_json?.niche;
+  return typeof niche === "string" ? niche : "";
+}
+
+// Selection rule: for any agent, the canonical autoposter row is the
+// most recently updated, preferring is_enabled = true. Older rows are
+// ignored by the UI but left in the table for back-compat.
+async function selectCanonicalConfig(agentId, client = pool) {
+  const r = await client.query(
+    `SELECT id, agent_id, name, interests_json, cadence_json, tone, interaction_json, is_enabled, created_at, updated_at
+     FROM autoposter_configs
+     WHERE agent_id = $1
+     ORDER BY is_enabled DESC, updated_at DESC
+     LIMIT 1`,
+    [agentId]
+  );
+  return r.rows[0] || null;
+}
+
+router.get("/agent", authenticateBySessionOrKey, async (req, res, next) => {
+  const agentId = requireAgent(req, res);
+  if (!agentId) return;
+  try {
+    const [config, runnerRes, lastPostRes] = await Promise.all([
+      selectCanonicalConfig(agentId),
+      pool.query(
+        `SELECT runner_id, last_heartbeat, status_json
+         FROM agent_runner_status
+         WHERE agent_id = $1
+         LIMIT 1`,
+        [agentId]
+      ),
+      pool.query(
+        `SELECT id, content, created_at
+         FROM posts
+         WHERE agent_id = $1
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [agentId]
+      ),
+    ]);
+
+    const runner = runnerRes.rows[0] || null;
+    const lastPost = lastPostRes.rows[0] || null;
+    const isEnabled = config ? Boolean(config.is_enabled) : false;
+
+    // Status precedence: paused > live > offline.
+    let runnerStatus = "offline";
+    if (config && !isEnabled) {
+      runnerStatus = "paused";
+    } else if (runner?.last_heartbeat) {
+      const ageMs = Date.now() - new Date(runner.last_heartbeat).getTime();
+      if (ageMs >= 0 && ageMs <= 60_000) runnerStatus = "live";
+    }
+
+    res.json({
+      agent: {
+        config_id: config?.id || null,
+        topic: topicFromConfig(config),
+        cadence: cadenceLabelFromConfig(config),
+        is_enabled: isEnabled,
+        runner: {
+          status: runnerStatus,
+          last_heartbeat: runner?.last_heartbeat || null,
+          runner_id: runner?.runner_id || null,
+        },
+        last_post: lastPost
+          ? {
+              id: lastPost.id,
+              created_at: lastPost.created_at,
+              url: `/post/${lastPost.id}`,
+            }
+          : null,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch(
+  "/agent",
+  authenticateBySessionOrKey,
+  sanitizeBody(["topic"]),
+  async (req, res, next) => {
+    const agentId = requireAgent(req, res);
+    if (!agentId) return;
+
+    const hasTopic = typeof req.body?.topic === "string";
+    const topic = hasTopic ? req.body.topic.trim().slice(0, 80) : undefined;
+
+    const cadenceLabel = typeof req.body?.cadence === "string" ? req.body.cadence : undefined;
+    if (cadenceLabel !== undefined && !["Off", "Slow", "Normal", "Fast"].includes(cadenceLabel)) {
+      return res.status(400).json({ error: "cadence must be one of: Off, Slow, Normal, Fast" });
+    }
+
+    const isEnabledExplicit =
+      req.body?.is_enabled === true || req.body?.is_enabled === false ? Boolean(req.body.is_enabled) : undefined;
+
+    try {
+      const existing = await selectCanonicalConfig(agentId);
+
+      const baseInterests =
+        existing?.interests_json && typeof existing.interests_json === "object" && !Array.isArray(existing.interests_json)
+          ? { ...existing.interests_json }
+          : {};
+      const baseCadence =
+        existing?.cadence_json && typeof existing.cadence_json === "object" && !Array.isArray(existing.cadence_json)
+          ? { ...existing.cadence_json }
+          : {};
+
+      let nextInterests = baseInterests;
+      if (hasTopic) {
+        nextInterests = { ...baseInterests };
+        if (topic) nextInterests.niche = topic;
+        else delete nextInterests.niche;
+      }
+
+      let nextCadence = baseCadence;
+      let nextIsEnabled = existing ? Boolean(existing.is_enabled) : true;
+      if (cadenceLabel === "Off") {
+        nextIsEnabled = false;
+      } else if (cadenceLabel && CADENCE_BY_LABEL[cadenceLabel]) {
+        nextIsEnabled = true;
+        nextCadence = { ...baseCadence, ...CADENCE_BY_LABEL[cadenceLabel] };
+      }
+      if (isEnabledExplicit !== undefined) nextIsEnabled = isEnabledExplicit;
+
+      const newName = (() => {
+        if (existing?.name) return existing.name;
+        const label = (hasTopic && topic) || nextInterests.niche || "general";
+        return `Autoposter — ${label}`.slice(0, 120);
+      })();
+
+      let row;
+      if (existing) {
+        const upd = await pool.query(
+          `UPDATE autoposter_configs
+           SET interests_json = $1,
+               cadence_json = $2,
+               is_enabled = $3,
+               updated_at = now()
+           WHERE agent_id = $4 AND id = $5
+           RETURNING id, agent_id, name, interests_json, cadence_json, tone, interaction_json, is_enabled, created_at, updated_at`,
+          [nextInterests, nextCadence, nextIsEnabled, agentId, existing.id]
+        );
+        row = upd.rows[0];
+      } else {
+        // First-time insert. cadence_json defaults to Normal if caller did not specify.
+        if (Object.keys(nextCadence).length === 0) nextCadence = { ...CADENCE_BY_LABEL.Normal };
+        const ins = await pool.query(
+          `INSERT INTO autoposter_configs (agent_id, name, interests_json, cadence_json, is_enabled)
+           VALUES ($1, $2, $3, $4, $5)
+           RETURNING id, agent_id, name, interests_json, cadence_json, tone, interaction_json, is_enabled, created_at, updated_at`,
+          [agentId, newName, nextInterests, nextCadence, nextIsEnabled]
+        );
+        row = ins.rows[0];
+      }
+
+      res.json({
+        agent: {
+          config_id: row.id,
+          topic: topicFromConfig(row),
+          cadence: cadenceLabelFromConfig(row),
+          is_enabled: Boolean(row.is_enabled),
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
 // Runner heartbeat + status
 // ---------------------------------------------------------------------------
 
@@ -213,6 +408,12 @@ router.post("/markets/:marketId/analyze-and-position", authenticateBySessionOrKe
 // Command queue (MVP)
 // ---------------------------------------------------------------------------
 
+// Allowlist of command types accepted from clients. The DB CHECK constraint
+// is broader (queued/running/completed/failed/cancelled status, plus older
+// types like "research"/"status") but the public surface is narrowed here so
+// the dashboard never has to know about queue plumbing.
+const ALLOWED_COMMAND_TYPES = new Set(["post_now", "pause", "resume"]);
+
 router.post("/commands", authenticateBySessionOrKey, sanitizeBody([]), async (req, res, next) => {
   const agentId = requireAgent(req, res);
   if (!agentId) return;
@@ -221,6 +422,9 @@ router.post("/commands", authenticateBySessionOrKey, sanitizeBody([]), async (re
   const payload = cleanObject(req.body?.payload_json || req.body?.payload || {}, 100);
 
   if (!commandType) return res.status(400).json({ error: "command_type is required" });
+  if (!ALLOWED_COMMAND_TYPES.has(commandType)) {
+    return res.status(400).json({ error: `command_type must be one of: ${Array.from(ALLOWED_COMMAND_TYPES).join(", ")}` });
+  }
 
   try {
     // Basic safety: prevent runaway queued command spam.
@@ -323,6 +527,29 @@ router.post("/commands/:id/complete", authenticateBySessionOrKey, sanitizeBody([
       [status, Object.keys(result).length ? result : null, errorMessage, agentId, id]
     );
     if (r.rows.length === 0) return res.status(404).json({ error: "Command not found" });
+    res.json({ ok: true, command: r.rows[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete("/commands/:id", authenticateBySessionOrKey, async (req, res, next) => {
+  const agentId = requireAgent(req, res);
+  if (!agentId) return;
+  const id = req.params.id;
+  try {
+    // Only queued rows can be cancelled — once a runner has picked it up
+    // (running/completed/failed) the cancel is meaningless.
+    const r = await pool.query(
+      `UPDATE agent_commands
+       SET status = 'cancelled', completed_at = now()
+       WHERE agent_id = $1 AND id = $2 AND status = 'queued'
+       RETURNING id, status, completed_at`,
+      [agentId, id]
+    );
+    if (r.rows.length === 0) {
+      return res.status(409).json({ error: "Command is not queued or does not exist" });
+    }
     res.json({ ok: true, command: r.rows[0] });
   } catch (err) {
     next(err);

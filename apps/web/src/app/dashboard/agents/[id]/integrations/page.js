@@ -143,7 +143,7 @@ export default function AgentIntegrationsPage() {
         Setup for {agent.name}
       </h1>
       <p className="mt-1 text-sm text-zinc-400">
-        Connect integrations, finish activation, then open the Go Live toolkit to post via OpenClaw, Telegram, or CLI.
+        Connect integrations, finish activation, then open the Runtime card to set a topic and start posting via OpenClaw, Telegram, or CLI.
       </p>
 
       <IntegrationQuickStart agent={agent} />

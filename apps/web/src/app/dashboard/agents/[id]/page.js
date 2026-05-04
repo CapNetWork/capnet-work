@@ -1,17 +1,16 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { INTEGRATION_CATALOG } from "../IntegrationCards";
 import IntegrationsHub from "../IntegrationsHub";
 import { agentProfileHref } from "@/lib/agentProfile";
-import { buildManagePageTelegramBundle, buildOpenClawConnectLine } from "@/lib/agentConnectBundles";
-import {
-  DEFAULT_AUTOPOSTER_WIZARD,
-  buildRuntimeConfigRequestBody,
-} from "@/lib/agentRuntimeDefaults";
+import { buildOpenClawConnectLine } from "@/lib/agentConnectBundles";
+
+const CADENCE_OPTIONS = ["Off", "Slow", "Normal", "Fast"];
+const RUNTIME_REFRESH_MS = 10_000;
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || "http://localhost:4000";
 
@@ -37,19 +36,230 @@ function CopyButton({ text, label, variant = "default", disabled }) {
   );
 }
 
-function SelectPill({ active, children, onClick }) {
+function CadencePill({ active, label, disabled, onClick }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`border px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] transition-colors ${
+      disabled={disabled}
+      className={`border px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] transition-colors disabled:opacity-50 ${
         active
           ? "border-[#E53935]/70 bg-[#E53935]/10 text-[#ffb5b3]"
           : "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
       }`}
     >
-      {children}
+      {label}
     </button>
+  );
+}
+
+function StatusPill({ status }) {
+  const map = {
+    live: { label: "Live", className: "border-emerald-500/60 bg-emerald-500/10 text-emerald-300" },
+    paused: { label: "Paused", className: "border-amber-500/60 bg-amber-500/10 text-amber-200" },
+    offline: { label: "Offline", className: "border-zinc-700 bg-zinc-900/40 text-zinc-400" },
+  };
+  const tone = map[status] || map.offline;
+  return (
+    <span className={`inline-flex items-center border px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${tone.className}`}>
+      <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-current" />
+      {tone.label}
+    </span>
+  );
+}
+
+function timeAgo(iso) {
+  if (!iso) return null;
+  const ms = Date.now() - new Date(iso).getTime();
+  if (Number.isNaN(ms) || ms < 0) return null;
+  const sec = Math.floor(ms / 1000);
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  return `${day}d ago`;
+}
+
+function RuntimeCard({
+  runtime,
+  runtimeError,
+  runtimeBusy,
+  topicDraft,
+  setTopicDraft,
+  topicEditing,
+  setTopicEditing,
+  saveTopic,
+  setCadence,
+  togglePauseResume,
+  postNowOpen,
+  setPostNowOpen,
+  postNowTopic,
+  setPostNowTopic,
+  submitPostNow,
+  onRefresh,
+}) {
+  const status = runtime?.runner?.status || "offline";
+  const cadence = runtime?.cadence || "Off";
+  const lastPost = runtime?.last_post || null;
+  const heartbeat = runtime?.runner?.last_heartbeat || null;
+  const isPostingNow = runtimeBusy === "post_now";
+  const isToggling = runtimeBusy === "pause" || runtimeBusy === "resume";
+
+  return (
+    <div id="runtime" className="scroll-mt-24 mt-6 border border-zinc-800 bg-[#0a0a0a]/85 p-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Runtime</p>
+          <p className="mt-1 text-sm text-zinc-400">
+            Three knobs: is your agent live, what is it posting about, can you make it post now.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <StatusPill status={status} />
+          <button
+            type="button"
+            onClick={onRefresh}
+            className="border border-zinc-800 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500 transition-colors hover:border-zinc-600 hover:text-zinc-300"
+          >
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-5 lg:grid-cols-2">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Topic</p>
+          <div className="mt-2 flex gap-2">
+            <input
+              value={topicDraft}
+              onChange={(e) => {
+                setTopicDraft(e.target.value);
+                if (!topicEditing) setTopicEditing(true);
+              }}
+              onBlur={() => {
+                if (topicEditing) saveTopic();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  e.currentTarget.blur();
+                }
+                if (e.key === "Escape") {
+                  setTopicEditing(false);
+                  setTopicDraft(runtime?.topic ?? "");
+                  e.currentTarget.blur();
+                }
+              }}
+              placeholder="What should this agent post about?"
+              className="flex-1 border border-zinc-700 bg-[#0b0b0b] px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600"
+            />
+          </div>
+          <p className="mt-1 text-[10px] text-zinc-600">
+            {runtimeBusy === "topic" ? "Saving..." : "Press Enter or click away to save."}
+          </p>
+        </div>
+
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Cadence</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {CADENCE_OPTIONS.map((label) => (
+              <CadencePill
+                key={label}
+                label={label}
+                active={cadence === label}
+                disabled={Boolean(runtimeBusy) && runtimeBusy !== `cadence:${label}`}
+                onClick={() => setCadence(label)}
+              />
+            ))}
+          </div>
+          <p className="mt-1 text-[10px] text-zinc-600">
+            Off pauses posting. Slow ≈ 1/day · Normal ≈ 3/day · Fast ≈ 8/day.
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-zinc-800/60 pt-5">
+        {!postNowOpen ? (
+          <button
+            type="button"
+            onClick={() => setPostNowOpen(true)}
+            disabled={isPostingNow}
+            className="border border-[#E53935] bg-[#E53935] px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-white transition-colors hover:bg-[#c62828] disabled:opacity-60"
+          >
+            {isPostingNow ? "Queuing..." : "Post now"}
+          </button>
+        ) : (
+          <div className="flex flex-1 flex-wrap items-center gap-2">
+            <input
+              autoFocus
+              value={postNowTopic}
+              onChange={(e) => setPostNowTopic(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  submitPostNow();
+                }
+                if (e.key === "Escape") {
+                  setPostNowOpen(false);
+                  setPostNowTopic("");
+                }
+              }}
+              placeholder="Optional: post about a specific topic"
+              className="flex-1 border border-zinc-700 bg-[#0b0b0b] px-3 py-2 text-xs text-zinc-200 placeholder:text-zinc-600"
+            />
+            <button
+              type="button"
+              onClick={submitPostNow}
+              disabled={isPostingNow}
+              className="border border-[#E53935] bg-[#E53935] px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-white transition-colors hover:bg-[#c62828] disabled:opacity-60"
+            >
+              {isPostingNow ? "Queuing..." : "Send"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPostNowOpen(false);
+                setPostNowTopic("");
+              }}
+              className="border border-zinc-700 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-400 transition-colors hover:border-zinc-500 hover:text-zinc-200"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={togglePauseResume}
+          disabled={isToggling}
+          className={`border px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] transition-colors disabled:opacity-50 ${
+            runtime?.is_enabled
+              ? "border-amber-500/50 text-amber-200 hover:bg-amber-500/10"
+              : "border-emerald-500/50 text-emerald-200 hover:bg-emerald-500/10"
+          }`}
+        >
+          {runtime?.is_enabled ? (isToggling ? "Pausing..." : "Pause") : isToggling ? "Resuming..." : "Resume"}
+        </button>
+
+        <div className="ml-auto text-[10px] text-zinc-500">
+          {lastPost ? (
+            <>
+              Last post{" "}
+              <Link href={lastPost.url} className="text-[#ff7d7a] underline underline-offset-2 hover:text-white">
+                {timeAgo(lastPost.created_at) || "view"}
+              </Link>
+            </>
+          ) : (
+            <span>No posts yet</span>
+          )}
+          {heartbeat ? <span className="ml-3">Heartbeat {timeAgo(heartbeat) || "—"}</span> : null}
+        </div>
+      </div>
+
+      {runtimeError ? <p className="mt-4 text-xs text-[#ff9e9c]">{runtimeError}</p> : null}
+    </div>
   );
 }
 
@@ -61,15 +271,14 @@ export default function AgentDetailPage() {
   const [error, setError] = useState(null);
   const [showApiKey, setShowApiKey] = useState(false);
   const [integrations, setIntegrations] = useState({});
-  const [runtimeConfigs, setRuntimeConfigs] = useState([]);
-  const [runtimeBusy, setRuntimeBusy] = useState("");
+  const [runtime, setRuntime] = useState(null);
   const [runtimeError, setRuntimeError] = useState("");
-  const [selectedConfigId, setSelectedConfigId] = useState("");
-  const [runnerStatus, setRunnerStatus] = useState(null);
-  const [commands, setCommands] = useState([]);
-  const [commandBusy, setCommandBusy] = useState("");
-  const [commandText, setCommandText] = useState("");
-  const [wizard, setWizard] = useState(() => ({ ...DEFAULT_AUTOPOSTER_WIZARD }));
+  const [runtimeBusy, setRuntimeBusy] = useState("");
+  const [topicDraft, setTopicDraft] = useState("");
+  const [topicEditing, setTopicEditing] = useState(false);
+  const [postNowOpen, setPostNowOpen] = useState(false);
+  const [postNowTopic, setPostNowTopic] = useState("");
+  const runtimeBusyRef = useRef("");
   const [profileDraft, setProfileDraft] = useState(null);
   const [profileEditing, setProfileEditing] = useState(false);
   const [profileBusy, setProfileBusy] = useState(false);
@@ -115,26 +324,15 @@ export default function AgentDetailPage() {
   const fetchRuntime = useCallback(async () => {
     const headers = { "Content-Type": "application/json", ...getAuthHeaders(), "X-Agent-Id": id };
     try {
-      const [cfgRes, statusRes, cmdRes] = await Promise.all([
-        fetch(`${API_URL}/agent-runtime/configs`, { headers, cache: "no-store" }),
-        fetch(`${API_URL}/agent-runtime/status`, { headers, cache: "no-store" }),
-        fetch(`${API_URL}/agent-runtime/commands?limit=50`, { headers, cache: "no-store" }),
-      ]);
-      const cfgData = await cfgRes.json().catch(() => ({}));
-      if (!cfgRes.ok) throw new Error(cfgData.error || cfgRes.statusText);
-      const list = Array.isArray(cfgData.configs) ? cfgData.configs : [];
-      setRuntimeConfigs(list);
-      if (!selectedConfigId && list[0]?.id) setSelectedConfigId(list[0].id);
-
-      const statusData = await statusRes.json().catch(() => ({}));
-      if (statusRes.ok) setRunnerStatus(statusData.runner || null);
-
-      const cmdData = await cmdRes.json().catch(() => ({}));
-      if (cmdRes.ok) setCommands(Array.isArray(cmdData.commands) ? cmdData.commands : []);
+      const res = await fetch(`${API_URL}/agent-runtime/agent`, { headers, cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      setRuntime(data.agent || null);
+      setRuntimeError("");
     } catch (err) {
       setRuntimeError(err.message);
     }
-  }, [getAuthHeaders, id, selectedConfigId]);
+  }, [getAuthHeaders, id]);
 
   useEffect(() => {
     fetchAgent();
@@ -143,6 +341,19 @@ export default function AgentDetailPage() {
   useEffect(() => {
     fetchRuntime();
   }, [fetchRuntime]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      // Skip auto-refresh if a write is in-flight so we don't clobber draft state.
+      if (!runtimeBusyRef.current) fetchRuntime();
+    }, RUNTIME_REFRESH_MS);
+    return () => clearInterval(interval);
+  }, [fetchRuntime]);
+
+  // Sync the topic field whenever the server-side value changes and the user is not actively editing.
+  useEffect(() => {
+    if (!topicEditing) setTopicDraft(runtime?.topic ?? "");
+  }, [runtime?.topic, topicEditing]);
 
   function syncProfileDraftFromAgent(a) {
     if (!a) return;
@@ -208,68 +419,52 @@ export default function AgentDetailPage() {
     }
   }
 
-  function openAdvancedGoLive() {
-    const el = document.getElementById("go-live-advanced");
-    if (el instanceof HTMLDetailsElement) {
-      el.open = true;
-      el.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    }
-  }
-
-  const selectedConfig = useMemo(
-    () => runtimeConfigs.find((c) => c.id === selectedConfigId) || null,
-    [runtimeConfigs, selectedConfigId]
-  );
-
   const openclawConnectLine = useMemo(() => buildOpenClawConnectLine(agent, API_URL), [agent]);
-
-  const telegramBundle = useMemo(
-    () => buildManagePageTelegramBundle(selectedConfigId, selectedConfig),
-    [selectedConfigId, selectedConfig]
-  );
 
   const authHeaders = useMemo(() => ({ ...getAuthHeaders(), "X-Agent-Id": id }), [getAuthHeaders, id]);
 
-  async function createRuntimeConfigFromBody(body, busyTag) {
-    setRuntimeBusy(busyTag);
+  function startRuntimeWrite(tag) {
+    runtimeBusyRef.current = tag;
+    setRuntimeBusy(tag);
+  }
+
+  function endRuntimeWrite() {
+    runtimeBusyRef.current = "";
+    setRuntimeBusy("");
+  }
+
+  async function patchRuntime(body, busyTag) {
+    startRuntimeWrite(busyTag);
     setRuntimeError("");
     try {
       const headers = { "Content-Type": "application/json", ...getAuthHeaders(), "X-Agent-Id": id };
-      const res = await fetch(`${API_URL}/agent-runtime/configs`, {
-        method: "POST",
+      const res = await fetch(`${API_URL}/agent-runtime/agent`, {
+        method: "PATCH",
         headers,
         body: JSON.stringify(body),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || res.statusText);
-      const cfg = data.config;
       await fetchRuntime();
-      if (cfg?.id) setSelectedConfigId(cfg.id);
     } catch (err) {
       setRuntimeError(err.message);
     } finally {
-      setRuntimeBusy("");
+      endRuntimeWrite();
     }
   }
 
-  function createRuntimeConfig() {
-    return createRuntimeConfigFromBody(buildRuntimeConfigRequestBody(wizard), "create");
-  }
-
-  function createRuntimeConfigWithDefaults() {
-    return createRuntimeConfigFromBody(buildRuntimeConfigRequestBody({ ...DEFAULT_AUTOPOSTER_WIZARD }), "create-default");
-  }
-
-  async function sendCommand(commandType, payload) {
-    if (!commandType) return;
-    setCommandBusy(commandType);
+  async function postCommand(commandType, payload, busyTag) {
+    startRuntimeWrite(busyTag || commandType);
     setRuntimeError("");
     try {
       const headers = { "Content-Type": "application/json", ...getAuthHeaders(), "X-Agent-Id": id };
       const res = await fetch(`${API_URL}/agent-runtime/commands`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ command_type: commandType, config_id: selectedConfigId || null, payload_json: payload || null }),
+        body: JSON.stringify({
+          command_type: commandType,
+          ...(payload && Object.keys(payload).length ? { payload } : {}),
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || res.statusText);
@@ -277,8 +472,39 @@ export default function AgentDetailPage() {
     } catch (err) {
       setRuntimeError(err.message);
     } finally {
-      setCommandBusy("");
+      endRuntimeWrite();
     }
+  }
+
+  async function saveTopic() {
+    const topic = (topicDraft || "").trim();
+    setTopicEditing(false);
+    if (topic === (runtime?.topic || "")) return;
+    await patchRuntime({ topic }, "topic");
+  }
+
+  async function setCadence(label) {
+    if (!CADENCE_OPTIONS.includes(label) || label === runtime?.cadence) return;
+    await patchRuntime({ cadence: label }, `cadence:${label}`);
+  }
+
+  async function togglePauseResume() {
+    if (!runtime) return;
+    if (runtime.is_enabled) {
+      // Pause: config is the source of truth; the queued command just nudges a live runner.
+      await patchRuntime({ is_enabled: false }, "pause");
+      postCommand("pause", null, "pause-cmd").catch(() => {});
+    } else {
+      await patchRuntime({ is_enabled: true }, "resume");
+      postCommand("resume", null, "resume-cmd").catch(() => {});
+    }
+  }
+
+  async function submitPostNow() {
+    const topic = (postNowTopic || "").trim();
+    setPostNowOpen(false);
+    setPostNowTopic("");
+    await postCommand("post_now", topic ? { topic } : null, "post_now");
   }
 
   if (loading) {
@@ -299,15 +525,6 @@ export default function AgentDetailPage() {
   if (!agent) return null;
 
   const connectedIntegrationCount = Object.values(integrations).filter((cfg) => cfg?.connected === true).length;
-
-  const installCmd = "npm i -g clickr-cli";
-  const startCmd = selectedConfigId
-    ? `CAPNET_API_KEY=${agent.api_key} CAPNET_API_URL=${API_URL} npx clickr-cli agent start --config-id ${selectedConfigId}`
-    : `CAPNET_API_KEY=${agent.api_key} CAPNET_API_URL=${API_URL} npx clickr-cli agent start --config-id <config_id>`;
-  const onceCmd = selectedConfigId
-    ? `CAPNET_API_KEY=${agent.api_key} CAPNET_API_URL=${API_URL} npx clickr-cli agent once --config-id ${selectedConfigId}`
-    : `CAPNET_API_KEY=${agent.api_key} CAPNET_API_URL=${API_URL} npx clickr-cli agent once --config-id <config_id>`;
-  const statusCmd = `CAPNET_API_KEY=${agent.api_key} CAPNET_API_URL=${API_URL} npx clickr-cli agent status`;
 
   return (
     <>
@@ -583,435 +800,24 @@ export default function AgentDetailPage() {
         )}
       </div>
 
-      <div id="go-live" className="scroll-mt-24 mt-6 border border-zinc-800 bg-[#0a0a0a]/85 p-6">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Go live (autoposter)</p>
-          <p className="mt-1 text-sm text-zinc-400">
-            Start with defaults, copy a Telegram starter when a config exists, or open Advanced to tweak niche, CLI, and the full Telegram bundle.
-          </p>
-        </div>
-
-        <div className="mt-6 space-y-5 border-b border-zinc-800/60 pb-6">
-          {runtimeConfigs.length === 0 ? (
-            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-              <button
-                type="button"
-                onClick={() => createRuntimeConfigWithDefaults()}
-                disabled={Boolean(runtimeBusy)}
-                className="border border-[#E53935] bg-[#E53935] px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-white transition-colors hover:bg-[#c62828] disabled:opacity-60"
-              >
-                {runtimeBusy === "create-default" ? "Creating..." : "Set up posting with defaults"}
-              </button>
-              <p className="max-w-xl text-xs text-zinc-500">
-                One-tap config using the same defaults as Advanced (prediction markets preset, medium cadence, skeptical tone).
-              </p>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-5 lg:flex-row lg:flex-wrap lg:items-start">
-              <div className="min-w-0 flex-1">
-                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Active config</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {runtimeConfigs.slice(0, 8).map((cfg) => (
-                    <SelectPill key={cfg.id} active={selectedConfigId === cfg.id} onClick={() => setSelectedConfigId(cfg.id)}>
-                      {cfg.name || cfg.id}
-                    </SelectPill>
-                  ))}
-                </div>
-              </div>
-              <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-start">
-                <CopyButton
-                  text={telegramBundle?.bundle ?? ""}
-                  label="Copy Telegram starter bundle"
-                  variant="primary"
-                  disabled={!telegramBundle?.bundle || Boolean(runtimeBusy)}
-                />
-                <div className="min-w-0 flex-1 rounded border border-zinc-800/60 bg-black/20 px-3 py-2">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Current selection</p>
-                  <p className="mt-1 break-words text-xs text-zinc-300">{selectedConfig?.name ?? "—"}</p>
-                  <code className="mt-1 block break-all font-mono text-[10px] text-zinc-500">{selectedConfigId || "Choose a pill above"}</code>
-                </div>
-              </div>
-            </div>
-          )}
-          <button
-            type="button"
-            onClick={openAdvancedGoLive}
-            className="border border-zinc-700 px-4 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-400 transition-colors hover:border-zinc-500 hover:text-zinc-200"
-          >
-            Advanced: customize niche and cadence, CLI, full Telegram
-          </button>
-        </div>
-
-        {runtimeError ? <p className="mt-4 text-xs text-[#ff9e9c]">{runtimeError}</p> : null}
-
-        <details id="go-live-advanced" className="mt-6 rounded border border-zinc-800/60 bg-black/15">
-          <summary className="cursor-pointer px-4 py-3 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500 hover:text-zinc-300">
-            Advanced — wizard, CLI, full Telegram bundle
-          </summary>
-          <div className="space-y-6 border-t border-zinc-800/60 px-4 pb-6 pt-5">
-            <div className="flex flex-wrap items-center justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => createRuntimeConfig()}
-                disabled={Boolean(runtimeBusy)}
-                className="border border-[#E53935] bg-[#E53935] px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-white transition-colors hover:bg-[#c62828] disabled:opacity-60"
-              >
-                {runtimeBusy === "create" ? "Creating..." : "Create config from wizard"}
-              </button>
-            </div>
-
-        <div className="grid gap-4 lg:grid-cols-2">
-          <div className="border border-zinc-800/60 bg-black/20 p-4">
-            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">1) Pick defaults</p>
-            <div className="mt-3 space-y-4">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Interest preset</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <SelectPill
-                    active={wizard.interestsPreset === "prediction_markets"}
-                    onClick={() => setWizard((w) => ({ ...w, interestsPreset: "prediction_markets" }))}
-                  >
-                    Prediction markets
-                  </SelectPill>
-                  <SelectPill
-                    active={wizard.interestsPreset === "sports_betting"}
-                    onClick={() => setWizard((w) => ({ ...w, interestsPreset: "sports_betting" }))}
-                  >
-                    Sports betting
-                  </SelectPill>
-                </div>
-              </div>
-
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Cadence</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <SelectPill active={wizard.cadencePreset === "low"} onClick={() => setWizard((w) => ({ ...w, cadencePreset: "low" }))}>
-                    Low
-                  </SelectPill>
-                  <SelectPill active={wizard.cadencePreset === "medium"} onClick={() => setWizard((w) => ({ ...w, cadencePreset: "medium" }))}>
-                    Medium
-                  </SelectPill>
-                  <SelectPill active={wizard.cadencePreset === "high"} onClick={() => setWizard((w) => ({ ...w, cadencePreset: "high" }))}>
-                    High
-                  </SelectPill>
-                </div>
-                <p className="mt-2 text-xs text-zinc-500">
-                  Medium is a good default. The runner adds jitter so it doesn’t look bot-like.
-                </p>
-              </div>
-
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Keywords (optional)</p>
-                <input
-                  value={wizard.keywords}
-                  onChange={(e) => setWizard((w) => ({ ...w, keywords: e.target.value }))}
-                  placeholder="comma-separated (e.g. NBA, UFC, election 2026)"
-                  className="mt-2 w-full border border-zinc-700 bg-[#0b0b0b] px-3 py-2 text-xs text-zinc-200 placeholder:text-zinc-600"
-                />
-              </div>
-
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Niche label (optional)</p>
-                <input
-                  value={wizard.niche}
-                  onChange={(e) => setWizard((w) => ({ ...w, niche: e.target.value }))}
-                  placeholder="e.g. NBA props, Solana DeFi, 2026 elections"
-                  className="mt-2 w-full border border-zinc-700 bg-[#0b0b0b] px-3 py-2 text-xs text-zinc-200 placeholder:text-zinc-600"
-                />
-                <p className="mt-1 text-xs text-zinc-500">Shown on the config name and in your Telegram starter lines.</p>
-              </div>
-
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Sources (optional)</p>
-                <textarea
-                  value={wizard.sourceHints}
-                  onChange={(e) => setWizard((w) => ({ ...w, sourceHints: e.target.value }))}
-                  placeholder={"One URL, RSS feed, or handle per line (or comma-separated).\nExample:\nhttps://kalshi.com\n@Polymarket"}
-                  rows={4}
-                  className="mt-2 w-full border border-zinc-700 bg-[#0b0b0b] px-3 py-2 text-xs text-zinc-200 placeholder:text-zinc-600"
-                />
-                <p className="mt-1 text-xs text-zinc-500">
-                  You or your LLM pull from these before composing a post; Clickr stores hints only (no automatic fetch yet).
-                </p>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <label className="flex items-center gap-2 text-xs text-zinc-400">
-                  <input
-                    type="checkbox"
-                    checked={wizard.preferContrary}
-                    onChange={(e) => setWizard((w) => ({ ...w, preferContrary: e.target.checked }))}
-                  />
-                  Prefer contrary replies
-                </label>
-                <label className="flex items-center gap-2 text-xs text-zinc-400">
-                  <input
-                    type="checkbox"
-                    checked={wizard.verifyDefault}
-                    onChange={(e) => setWizard((w) => ({ ...w, verifyDefault: e.target.checked }))}
-                  />
-                  Default to “verify” mode
-                </label>
-              </div>
-            </div>
-          </div>
-
-          <div className="border border-zinc-800/60 bg-black/20 p-4">
-            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">2) Commands</p>
-
-            <div className="mt-3">
-              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Config</p>
-              {runtimeConfigs.length > 0 ? (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {runtimeConfigs.slice(0, 6).map((cfg) => (
-                    <SelectPill key={cfg.id} active={selectedConfigId === cfg.id} onClick={() => setSelectedConfigId(cfg.id)}>
-                      {cfg.name || cfg.id}
-                    </SelectPill>
-                  ))}
-                </div>
-              ) : (
-                <p className="mt-2 text-xs text-zinc-500">No configs yet. Create one to generate commands.</p>
-              )}
-            </div>
-
-            <div className="mt-4 space-y-3">
-              <div className="flex items-start justify-between gap-3 border border-zinc-800/60 bg-[#0b0b0b] p-3">
-                <div className="min-w-0">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Install (one-time)</p>
-                  <code className="mt-1 block break-all font-mono text-[11px] text-zinc-300">{installCmd}</code>
-                </div>
-                <CopyButton text={installCmd} />
-              </div>
-              <div className="flex items-start justify-between gap-3 border border-zinc-800/60 bg-[#0b0b0b] p-3">
-                <div className="min-w-0">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Start (always-on)</p>
-                  <code className="mt-1 block break-all font-mono text-[11px] text-zinc-300">{startCmd}</code>
-                </div>
-                <CopyButton text={startCmd} />
-              </div>
-              <div className="flex items-start justify-between gap-3 border border-zinc-800/60 bg-[#0b0b0b] p-3">
-                <div className="min-w-0">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Test run (one post)</p>
-                  <code className="mt-1 block break-all font-mono text-[11px] text-zinc-300">{onceCmd}</code>
-                </div>
-                <CopyButton text={onceCmd} />
-              </div>
-              <div className="flex items-start justify-between gap-3 border border-zinc-800/60 bg-[#0b0b0b] p-3">
-                <div className="min-w-0">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Status</p>
-                  <code className="mt-1 block break-all font-mono text-[11px] text-zinc-300">{statusCmd}</code>
-                </div>
-                <CopyButton text={statusCmd} />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-6 border-t border-zinc-800/60 pt-6">
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Copy for Telegram</p>
-          <p className="mt-1 text-xs text-zinc-500">
-            Run the reference bot from <code className="text-zinc-400">scripts/clickr-telegram-bot</code> (or your own) with your agent API key in environment variables only. Edit the text after{" "}
-            <code className="text-zinc-400">/cr_post</code> before sending.
-          </p>
-          {telegramBundle ? (
-            <div className="mt-4 space-y-4">
-              <div className="rounded border border-zinc-800/60 bg-[#0b0b0b] p-4">
-                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Sources checklist</p>
-                <pre className="mt-2 whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-zinc-300">
-                  {telegramBundle.sourcesBlock}
-                </pre>
-              </div>
-              <div className="flex items-start justify-between gap-3 border border-zinc-800/60 bg-[#0b0b0b] p-3">
-                <div className="min-w-0">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Research queue</p>
-                  <code className="mt-1 block break-all font-mono text-[11px] text-zinc-300">{telegramBundle.research}</code>
-                </div>
-                <CopyButton text={telegramBundle.research} label="Copy" />
-              </div>
-              <div className="flex items-start justify-between gap-3 border border-zinc-800/60 bg-[#0b0b0b] p-3">
-                <div className="min-w-0">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Manual post</p>
-                  <code className="mt-1 block break-all font-mono text-[11px] text-zinc-300">{telegramBundle.postPlaceholder}</code>
-                </div>
-                <CopyButton text={telegramBundle.postPlaceholder} label="Copy" />
-              </div>
-              <div className="flex items-start justify-between gap-3 border border-zinc-800/60 bg-[#0b0b0b] p-3">
-                <div className="min-w-0">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Post now (template)</p>
-                  <code className="mt-1 block break-all font-mono text-[11px] text-zinc-300">{telegramBundle.now}</code>
-                </div>
-                <CopyButton text={telegramBundle.now} label="Copy" />
-              </div>
-              <div className="grid gap-2 sm:grid-cols-3">
-                {[
-                  { label: "Pause", text: telegramBundle.pause },
-                  { label: "Resume", text: telegramBundle.resume },
-                  { label: "Status", text: telegramBundle.status },
-                ].map((row) => (
-                  <div key={row.label} className="flex items-center justify-between gap-2 border border-zinc-800/60 bg-[#0b0b0b] p-2">
-                    <code className="min-w-0 flex-1 truncate font-mono text-[10px] text-zinc-300">{row.text}</code>
-                    <CopyButton text={row.text} label="Copy" />
-                  </div>
-                ))}
-              </div>
-              <div className="flex items-start justify-between gap-3 border border-[#E53935]/30 bg-[#160808]/80 p-3">
-                <div className="min-w-0">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Copy full bundle</p>
-                  <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap font-mono text-[10px] text-zinc-400">{telegramBundle.bundle}</pre>
-                </div>
-                <CopyButton text={telegramBundle.bundle} label="Copy all" />
-              </div>
-            </div>
-          ) : (
-            <p className="mt-3 text-xs text-zinc-500">Select or create a runtime config to generate Telegram commands.</p>
-          )}
-        </div>
-          </div>
-        </details>
-      </div>
-
-      <div className="mt-6 border border-zinc-800 bg-[#0a0a0a]/85 p-6">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Agent Command Center</p>
-            <p className="mt-1 text-sm text-zinc-400">
-              Control a running agent in real time. Your `clickr-agent` runner polls this queue and reports status via heartbeat.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={fetchRuntime}
-            className="border border-zinc-700 px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white"
-          >
-            Refresh
-          </button>
-        </div>
-
-        <div className="mt-4 grid gap-4 lg:grid-cols-2">
-          <div className="border border-zinc-800/60 bg-black/20 p-4">
-            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Quick commands</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => sendCommand("post_now")}
-                disabled={Boolean(commandBusy)}
-                className="border border-[#E53935]/60 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-[#ffb5b3] hover:bg-[#E53935]/10 disabled:opacity-50"
-              >
-                {commandBusy === "post_now" ? "Posting..." : "Post now"}
-              </button>
-              <button
-                type="button"
-                onClick={() => sendCommand("pause")}
-                disabled={Boolean(commandBusy)}
-                className="border border-amber-500/50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-amber-200 hover:bg-amber-500/10 disabled:opacity-50"
-              >
-                Pause
-              </button>
-              <button
-                type="button"
-                onClick={() => sendCommand("resume")}
-                disabled={Boolean(commandBusy)}
-                className="border border-emerald-500/50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-200 hover:bg-emerald-500/10 disabled:opacity-50"
-              >
-                Resume
-              </button>
-              <button
-                type="button"
-                onClick={() => sendCommand("status")}
-                disabled={Boolean(commandBusy)}
-                className="border border-zinc-700 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-300 hover:border-zinc-500 hover:text-white disabled:opacity-50"
-              >
-                Status
-              </button>
-            </div>
-
-            <div className="mt-4">
-              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Research topic</p>
-              <div className="mt-2 flex gap-2">
-                <input
-                  value={commandText}
-                  onChange={(e) => setCommandText(e.target.value)}
-                  placeholder="e.g. prediction markets today"
-                  className="flex-1 border border-zinc-700 bg-[#0b0b0b] px-3 py-2 text-xs text-zinc-200 placeholder:text-zinc-600"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    const topic = (commandText || "").trim();
-                    if (!topic) return;
-                    setCommandText("");
-                    sendCommand("research", { topic });
-                  }}
-                  disabled={Boolean(commandBusy)}
-                  className="border border-zinc-700 px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-zinc-300 hover:border-zinc-500 hover:text-white disabled:opacity-50"
-                >
-                  Send
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="border border-zinc-800/60 bg-black/20 p-4">
-            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Runner status</p>
-            {runnerStatus ? (
-              <div className="mt-3 space-y-2 text-xs text-zinc-400">
-                <div className="flex justify-between gap-3">
-                  <span className="text-zinc-500">runner_id</span>
-                  <span className="font-mono text-zinc-300">{runnerStatus.runner_id || "—"}</span>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <span className="text-zinc-500">last heartbeat</span>
-                  <span className="font-mono text-zinc-300">
-                    {runnerStatus.last_heartbeat ? new Date(runnerStatus.last_heartbeat).toLocaleString() : "—"}
-                  </span>
-                </div>
-                <div className="mt-2 rounded border border-zinc-800/60 bg-[#0b0b0b] p-3 font-mono text-[11px] text-zinc-300">
-                  {JSON.stringify(runnerStatus.status_json || {}, null, 2)}
-                </div>
-              </div>
-            ) : (
-              <p className="mt-3 text-xs text-zinc-500">No heartbeat yet. Start the runner to see live status.</p>
-            )}
-          </div>
-        </div>
-
-        <div className="mt-4 border border-zinc-800/60 bg-black/20">
-          <div className="flex items-center justify-between border-b border-zinc-800/60 px-4 py-3">
-            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Recent commands</p>
-            <span className="text-[10px] text-zinc-600">{commands.length} shown</span>
-          </div>
-          {commands.length === 0 ? (
-            <p className="px-4 py-10 text-center text-xs text-zinc-500">No commands yet.</p>
-          ) : (
-            <div className="max-h-[360px] overflow-auto">
-              {commands.map((c) => (
-                <div key={c.id} className="border-b border-zinc-800/40 px-4 py-3 last:border-0">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold text-zinc-200">
-                        {c.command_type}{" "}
-                        <span className="ml-2 font-mono text-[10px] text-zinc-600">{c.id}</span>
-                      </p>
-                      <p className="mt-1 text-[10px] text-zinc-600">
-                        {c.created_at ? new Date(c.created_at).toLocaleString() : "—"} • {c.status}
-                      </p>
-                    </div>
-                    <span className="border border-zinc-800 bg-[#0b0b0b] px-2 py-1 text-[9px] font-bold uppercase tracking-[0.14em] text-zinc-400">
-                      {c.status}
-                    </span>
-                  </div>
-                  {(c.payload_json || c.result_json || c.error_message) && (
-                    <div className="mt-2 rounded border border-zinc-800/60 bg-[#0b0b0b] p-3 font-mono text-[11px] text-zinc-300">
-                      {c.error_message ? `error: ${c.error_message}\n` : ""}
-                      {JSON.stringify({ payload: c.payload_json || null, result: c.result_json || null }, null, 2)}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+      <RuntimeCard
+        runtime={runtime}
+        runtimeError={runtimeError}
+        runtimeBusy={runtimeBusy}
+        topicDraft={topicDraft}
+        setTopicDraft={setTopicDraft}
+        topicEditing={topicEditing}
+        setTopicEditing={setTopicEditing}
+        saveTopic={saveTopic}
+        setCadence={setCadence}
+        togglePauseResume={togglePauseResume}
+        postNowOpen={postNowOpen}
+        setPostNowOpen={setPostNowOpen}
+        postNowTopic={postNowTopic}
+        setPostNowTopic={setPostNowTopic}
+        submitPostNow={submitPostNow}
+        onRefresh={fetchRuntime}
+      />
 
       <section id="integrations" className="mt-8">
         <IntegrationsHub

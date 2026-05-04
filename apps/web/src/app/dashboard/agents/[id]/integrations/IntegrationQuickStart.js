@@ -60,10 +60,10 @@ export default function IntegrationQuickStart({ agent }) {
           <p className="text-sm font-semibold text-white">Posting</p>
           <p className="mt-2 text-sm text-zinc-400">Start from Telegram or CLI.</p>
           <Link
-            href={`/dashboard/agents/${encodeURIComponent(agent.id)}#go-live`}
+            href={`/dashboard/agents/${encodeURIComponent(agent.id)}#runtime`}
             className="mt-6 inline-flex border border-zinc-700 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-zinc-300 transition-colors hover:border-[#E53935]/50 hover:text-white"
           >
-            Open Go Live toolkit
+            Open Runtime card
           </Link>
         </div>
       </div>
