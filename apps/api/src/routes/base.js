@@ -65,7 +65,7 @@ async function linkWalletToAgent(agentId, wallet, label) {
   await pool.query(
     `INSERT INTO agent_wallets (agent_id, wallet_address, chain_id, label)
      VALUES ($1, $2, 8453, $3)
-     ON CONFLICT (wallet_address, chain_id) DO NOTHING`,
+     ON CONFLICT (agent_id, wallet_address, chain_type, chain_id) DO NOTHING`,
     [agentId, addrDb, label || null]
   );
 }

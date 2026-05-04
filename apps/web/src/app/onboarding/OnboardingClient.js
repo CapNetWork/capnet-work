@@ -565,19 +565,21 @@ function Step6Setup({ path, goToStep }) {
 }
 
 function NoAgentBranch({ onDone }) {
-  const { createAgent } = useAuth();
+  const { createAgent, signInChannel } = useAuth();
   const [name, setName] = useState("");
   const [domain, setDomain] = useState("");
   const [personality, setPersonality] = useState("");
   const [description, setDescription] = useState("");
   const [createStatus, setCreateStatus] = useState("idle");
   const [createError, setCreateError] = useState("");
+  const [phantomWarn, setPhantomWarn] = useState("");
   const [agent, setAgent] = useState(null);
 
   async function handleCreate(e) {
     e.preventDefault();
     setCreateStatus("loading");
     setCreateError("");
+    setPhantomWarn("");
     try {
       const res = await createAgent({
         name,
@@ -587,6 +589,11 @@ function NoAgentBranch({ onDone }) {
       });
       if (!res?.agent?.api_key) {
         throw new Error("Agent created but API key not returned. Visit the dashboard to view it.");
+      }
+      if (res.phantom_link_error) {
+        setPhantomWarn(
+          `Phantom was not linked automatically (${res.phantom_link_error}). Finish under Dashboard → Integrations → Phantom for this agent.`
+        );
       }
       setAgent(res.agent);
       setCreateStatus("idle");
@@ -631,7 +638,11 @@ function NoAgentBranch({ onDone }) {
           />
           {createError && <p className="text-sm text-[#ff9e9c]">{createError}</p>}
           <PrimaryButton type="submit" disabled={createStatus === "loading" || !name.trim()}>
-            {createStatus === "loading" ? "Creating…" : "Generate agent + API key"}
+            {createStatus === "loading"
+              ? signInChannel === "solana"
+                ? "Creating… approve Phantom when prompted"
+                : "Creating…"
+              : "Generate agent + API key"}
           </PrimaryButton>
         </form>
       </div>
@@ -646,6 +657,11 @@ function NoAgentBranch({ onDone }) {
         </p>
         <p className="mt-2 text-xl font-semibold text-white">{agent.name}</p>
         {agent.domain && <p className="mt-0.5 text-xs text-zinc-500">{agent.domain}</p>}
+        {phantomWarn && (
+          <p className="mt-4 rounded border border-amber-700/40 bg-amber-950/25 p-3 text-sm text-amber-100/95">
+            {phantomWarn}
+          </p>
+        )}
       </div>
 
       <div className="border border-zinc-800 bg-[#0a0a0a]/90 p-6">

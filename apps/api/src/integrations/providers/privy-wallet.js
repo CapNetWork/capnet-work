@@ -45,7 +45,7 @@ async function connect(agentId, input = {}) {
     `INSERT INTO agent_wallets (agent_id, wallet_address, chain_id, chain_type, custody_type,
                                 provider_wallet_id, provider_policy_id, label, policy_json)
      VALUES ($1, $2, $3, $4, 'privy', $5, $6, $7, $8::jsonb)
-     ON CONFLICT (wallet_address, chain_type, chain_id)
+     ON CONFLICT (agent_id, wallet_address, chain_type, chain_id)
        DO UPDATE SET provider_wallet_id = EXCLUDED.provider_wallet_id,
                      policy_json        = COALESCE(agent_wallets.policy_json, EXCLUDED.policy_json)
      RETURNING id, agent_id, wallet_address, chain_type, custody_type,

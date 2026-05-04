@@ -132,7 +132,7 @@ async function findOrCreateUserByWallet(walletAddress, chainId) {
   }
 }
 
-async function createSession(userId) {
+async function createSession(userId, { sign_in_channel = null, sign_in_wallet_address = null } = {}) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -142,8 +142,9 @@ async function createSession(userId) {
     const tokenHash = hashToken(rawToken);
     const expiresAt = new Date(Date.now() + SESSION_DAYS * 864e5);
     await client.query(
-      `INSERT INTO clickr_sessions (user_id, token_hash, expires_at) VALUES ($1, $2, $3)`,
-      [userId, tokenHash, expiresAt]
+      `INSERT INTO clickr_sessions (user_id, token_hash, expires_at, sign_in_channel, sign_in_wallet_address)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [userId, tokenHash, expiresAt, sign_in_channel, sign_in_wallet_address]
     );
     await client.query("COMMIT");
     return { session_token: rawToken, expires_at: expiresAt.toISOString() };
@@ -164,6 +165,10 @@ function requireSession() {
       });
     }
     req.clickrUser = resolved.user;
+    req.clickrSession = {
+      sign_in_channel: resolved.sign_in_channel,
+      sign_in_wallet_address: resolved.sign_in_wallet_address,
+    };
     next();
   };
 }
@@ -198,7 +203,7 @@ router.post("/google", authLimiter, async (req, res, next) => {
     });
     if (!user) return res.status(500).json({ error: "Failed to resolve user" });
 
-    const session = await createSession(user.id);
+    const session = await createSession(user.id, { sign_in_channel: "google" });
     return res.json({ user, ...session });
   } catch (err) {
     if (err.message?.includes("Token used too late") || err.message?.includes("Invalid token")) {
@@ -234,7 +239,7 @@ router.post("/apple", authLimiter, async (req, res, next) => {
     });
     if (!user) return res.status(500).json({ error: "Failed to resolve user" });
 
-    const session = await createSession(user.id);
+    const session = await createSession(user.id, { sign_in_channel: "apple" });
     return res.json({ user, ...session });
   } catch (err) {
     if (err.message?.includes("expired") || err.message?.includes("invalid")) {
@@ -331,7 +336,10 @@ router.post("/solana/verify", authLimiter, async (req, res, next) => {
     const user = await findOrCreateUserByWallet(walletAddress, SOLANA_CHAIN_ID);
     if (!user) return res.status(500).json({ error: "Failed to resolve user" });
 
-    const session = await createSession(user.id);
+    const session = await createSession(user.id, {
+      sign_in_channel: "solana",
+      sign_in_wallet_address: walletAddress,
+    });
     return res.json({ ok: true, user, wallet_address: walletAddress, ...session });
   } catch (err) {
     next(err);
@@ -353,7 +361,10 @@ router.post("/wallet", authLimiter, async (req, res, next) => {
     const user = await findOrCreateUserByWallet(result.wallet, result.chainId);
     if (!user) return res.status(500).json({ error: "Failed to resolve user" });
 
-    const session = await createSession(user.id);
+    const session = await createSession(user.id, {
+      sign_in_channel: "siwe",
+      sign_in_wallet_address: addressForDb(result.wallet),
+    });
     return res.json({
       user,
       wallet_address: result.wallet,
@@ -420,6 +431,8 @@ router.get("/me", needSession, async (req, res, next) => {
       user: req.clickrUser,
       agents: agents.rows,
       wallets: wallets.rows,
+      sign_in_channel: req.clickrSession?.sign_in_channel ?? null,
+      sign_in_wallet_address: req.clickrSession?.sign_in_wallet_address ?? null,
     });
   } catch (err) {
     next(err);
@@ -671,7 +684,7 @@ router.post("/me/agents/:agentId/wallets", needSession, async (req, res, next) =
       const r = await pool.query(
         `INSERT INTO agent_wallets (agent_id, wallet_address, chain_id, chain_type, custody_type, label)
          VALUES ($1, $2, 0, 'solana', $3, $4)
-         ON CONFLICT (wallet_address, chain_type, chain_id)
+         ON CONFLICT (agent_id, wallet_address, chain_type, chain_id)
            DO UPDATE SET label = COALESCE(EXCLUDED.label, agent_wallets.label)
          RETURNING id, wallet_address, chain_id, chain_type, custody_type, label, linked_at`,
         [agentId, addr, custodyType, label]
@@ -688,7 +701,7 @@ router.post("/me/agents/:agentId/wallets", needSession, async (req, res, next) =
     const r = await pool.query(
       `INSERT INTO agent_wallets (agent_id, wallet_address, chain_id, chain_type, custody_type, label)
        VALUES ($1, $2, $3, 'evm', 'linked', $4)
-       ON CONFLICT (wallet_address, chain_type, chain_id)
+       ON CONFLICT (agent_id, wallet_address, chain_type, chain_id)
          DO UPDATE SET label = COALESCE(EXCLUDED.label, agent_wallets.label)
        RETURNING id, wallet_address, chain_id, chain_type, custody_type, label, linked_at`,
       [agentId, addrDb, chainId, label]

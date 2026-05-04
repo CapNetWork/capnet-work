@@ -17,21 +17,34 @@ function parseConnectSessionHeader(req) {
 }
 
 /**
- * @returns {Promise<{ user: object }|null>}
+ * @returns {Promise<{ user: object, rawToken: string, sign_in_channel: string|null, sign_in_wallet_address: string|null }|null>}
  */
 async function resolveConnectSession(req) {
   const raw = parseConnectSessionHeader(req);
   if (!raw) return null;
   const tokenHash = hashToken(raw);
   const r = await pool.query(
-    `SELECT u.id, u.email, u.email_verified_at, u.created_at
+    `SELECT u.id, u.email, u.email_verified_at, u.created_at,
+            s.sign_in_channel, s.sign_in_wallet_address
      FROM clickr_sessions s
      JOIN clickr_users u ON u.id = s.user_id
      WHERE s.token_hash = $1 AND s.expires_at > now()`,
     [tokenHash]
   );
   if (r.rows.length === 0) return null;
-  return { user: r.rows[0], rawToken: raw };
+  const row = r.rows[0];
+  const user = {
+    id: row.id,
+    email: row.email,
+    email_verified_at: row.email_verified_at,
+    created_at: row.created_at,
+  };
+  return {
+    user,
+    rawToken: raw,
+    sign_in_channel: row.sign_in_channel ?? null,
+    sign_in_wallet_address: row.sign_in_wallet_address ?? null,
+  };
 }
 
 function requireConnectSession() {
@@ -44,6 +57,10 @@ function requireConnectSession() {
       });
     }
     req.clickrUser = resolved.user;
+    req.clickrSession = {
+      sign_in_channel: resolved.sign_in_channel,
+      sign_in_wallet_address: resolved.sign_in_wallet_address,
+    };
     next();
   };
 }

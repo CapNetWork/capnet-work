@@ -7,26 +7,33 @@ import { useAuth } from "@/context/AuthContext";
 import { agentProfileHref } from "@/lib/agentProfile";
 
 function CreateAgentForm({ onDone }) {
-  const { createAgent } = useAuth();
+  const { createAgent, signInChannel } = useAuth();
   const [name, setName] = useState("");
   const [domain, setDomain] = useState("");
   const [personality, setPersonality] = useState("");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState("");
-
   async function handleSubmit(e) {
     e.preventDefault();
     setStatus("loading");
     setError("");
     try {
-      await createAgent({ name, domain: domain || undefined, personality: personality || undefined, description: description || undefined });
+      const res = await createAgent({
+        name,
+        domain: domain || undefined,
+        personality: personality || undefined,
+        description: description || undefined,
+      });
       setName("");
       setDomain("");
       setPersonality("");
       setDescription("");
       setStatus("idle");
-      onDone?.();
+      const notice = res?.phantom_link_error
+        ? `Phantom was not linked automatically (${res.phantom_link_error}). Open the new agent in the dashboard and use Integrations → Phantom to finish.`
+        : undefined;
+      onDone?.(notice);
     } catch (err) {
       setError(err.message);
       setStatus("idle");
@@ -67,7 +74,11 @@ function CreateAgentForm({ onDone }) {
         disabled={status === "loading" || !name.trim()}
         className="w-full border border-[#E53935] bg-[#E53935] px-4 py-2.5 text-xs font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#c62828] disabled:opacity-50"
       >
-        {status === "loading" ? "Creating..." : "Create agent"}
+        {status === "loading"
+          ? signInChannel === "solana"
+            ? "Creating… approve Phantom when prompted"
+            : "Creating..."
+          : "Create agent"}
       </button>
     </form>
   );
@@ -121,6 +132,7 @@ export default function AgentsPage() {
   const initialAction = searchParams.get("action");
   const [showCreate, setShowCreate] = useState(initialAction === "create");
   const [showLink, setShowLink] = useState(initialAction === "link");
+  const [postCreateNotice, setPostCreateNotice] = useState("");
 
   return (
     <>
@@ -134,7 +146,14 @@ export default function AgentsPage() {
         <div className="flex gap-2">
           <button
             type="button"
-            onClick={() => { setShowCreate((v) => !v); setShowLink(false); }}
+            onClick={() => {
+              setShowCreate((v) => {
+                const next = !v;
+                if (next) setPostCreateNotice("");
+                return next;
+              });
+              setShowLink(false);
+            }}
             className={`border px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] transition-colors ${
               showCreate
                 ? "border-[#E53935] bg-[#E53935]/15 text-[#ffb5b3]"
@@ -157,10 +176,21 @@ export default function AgentsPage() {
         </div>
       </div>
 
+      {postCreateNotice && (
+        <div className="mt-4 rounded border border-amber-700/50 bg-amber-950/30 px-4 py-3 text-sm text-amber-100/95">
+          {postCreateNotice}
+        </div>
+      )}
+
       {showCreate && (
         <div className="mt-6 border border-zinc-800 bg-[#0a0a0a]/85 p-6">
           <p className="mb-4 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Create new agent</p>
-          <CreateAgentForm onDone={() => setShowCreate(false)} />
+          <CreateAgentForm
+            onDone={(notice) => {
+              setShowCreate(false);
+              if (notice) setPostCreateNotice(notice);
+            }}
+          />
         </div>
       )}
 

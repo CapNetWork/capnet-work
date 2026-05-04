@@ -185,31 +185,14 @@ async function connect(agentId, input = {}) {
   await consumePhantomNonce({ nonce, agentId, walletAddress, message });
 
   try {
-    const existing = await pool.query(
-      `SELECT id, agent_id FROM agent_wallets
-       WHERE wallet_address = $1 AND chain_type = 'solana' AND chain_id = 0`,
-      [walletAddress]
-    );
-    if (existing.rows.length > 0 && existing.rows[0].agent_id !== agentId) {
-      const err = new Error("This wallet address is already linked to another agent");
-      err.code = "PHANTOM_WALLET_TAKEN";
-      throw err;
-    }
-
     const r = await pool.query(
       `INSERT INTO agent_wallets (agent_id, wallet_address, chain_id, chain_type, custody_type, label)
        VALUES ($1, $2, 0, 'solana', 'phantom', $3)
-       ON CONFLICT (wallet_address, chain_type, chain_id)
+       ON CONFLICT (agent_id, wallet_address, chain_type, chain_id)
        DO UPDATE SET label = COALESCE(EXCLUDED.label, agent_wallets.label)
-       WHERE agent_wallets.agent_id = EXCLUDED.agent_id
        RETURNING id, wallet_address, agent_id`,
       [agentId, walletAddress, input.label || null]
     );
-    if (r.rows.length === 0) {
-      const err = new Error("This wallet address is already linked to another agent");
-      err.code = "PHANTOM_WALLET_TAKEN";
-      throw err;
-    }
     const row = r.rows[0];
 
     await persistPhantomProof(agentId, { walletAddress, nonce, signature, message });
@@ -231,10 +214,9 @@ async function connect(agentId, input = {}) {
       wallet: { id: row.id, wallet_address: row.wallet_address, chain_type: "solana", custody_type: "phantom" },
     };
   } catch (err) {
-    if (err.code === "PHANTOM_WALLET_TAKEN") throw err;
     if (err.code === "23505") {
-      const e = new Error("Wallet conflict — address may belong to another agent");
-      e.code = "PHANTOM_WALLET_TAKEN";
+      const e = new Error("Wallet conflict on this agent");
+      e.code = "PHANTOM_WALLET_CONFLICT";
       throw e;
     }
     throw err;
@@ -373,7 +355,7 @@ function mapConnectError(err) {
   if (!err) return null;
   if (err.code === "PHANTOM_BAD_ADDRESS") return { status: 400, error: err.message };
   if (err.code === "PHANTOM_AGENT_MISMATCH") return { status: 400, error: err.message };
-  if (err.code === "PHANTOM_WALLET_TAKEN") return { status: 409, error: err.message };
+  if (err.code === "PHANTOM_WALLET_CONFLICT") return { status: 409, error: err.message };
   if (err.code === "PHANTOM_NOT_IMPLEMENTED") return { status: 501, error: err.message };
   if (err.code === "PHANTOM_MISSING_PROOF") return { status: 400, error: err.message };
   if (err.code === "PHANTOM_NONCE_EXPIRED") return { status: 400, error: err.message };

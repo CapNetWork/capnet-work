@@ -32,12 +32,72 @@ async function apiGet(path, headers = {}) {
   return data;
 }
 
+/** Same flow as dashboard Phantom connect: nonce → signMessage → connect (session + X-Agent-Id). */
+async function linkPhantomWalletToAgent({ sessionToken, agentId, sessionWalletAddress }) {
+  const provider =
+    typeof window !== "undefined" ? window?.phantom?.solana || window?.solana || null : null;
+  if (!provider?.isPhantom) {
+    throw new Error("Phantom not detected. Install Phantom or open this page in Phantom’s browser.");
+  }
+  const connectRes = await provider.connect();
+  const pubkey =
+    connectRes?.publicKey?.toString?.() || provider?.publicKey?.toString?.() || "";
+  if (!pubkey) throw new Error("Phantom did not return a public key.");
+  if (sessionWalletAddress) {
+    const a = String(sessionWalletAddress).trim();
+    const b = String(pubkey).trim();
+    if (a !== b && a.toLowerCase() !== b.toLowerCase()) {
+      throw new Error("Use the same Phantom wallet you signed in with.");
+    }
+  }
+
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: `Session ${sessionToken}`,
+    "X-Agent-Id": agentId,
+  };
+  const nonceRes = await fetch(`${API_URL}/integrations/phantom_wallet/nonce`, {
+    method: "POST",
+    headers,
+    cache: "no-store",
+    body: JSON.stringify({ agent_id: agentId, wallet_address: pubkey }),
+  });
+  const nonceData = await nonceRes.json().catch(() => ({}));
+  if (!nonceRes.ok) throw new Error(nonceData.error || nonceRes.statusText);
+
+  const message = String(nonceData?.message || "");
+  const nonce = String(nonceData?.nonce || "");
+  if (!message || !nonce) throw new Error("Nonce response missing message/nonce.");
+
+  const encoder = new TextEncoder();
+  const signed = await provider.signMessage(encoder.encode(message), "utf8");
+  const sigBytes = signed?.signature || signed;
+  if (!sigBytes) throw new Error("Phantom did not return a signature.");
+  const signatureBase64 = btoa(String.fromCharCode(...new Uint8Array(sigBytes)));
+
+  const res = await fetch(`${API_URL}/integrations/phantom_wallet/connect`, {
+    method: "POST",
+    headers,
+    cache: "no-store",
+    body: JSON.stringify({
+      wallet_address: pubkey,
+      nonce,
+      message,
+      signature: signatureBase64,
+    }),
+  });
+  const connectData = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(connectData.error || res.statusText);
+}
+
 export function AuthProvider({ children }) {
   const [sessionToken, setSessionToken] = useState(null);
   const [user, setUser] = useState(null);
   const [agents, setAgents] = useState([]);
   const [wallets, setWallets] = useState([]);
   const [activeAgentId, setActiveAgentId] = useState(null);
+  const [signInChannel, setSignInChannel] = useState(null);
+  const [signInWalletAddress, setSignInWalletAddress] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -58,6 +118,8 @@ export function AuthProvider({ children }) {
       setUser(data.user);
       setAgents(data.agents || []);
       setWallets(data.wallets || []);
+      setSignInChannel(data.sign_in_channel ?? null);
+      setSignInWalletAddress(data.sign_in_wallet_address ?? null);
       if (data.agents?.length === 1) {
         setActiveAgentId(data.agents[0].id);
       }
@@ -67,6 +129,8 @@ export function AuthProvider({ children }) {
       setUser(null);
       setAgents([]);
       setWallets([]);
+      setSignInChannel(null);
+      setSignInWalletAddress(null);
     }
   }, []);
 
@@ -196,6 +260,8 @@ export function AuthProvider({ children }) {
     setAgents([]);
     setWallets([]);
     setActiveAgentId(null);
+    setSignInChannel(null);
+    setSignInWalletAddress(null);
     setError(null);
   }, [sessionToken]);
 
@@ -226,14 +292,37 @@ export function AuthProvider({ children }) {
       setError(null);
       try {
         const data = await apiPost("/auth/me/agents", { name, domain, personality, description }, authHeaders);
+        const agent = data?.agent;
+        if (!agent?.id) {
+          await hydrate(sessionToken);
+          return data;
+        }
+        setActiveAgentId(agent.id);
+
+        let phantom_link_error = null;
+        if (signInChannel === "solana" && sessionToken) {
+          try {
+            await linkPhantomWalletToAgent({
+              sessionToken,
+              agentId: agent.id,
+              sessionWalletAddress: signInWalletAddress,
+            });
+          } catch (e) {
+            phantom_link_error = e?.message || "Phantom link failed";
+            setError(
+              `Agent created. ${phantom_link_error} Finish linking Phantom under Dashboard → Integrations for this agent.`
+            );
+          }
+        }
+
         await hydrate(sessionToken);
-        return data;
+        return { ...data, phantom_link_error };
       } catch (err) {
         setError(err.message);
         throw err;
       }
     },
-    [authHeaders, sessionToken, hydrate]
+    [authHeaders, sessionToken, hydrate, signInChannel, signInWalletAddress]
   );
 
   const refreshAgents = useCallback(async () => {
@@ -264,6 +353,8 @@ export function AuthProvider({ children }) {
       loading,
       error,
       isSignedIn: !!user,
+      signInChannel,
+      signInWalletAddress,
       authHeaders,
       getAuthHeaders,
       signInWithGoogle,
@@ -282,6 +373,7 @@ export function AuthProvider({ children }) {
     }),
     [
       user, agents, wallets, activeAgent, activeAgentId, sessionToken,
+      signInChannel, signInWalletAddress,
       loading, error, authHeaders, getAuthHeaders,
       signInWithGoogle, signInWithApple, signInWithWallet,
       signInWithPhantom,
@@ -296,8 +388,10 @@ export function AuthProvider({ children }) {
 const GUEST_CTX = {
   user: null, agents: [], wallets: [], activeAgent: null, activeAgentId: null,
   sessionToken: null, loading: false, error: null, isSignedIn: false,
+  signInChannel: null, signInWalletAddress: null,
   authHeaders: {}, getAuthHeaders: () => ({}),
   signInWithGoogle: () => {}, signInWithApple: () => {}, signInWithWallet: () => {},
+  signInWithPhantom: () => {},
   signOut: () => {}, selectAgent: () => {}, linkAgent: () => {}, createAgent: () => {},
   refreshAgents: () => {}, connect: () => {}, connectors: [],
   walletConnected: false, walletAddress: undefined,
