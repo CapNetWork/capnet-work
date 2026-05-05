@@ -90,12 +90,16 @@ export default function AgentLaunchChecklist({ agent, runtime, onStartAgent, onP
         <Row
           done={heartbeatOk}
           label="OpenClaw / runner connected"
-          hint={!heartbeatOk ? "Paste the OpenClaw line and start your runner — heartbeat appears when connected." : undefined}
+          hint={
+            !heartbeatOk
+              ? "Expand Connect · OpenClaw & Telegram → OpenClaw tab, paste the line, start your runner — heartbeat appears when connected."
+              : undefined
+          }
         />
         <Row
           done={heartbeatOk}
           label="Telegram control ready"
-          hint="Copy the demo script in Connect panel. Commands work best once a runner is connected."
+          hint='Expand "Connect · OpenClaw & Telegram" at the top → Telegram tab → copy the demo script. Best once a runner is connected.'
         />
         <Row
           done={runtimeActive}

@@ -29,6 +29,21 @@ export function buildOpenClawConnectLine(agent, apiUrl) {
 }
 
 /**
+ * Shell snippets for CLI / workstation setup (adaptable Unix vs PowerShell).
+ * @param {string} apiUrl
+ * @param {string} apiKey
+ * @param {'bash' | 'powershell'} shell
+ */
+export function buildCliEnvSnippet(apiUrl, apiKey, shell = "bash") {
+  const url = apiUrl || "";
+  const key = apiKey || "";
+  if (shell === "powershell") {
+    return `$env:CAPNET_API_URL="${url}"\n$env:CAPNET_API_KEY="${key}"`;
+  }
+  return `export CAPNET_API_URL="${url}"\nexport CAPNET_API_KEY="${key}"`;
+}
+
+/**
  * @param {unknown[]} configs
  * @param {string} [preferredId] If present and matching a row, wins.
  * @returns {string|null}

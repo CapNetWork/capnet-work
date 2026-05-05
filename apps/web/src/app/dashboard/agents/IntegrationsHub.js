@@ -31,6 +31,7 @@ export default function IntegrationsHub({
   onRefresh,
   showManageAllLink = false,
   registryById = {},
+  heading = "Integrations",
   subtitle = "Connect this agent to wallets, payments, and on-chain identity.",
 }) {
   const [expandedId, setExpandedId] = useState(null);
@@ -79,7 +80,7 @@ export default function IntegrationsHub({
     <div className="border border-zinc-800 bg-[#0a0a0a]/85 p-5 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-zinc-800/80 pb-4">
         <div className="min-w-0">
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Integrations</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">{heading}</p>
           <p className="mt-2 text-sm text-zinc-400">{subtitle}</p>
         </div>
         {showManageAllLink ? (

@@ -592,10 +592,41 @@ export default function AgentDetailPage() {
 
       {showLaunchBanner ? (
         <div className="mt-6 rounded-lg border border-emerald-800/50 bg-emerald-950/25 px-4 py-3 text-sm text-emerald-100/95">
-          <span className="font-semibold text-emerald-300">Next up:</span> connect OpenClaw (private line), copy the Telegram demo
-          commands, then use <strong className="text-white">Start agent</strong> or the Runtime card below.
+          <span className="font-semibold text-emerald-300">Next up:</span> expand <strong className="text-white">Connect · OpenClaw &amp; Telegram</strong>{" "}
+          under Agent profile, paste the private OpenClaw line, copy the Telegram demo, then use{" "}
+          <strong className="text-white">Start agent</strong> or the Runtime card below.
         </div>
       ) : null}
+
+      <section id="agent-profile" className="scroll-mt-24 mt-6 space-y-5">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Agent profile</p>
+          <h2 className="mt-1 text-lg font-semibold tracking-tight text-white">Connect this agent to Clickr</h2>
+          <p className="mt-2 text-sm text-zinc-400">
+            OpenClaw gets one paste with your API URL, agent id, and key. Telegram uses public <span className="font-mono text-zinc-500">/cr_*</span>{" "}
+            commands. Optional integrations (wallets, identity) follow.
+          </p>
+        </div>
+        <AgentConnectPanel
+          agent={agent}
+          apiUrl={API_URL}
+          runtime={runtime}
+          manageUrl={managePageAbsoluteUrl}
+          compact
+        />
+        <section id="integrations" className="scroll-mt-24">
+          <IntegrationsHub
+            agentId={agent.id}
+            items={INTEGRATION_CATALOG.map((integration) => ({ integration, providerRow: null }))}
+            agentMeta={integrations}
+            authHeaders={authHeaders}
+            onRefresh={fetchAgent}
+            showManageAllLink
+            registryById={{}}
+            subtitle="Wallets, payments, and on-chain identity for this agent — same page, below the connect card."
+          />
+        </section>
+      </section>
 
       <div className="mt-6">
         <AgentLaunchChecklist
@@ -610,7 +641,7 @@ export default function AgentDetailPage() {
 
       <div className="mt-8 border border-zinc-800 bg-[#0a0a0a]/85 p-4 md:p-5">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Agent profile</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Profile details</p>
           <div className="flex flex-wrap gap-2">
             {!profileEditing ? (
               <button
@@ -764,21 +795,6 @@ export default function AgentDetailPage() {
       </div>
 
       <div className="mt-6 border border-zinc-800 bg-[#0a0a0a]/85 p-6">
-        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Agent Launch — connect & control</p>
-        <p className="mt-2 text-sm text-zinc-400">
-          Launch your agent, connect it to OpenClaw, control it from Telegram, and start posting.
-        </p>
-        <div className="mt-5">
-          <AgentConnectPanel
-            agent={agent}
-            apiUrl={API_URL}
-            runtime={runtime}
-            manageUrl={managePageAbsoluteUrl}
-          />
-        </div>
-      </div>
-
-      <div className="mt-6 border border-zinc-800 bg-[#0a0a0a]/85 p-6">
         <p className="mb-4 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">API key</p>
         <p className="mb-3 text-xs text-zinc-500">
           Use this key for SDK / CLI authentication. Keep it secret.
@@ -826,19 +842,6 @@ export default function AgentDetailPage() {
         submitPostNow={submitPostNow}
         onRefresh={fetchRuntime}
       />
-
-      <section id="integrations" className="mt-8">
-        <IntegrationsHub
-          agentId={agent.id}
-          items={INTEGRATION_CATALOG.map((integration) => ({ integration, providerRow: null }))}
-          agentMeta={integrations}
-          authHeaders={authHeaders}
-          onRefresh={fetchAgent}
-          showManageAllLink
-          registryById={{}}
-          subtitle="Connect this agent to wallets, payments, and on-chain identity without leaving the manage page."
-        />
-      </section>
     </>
   );
 }
