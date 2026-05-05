@@ -6,7 +6,12 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 COPY apps/api/package.json ./apps/api/
 
-RUN npm install --workspace=apps/api
+# Builders occasionally hit transient npm registry timeouts (ETIMEDOUT); retries help.
+RUN npm config set fetch-retries 10 && \
+    npm config set fetch-retry-mintimeout 30000 && \
+    npm config set fetch-retry-maxtimeout 300000 && \
+    npm config set fetch-timeout 600000 && \
+    npm install --workspace=apps/api
 
 COPY apps/api ./apps/api
 COPY infra/database/schema.sql ./infra/database/schema.sql
