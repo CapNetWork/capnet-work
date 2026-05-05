@@ -16,6 +16,12 @@ const {
 const { createUserAndSession, resolveConnectSession } = require("../connect/session");
 const { generateClaimToken, redeemClaimToken } = require("../lib/claim-tokens");
 const onboardingRewardPayout = require("../services/onboarding-reward-payout");
+const {
+  generateBio,
+  resolveAvatarUrl,
+  normalizePerspective,
+  normalizeStringArrays,
+} = require("../lib/agent-payload-helpers");
 
 const router = Router();
 
@@ -553,19 +559,72 @@ router.patch("/me/agents/:agentId", needSession, async (req, res, next) => {
 });
 
 router.post("/me/agents", needSession, async (req, res, next) => {
-  const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
-  const domain = typeof req.body?.domain === "string" ? req.body.domain.trim() : null;
-  const personality = typeof req.body?.personality === "string" ? req.body.personality.trim() : null;
-  const description = typeof req.body?.description === "string" ? req.body.description.trim() : null;
+  const body = req.body && typeof req.body === "object" ? req.body : {};
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  const domain = typeof body.domain === "string" ? body.domain.trim() : null;
+  const personality = typeof body.personality === "string" ? body.personality.trim() : null;
+  const descriptionRaw = typeof body.description === "string" ? body.description.trim() : null;
+  const avatarRaw = Object.prototype.hasOwnProperty.call(body, "avatar_url") ? body.avatar_url : undefined;
 
   if (!name) return res.status(400).json({ error: "name is required" });
+  if (name.length > 100) return res.status(400).json({ error: "name must be under 100 characters" });
+
+  let perspectiveTrim;
+  try {
+    perspectiveTrim = normalizePerspective(body.perspective);
+  } catch (e) {
+    return res.status(e.status || 400).json({ error: e.message });
+  }
+
+  let skillsArr;
+  let goalsArr;
+  let tasksArr;
+  try {
+    if (body.skills !== undefined && !Array.isArray(body.skills)) {
+      return res.status(400).json({ error: "skills must be an array of strings" });
+    }
+    if (body.goals !== undefined && !Array.isArray(body.goals)) {
+      return res.status(400).json({ error: "goals must be an array of strings" });
+    }
+    if (body.tasks !== undefined && !Array.isArray(body.tasks)) {
+      return res.status(400).json({ error: "tasks must be an array of strings" });
+    }
+    const norm = normalizeStringArrays(body.skills, body.goals, body.tasks);
+    skillsArr = body.skills !== undefined ? norm.skillsArr : null;
+    goalsArr = body.goals !== undefined ? norm.goalsArr : null;
+    tasksArr = body.tasks !== undefined ? norm.tasksArr : null;
+  } catch (e) {
+    return res.status(400).json({ error: e.message });
+  }
+
+  let finalAvatar;
+  try {
+    finalAvatar = resolveAvatarUrl(name, avatarRaw);
+  } catch (e) {
+    return res.status(400).json({ error: e.message || "Invalid avatar_url" });
+  }
+
+  const finalDescription =
+    descriptionRaw ||
+    generateBio({ name, domain, personality, skills: skillsArr, goals: goalsArr, tasks: tasksArr });
 
   try {
     const r = await pool.query(
-      `INSERT INTO agents (name, domain, personality, description, owner_id)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, name, domain, personality, avatar_url, description, metadata, api_key, created_at`,
-      [name, domain, personality, description, req.clickrUser.id]
+      `INSERT INTO agents (name, domain, personality, description, perspective, avatar_url, skills, goals, tasks, owner_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       RETURNING id, name, domain, personality, avatar_url, description, perspective, skills, goals, tasks, metadata, api_key, created_at`,
+      [
+        name,
+        domain,
+        personality,
+        finalDescription,
+        perspectiveTrim,
+        finalAvatar,
+        skillsArr,
+        goalsArr,
+        tasksArr,
+        req.clickrUser.id,
+      ]
     );
     const agent = r.rows[0];
     setImmediate(() => {

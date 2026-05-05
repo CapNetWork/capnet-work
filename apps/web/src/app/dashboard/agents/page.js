@@ -5,84 +5,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { agentProfileHref } from "@/lib/agentProfile";
-
-function CreateAgentForm({ onDone }) {
-  const { createAgent, signInChannel } = useAuth();
-  const [name, setName] = useState("");
-  const [domain, setDomain] = useState("");
-  const [personality, setPersonality] = useState("");
-  const [description, setDescription] = useState("");
-  const [status, setStatus] = useState("idle");
-  const [error, setError] = useState("");
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setStatus("loading");
-    setError("");
-    try {
-      const res = await createAgent({
-        name,
-        domain: domain || undefined,
-        personality: personality || undefined,
-        description: description || undefined,
-      });
-      setName("");
-      setDomain("");
-      setPersonality("");
-      setDescription("");
-      setStatus("idle");
-      const notice = res?.phantom_link_error
-        ? `Phantom was not linked automatically (${res.phantom_link_error}). Open the new agent in the dashboard and use Integrations → Phantom to finish.`
-        : undefined;
-      onDone?.(notice);
-    } catch (err) {
-      setError(err.message);
-      setStatus("idle");
-    }
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-3">
-      <input
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        placeholder="Agent name (required)"
-        required
-        className="w-full border border-zinc-700 bg-[#050505] px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:border-[#E53935]/50 focus:outline-none"
-      />
-      <input
-        value={domain}
-        onChange={(e) => setDomain(e.target.value)}
-        placeholder="Domain (optional, e.g. finance, art, dev)"
-        className="w-full border border-zinc-700 bg-[#050505] px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:border-[#E53935]/50 focus:outline-none"
-      />
-      <input
-        value={personality}
-        onChange={(e) => setPersonality(e.target.value)}
-        placeholder="Personality (optional)"
-        className="w-full border border-zinc-700 bg-[#050505] px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:border-[#E53935]/50 focus:outline-none"
-      />
-      <textarea
-        value={description}
-        onChange={(e) => setDescription(e.target.value)}
-        placeholder="Description (optional)"
-        rows={3}
-        className="w-full border border-zinc-700 bg-[#050505] px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:border-[#E53935]/50 focus:outline-none"
-      />
-      {error && <p className="text-sm text-[#ff9e9c]">{error}</p>}
-      <button
-        type="submit"
-        disabled={status === "loading" || !name.trim()}
-        className="w-full border border-[#E53935] bg-[#E53935] px-4 py-2.5 text-xs font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#c62828] disabled:opacity-50"
-      >
-        {status === "loading"
-          ? signInChannel === "solana"
-            ? "Creating… approve Phantom when prompted"
-            : "Creating..."
-          : "Create agent"}
-      </button>
-    </form>
-  );
-}
+import AgentLaunchWizard from "@/components/dashboard/AgentLaunchWizard";
 
 function LinkAgentForm({ onDone }) {
   const { linkAgent } = useAuth();
@@ -130,7 +53,7 @@ export default function AgentsPage() {
   const { agents, activeAgent, selectAgent } = useAuth();
   const searchParams = useSearchParams();
   const initialAction = searchParams.get("action");
-  const [showCreate, setShowCreate] = useState(initialAction === "create");
+  const [showCreate, setShowCreate] = useState(initialAction === "create" || initialAction === "launch");
   const [showLink, setShowLink] = useState(initialAction === "link");
   const [postCreateNotice, setPostCreateNotice] = useState("");
 
@@ -160,7 +83,7 @@ export default function AgentsPage() {
                 : "border-[#E53935] bg-[#E53935] text-white hover:bg-[#c62828]"
             }`}
           >
-            {showCreate ? "Cancel" : "Create"}
+            {showCreate ? "Cancel" : "Launch an agent"}
           </button>
           <button
             type="button"
@@ -184,8 +107,7 @@ export default function AgentsPage() {
 
       {showCreate && (
         <div className="mt-6 border border-zinc-800 bg-[#0a0a0a]/85 p-6">
-          <p className="mb-4 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Create new agent</p>
-          <CreateAgentForm
+          <AgentLaunchWizard
             onDone={(notice) => {
               setShowCreate(false);
               if (notice) setPostCreateNotice(notice);

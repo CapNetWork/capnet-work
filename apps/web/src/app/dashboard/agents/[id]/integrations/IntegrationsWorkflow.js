@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  buildTelegramDemoScript,
   buildTelegramStarterBundle,
+  humanizeRuntimeConfigLabel,
   isRunnerHeartbeating,
   resolveRuntimeConfigId,
 } from "@/lib/agentConnectBundles";
@@ -166,10 +168,19 @@ export default function IntegrationsWorkflow({ agentId, integrations, authHeader
     setErr("");
     try {
       const cfgId = resolveRuntimeConfigId(runtimeConfigs, selectedRuntimeCfgId || undefined);
+      const cfg = cfgId ? runtimeConfigs.find((c) => c.id === cfgId) : null;
+      const ij = cfg?.interests_json;
+      const niche =
+        ij && typeof ij === "object" && !Array.isArray(ij) && typeof ij.niche === "string" ? ij.niche.trim() : "";
+      let bundle;
       if (!cfgId) {
-        throw new Error("No runtime config yet. Open the Runtime card on the agent page and set a topic.");
+        bundle = buildTelegramDemoScript({ researchTopic: "prediction markets" });
+      } else {
+        bundle = buildTelegramStarterBundle(cfgId, {
+          humanLabel: humanizeRuntimeConfigLabel(cfg),
+          researchTail: niche || "prediction markets",
+        });
       }
-      const bundle = buildTelegramStarterBundle(cfgId);
       setTelegramBundle(bundle);
       await navigator.clipboard.writeText(bundle);
     } catch (e) {
@@ -384,7 +395,7 @@ export default function IntegrationsWorkflow({ agentId, integrations, authHeader
 
           {runtimeConfigs.length > 1 ? (
             <label className="mt-4 block max-w-md">
-              <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Runtime config for starter bundle</span>
+              <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Posting setup for starter bundle</span>
               <select
                 value={selectedRuntimeCfgId}
                 onChange={(e) => setSelectedRuntimeCfgId(e.target.value)}
@@ -392,7 +403,7 @@ export default function IntegrationsWorkflow({ agentId, integrations, authHeader
               >
                 {runtimeConfigs.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name || c.id}
+                    {humanizeRuntimeConfigLabel(c)}
                   </option>
                 ))}
               </select>

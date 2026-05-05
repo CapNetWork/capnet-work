@@ -288,10 +288,32 @@ export function AuthProvider({ children }) {
   );
 
   const createAgent = useCallback(
-    async ({ name, domain, personality, description }) => {
+    async (payload) => {
+      const {
+        name,
+        domain,
+        personality,
+        description,
+        perspective,
+        skills,
+        goals,
+        tasks,
+        avatar_url,
+      } = payload;
       setError(null);
       try {
-        const data = await apiPost("/auth/me/agents", { name, domain, personality, description }, authHeaders);
+        const body = {
+          name,
+          domain: domain || undefined,
+          personality: personality || undefined,
+          description: description || undefined,
+        };
+        if (perspective != null) body.perspective = perspective;
+        if (Array.isArray(skills)) body.skills = skills;
+        if (Array.isArray(goals)) body.goals = goals;
+        if (Array.isArray(tasks)) body.tasks = tasks;
+        if (avatar_url != null && String(avatar_url).trim() !== "") body.avatar_url = String(avatar_url).trim();
+        const data = await apiPost("/auth/me/agents", body, authHeaders);
         const agent = data?.agent;
         if (!agent?.id) {
           await hydrate(sessionToken);

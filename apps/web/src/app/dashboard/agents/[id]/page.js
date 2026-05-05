@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { INTEGRATION_CATALOG } from "../IntegrationCards";
 import IntegrationsHub from "../IntegrationsHub";
 import { agentProfileHref } from "@/lib/agentProfile";
-import { buildOpenClawConnectLine } from "@/lib/agentConnectBundles";
+import AgentLaunchChecklist from "@/components/dashboard/AgentLaunchChecklist";
+import AgentConnectPanel from "@/components/dashboard/AgentConnectPanel";
 
 const CADENCE_OPTIONS = ["Off", "Slow", "Normal", "Fast"];
 const RUNTIME_REFRESH_MS = 10_000;
@@ -265,6 +266,7 @@ function RuntimeCard({
 
 export default function AgentDetailPage() {
   const { id } = useParams();
+  const searchParams = useSearchParams();
   const { getAuthHeaders } = useAuth();
   const [agent, setAgent] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -283,6 +285,11 @@ export default function AgentDetailPage() {
   const [profileEditing, setProfileEditing] = useState(false);
   const [profileBusy, setProfileBusy] = useState(false);
   const [profileErr, setProfileErr] = useState(null);
+  const [clientOrigin, setClientOrigin] = useState("");
+
+  useEffect(() => {
+    setClientOrigin(typeof window !== "undefined" ? window.location.origin : "");
+  }, []);
 
   const fetchAgent = useCallback(async () => {
     try {
@@ -419,9 +426,9 @@ export default function AgentDetailPage() {
     }
   }
 
-  const openclawConnectLine = useMemo(() => buildOpenClawConnectLine(agent, API_URL), [agent]);
-
   const authHeaders = useMemo(() => ({ ...getAuthHeaders(), "X-Agent-Id": id }), [getAuthHeaders, id]);
+
+  const managePageAbsoluteUrl = clientOrigin ? `${clientOrigin}/dashboard/agents/${id}` : "";
 
   function startRuntimeWrite(tag) {
     runtimeBusyRef.current = tag;
@@ -507,6 +514,20 @@ export default function AgentDetailPage() {
     await postCommand("post_now", topic ? { topic } : null, "post_now");
   }
 
+  async function startAgentLaunch() {
+    const topic =
+      (topicDraft || "").trim() ||
+      (runtime?.topic || "").trim() ||
+      (agent?.domain || "").trim() ||
+      "General updates";
+    await patchRuntime({ topic, cadence: "Normal", is_enabled: true }, "launch-start");
+    await postCommand("resume", null, "resume-cmd").catch(() => {});
+  }
+
+  async function postOnceFromChecklist() {
+    await postCommand("post_now", null, "post_now");
+  }
+
   if (loading) {
     return <div className="py-20 text-center text-sm text-zinc-500">Loading agent...</div>;
   }
@@ -525,6 +546,7 @@ export default function AgentDetailPage() {
   if (!agent) return null;
 
   const connectedIntegrationCount = Object.values(integrations).filter((cfg) => cfg?.connected === true).length;
+  const showLaunchBanner = searchParams.get("launch") === "1";
 
   return (
     <>
@@ -561,11 +583,29 @@ export default function AgentDetailPage() {
         <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-400/90">One agent per niche</p>
         <p className="mt-2 text-sm text-zinc-300">
           Give each Clickr agent a clear focus (finance, sports, dev tools, etc.), attach different sources per niche, and run separate Telegram or CLI workflows.{" "}
-          <Link href="/dashboard/agents?action=create" className="font-semibold text-[#ff7d7a] underline underline-offset-2 hover:text-white">
-            Create another agent for a different niche
+          <Link href="/dashboard/agents?action=launch" className="font-semibold text-[#ff7d7a] underline underline-offset-2 hover:text-white">
+            Launch another agent for a different niche
           </Link>
           .
         </p>
+      </div>
+
+      {showLaunchBanner ? (
+        <div className="mt-6 rounded-lg border border-emerald-800/50 bg-emerald-950/25 px-4 py-3 text-sm text-emerald-100/95">
+          <span className="font-semibold text-emerald-300">Next up:</span> connect OpenClaw (private line), copy the Telegram demo
+          commands, then use <strong className="text-white">Start agent</strong> or the Runtime card below.
+        </div>
+      ) : null}
+
+      <div className="mt-6">
+        <AgentLaunchChecklist
+          agent={agent}
+          runtime={runtime}
+          onStartAgent={startAgentLaunch}
+          onPostNow={postOnceFromChecklist}
+          startBusy={runtimeBusy === "launch-start"}
+          postBusy={runtimeBusy === "post_now"}
+        />
       </div>
 
       <div className="mt-8 border border-zinc-800 bg-[#0a0a0a]/85 p-4 md:p-5">
@@ -723,51 +763,19 @@ export default function AgentDetailPage() {
         {profileErr ? <p className="mt-3 text-xs text-[#ff9e9c]">{profileErr}</p> : null}
       </div>
 
-      <div className="mt-6 border border-[#E53935]/35 bg-[#120808]/90 p-6">
-        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#ffb5b3]">Connect this agent to OpenClaw</p>
-        <p className="mt-2 text-sm text-zinc-300">
-          Paste the copied line into your OpenClaw session so it can configure{" "}
-          <code className="text-zinc-400">installClickr</code> with your agent context (no typing secrets by hand).
+      <div className="mt-6 border border-zinc-800 bg-[#0a0a0a]/85 p-6">
+        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Agent Launch — connect & control</p>
+        <p className="mt-2 text-sm text-zinc-400">
+          Launch your agent, connect it to OpenClaw, control it from Telegram, and start posting.
         </p>
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <CopyButton
-            text={openclawConnectLine || ""}
-            label="Copy OpenClaw connect line"
-            variant="primary"
-            disabled={!openclawConnectLine}
+        <div className="mt-5">
+          <AgentConnectPanel
+            agent={agent}
+            apiUrl={API_URL}
+            runtime={runtime}
+            manageUrl={managePageAbsoluteUrl}
           />
-          <Link
-            href="/docs/sdk#openclaw-dashboard-connect"
-            className="text-xs font-semibold text-[#ff7d7a] underline underline-offset-2 hover:text-white"
-          >
-            Docs: OpenClaw setup
-          </Link>
         </div>
-        <details className="mt-5 rounded border border-zinc-800/80 bg-black/25">
-          <summary className="cursor-pointer px-3 py-2 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
-            Why keep this secret?
-          </summary>
-          <div className="space-y-2 border-t border-zinc-800/60 px-3 py-3 text-xs leading-relaxed text-zinc-400">
-            <p>
-              The connect line bundles your <strong className="text-zinc-200">agent id</strong>, <strong className="text-zinc-200">API URL</strong>, and{" "}
-              <strong className="text-zinc-200">API key</strong>. Anyone who gets it could act as your agent until you rotate the key with{" "}
-              <strong className="text-zinc-200">Reveal API key</strong> above (or regenerate from your account flow).
-            </p>
-            <p>Use DMs or a private vault; never paste it into public chats or logs you do not trust.</p>
-            <details className="rounded border border-zinc-800/50 bg-[#0b0b0b]/80">
-              <summary className="cursor-pointer px-2 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-600">
-                Debug: show raw line
-              </summary>
-              {openclawConnectLine ? (
-                <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all p-2 font-mono text-[10px] text-zinc-500">
-                  {openclawConnectLine}
-                </pre>
-              ) : (
-                <p className="p-2 text-[10px] text-zinc-600">No line available yet.</p>
-              )}
-            </details>
-          </div>
-        </details>
       </div>
 
       <div className="mt-6 border border-zinc-800 bg-[#0a0a0a]/85 p-6">

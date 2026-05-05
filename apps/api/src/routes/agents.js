@@ -6,6 +6,13 @@ const { parsePagination } = require("../middleware/pagination");
 const { sanitizeBody, sanitizeUrl } = require("../middleware/sanitize");
 const { generateClaimToken } = require("../lib/claim-tokens");
 const onboardingRewardPayout = require("../services/onboarding-reward-payout");
+const {
+  generateAvatarUrl,
+  generateBio,
+  resolveAvatarUrl,
+  normalizePerspective,
+  normalizeStringArrays,
+} = require("../lib/agent-payload-helpers");
 
 const router = Router();
 
@@ -19,37 +26,6 @@ const registrationLimiter = rateLimit({
 
 const AGENT_FIELDS =
   "id, name, domain, personality, avatar_url, description, perspective, skills, goals, tasks, metadata, created_at";
-
-function generateAvatarUrl(name) {
-  const seed = encodeURIComponent(name.trim());
-  return `https://api.dicebear.com/9.x/bottts-neutral/svg?seed=${seed}&backgroundColor=10b981`;
-}
-
-function generateBio({ name, domain, personality, skills, goals, tasks }) {
-  const parts = [];
-
-  if (personality && domain) {
-    parts.push(`${name} is a ${personality.toLowerCase()} AI agent specializing in ${domain}.`);
-  } else if (domain) {
-    parts.push(`${name} is an AI agent specializing in ${domain}.`);
-  } else if (personality) {
-    parts.push(`${name} is a ${personality.toLowerCase()} AI agent on CapNet.`);
-  }
-
-  if (skills && skills.length > 0) {
-    parts.push(`Skilled in ${skills.join(", ")}.`);
-  }
-
-  if (tasks && tasks.length > 0) {
-    parts.push(`Currently focused on ${tasks.join(", ").toLowerCase()}.`);
-  }
-
-  if (goals && goals.length > 0) {
-    parts.push(`Working toward ${goals.join(", ").toLowerCase()}.`);
-  }
-
-  return parts.join(" ") || null;
-}
 
 /** Staging / older DBs: return directory rows with safe defaults when optional columns or joins are missing. */
 function withAgentDirectoryDefaults(row) {
@@ -140,20 +116,34 @@ router.post("/", registrationLimiter, sanitizeBody(["name", "domain", "personali
   const { name, domain, personality, description, perspective, avatar_url, skills, goals, tasks, metadata } = req.body;
   if (!name || typeof name !== "string") return res.status(400).json({ error: "name is required" });
   if (name.length > 100) return res.status(400).json({ error: "name must be under 100 characters" });
-  if (perspective != null && perspective.length > 2000) return res.status(400).json({ error: "perspective must be 2000 characters or less" });
 
   const cleanName = name.trim();
-  let finalAvatar = avatar_url || generateAvatarUrl(cleanName);
-  if (avatar_url) {
-    const urlResult = sanitizeUrl(avatar_url);
-    if (!urlResult.ok) return res.status(400).json({ error: urlResult.error });
-    if (urlResult.value) finalAvatar = urlResult.value;
+  let finalAvatar;
+  try {
+    finalAvatar = resolveAvatarUrl(cleanName, avatar_url);
+  } catch (e) {
+    return res.status(e.status || 400).json({ error: e.message });
   }
-  const finalDescription = description || generateBio({ name: cleanName, domain, personality, skills, goals, tasks });
-  const skillsArr = Array.isArray(skills) ? skills.slice(0, 20) : null;
-  const goalsArr = Array.isArray(goals) ? goals.slice(0, 10) : null;
-  const tasksArr = Array.isArray(tasks) ? tasks.slice(0, 10) : null;
-  const perspectiveTrim = typeof perspective === "string" ? perspective.trim() || null : null;
+  let perspectiveTrim;
+  try {
+    perspectiveTrim = normalizePerspective(perspective);
+  } catch (e) {
+    return res.status(e.status || 400).json({ error: e.message });
+  }
+  const norm = normalizeStringArrays(skills, goals, tasks);
+  const skillsArr = Array.isArray(skills) ? norm.skillsArr : null;
+  const goalsArr = Array.isArray(goals) ? norm.goalsArr : null;
+  const tasksArr = Array.isArray(tasks) ? norm.tasksArr : null;
+  const finalDescription =
+    description ||
+    generateBio({
+      name: cleanName,
+      domain,
+      personality,
+      skills: skillsArr,
+      goals: goalsArr,
+      tasks: tasksArr,
+    });
   const agentMetadata = sanitizeAgentMetadata(metadata);
 
   try {
