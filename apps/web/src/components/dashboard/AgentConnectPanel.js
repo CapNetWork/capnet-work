@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import CopyableCodeBlock from "@/components/CopyableCodeBlock";
 import {
@@ -33,15 +33,21 @@ function CopyBtn({ text, label, variant = "default", disabled }) {
   );
 }
 
-function OpenClawSection({ openclawLine }) {
+function OpenClawSection({ openclawLine, compactCopy }) {
   return (
     <div className="rounded-lg border border-[#E53935]/35 bg-[#120808]/90 p-5">
       <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#ffb5b3]">Connect runtime (OpenClaw)</p>
-      <p className="mt-2 text-sm text-zinc-300">
-        Install the plugin, then paste this single line into your <strong className="text-zinc-200">trusted</strong> OpenClaw
-        session. The encoded payload carries your API URL, agent id, name, and API key so{" "}
-        <code className="text-zinc-400">installClickr</code> binds this dashboard profile on the device in one shot.
-      </p>
+      {compactCopy ? (
+        <p className="mt-2 text-sm text-zinc-300">
+          Install the plugin, then paste the connect line into a <strong className="text-zinc-200">trusted</strong> OpenClaw session so this agent can post from your runtime.
+        </p>
+      ) : (
+        <p className="mt-2 text-sm text-zinc-300">
+          Install the plugin, then paste this single line into your <strong className="text-zinc-200">trusted</strong> OpenClaw
+          session. The encoded payload carries your API URL, agent id, name, and API key so{" "}
+          <code className="text-zinc-400">installClickr</code> binds this dashboard profile on the device in one shot.
+        </p>
+      )}
       <div className="mt-4 space-y-3">
         <div className="rounded border border-zinc-800 bg-black/30 p-3">
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Install</p>
@@ -69,14 +75,20 @@ function OpenClawSection({ openclawLine }) {
   );
 }
 
-function TelegramSection({ telegramDemo, fullLaunch }) {
+function TelegramSection({ telegramDemo, fullLaunch, compactCopy }) {
   return (
     <div className="rounded-lg border border-zinc-800 bg-[#0a0a0a]/85 p-5">
       <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Control from Telegram</p>
-      <p className="mt-2 text-sm text-zinc-400">
-        Public-safe demo commands (no API key). Run <code className="text-zinc-500">/cr_status</code> then{" "}
-        <code className="text-zinc-500">/cr_now</code> after your posting setup is ready.
-      </p>
+      {compactCopy ? (
+        <p className="mt-2 text-sm text-zinc-400">
+          Public <span className="font-mono text-zinc-500">/cr_*</span> commands control posting — no API key in chat.
+        </p>
+      ) : (
+        <p className="mt-2 text-sm text-zinc-400">
+          Public-safe demo commands (no API key). Run <code className="text-zinc-500">/cr_status</code> then{" "}
+          <code className="text-zinc-500">/cr_now</code> after your posting setup is ready.
+        </p>
+      )}
       <pre className="mt-4 max-h-48 overflow-auto whitespace-pre-wrap rounded border border-zinc-800 bg-[#0b0b0b] p-3 font-mono text-[11px] leading-relaxed text-zinc-200">
         {telegramDemo}
       </pre>
@@ -127,8 +139,10 @@ function VerifySection({ runtime }) {
  * @param {object|null} [props.runtime] from GET /agent-runtime/agent
  * @param {string} [props.manageUrl] for full launch script footer
  * @param {boolean} [props.compact] collapsible summary + tabbed panels (dashboard agent detail)
+ * @param {boolean} [props.defaultOpen] open the compact connect panel by default (e.g. NEEDS_OPENCLAW)
+ * @param {boolean} [props.compactCopy] shorter intro copy for mission-control layout
  */
-export default function AgentConnectPanel({ agent, apiUrl, runtime, manageUrl, compact = false }) {
+export default function AgentConnectPanel({ agent, apiUrl, runtime, manageUrl, compact = false, defaultOpen = false, compactCopy = false }) {
   const openclawLine = useMemo(() => buildOpenClawConnectLine(agent, apiUrl), [agent, apiUrl]);
   const researchTopic = useMemo(() => {
     const d = agent?.domain && String(agent.domain).trim();
@@ -158,6 +172,11 @@ export default function AgentConnectPanel({ agent, apiUrl, runtime, manageUrl, c
   );
 
   const [compactTab, setCompactTab] = useState("openclaw");
+  const [connectExpanded, setConnectExpanded] = useState(Boolean(defaultOpen));
+
+  useEffect(() => {
+    setConnectExpanded(Boolean(defaultOpen));
+  }, [defaultOpen]);
 
   const defaultLayout = (
     <div className="space-y-6">
@@ -165,9 +184,9 @@ export default function AgentConnectPanel({ agent, apiUrl, runtime, manageUrl, c
         Connect infrastructure (OpenClaw) and control (Telegram) are separate: never paste your private{" "}
         <code className="text-zinc-500">/oc_clickr</code> line into public channels.
       </p>
-      <OpenClawSection openclawLine={openclawLine} />
+      <OpenClawSection openclawLine={openclawLine} compactCopy={compactCopy} />
       <VerifySection runtime={runtime} />
-      <TelegramSection telegramDemo={telegramDemo} fullLaunch={fullLaunch} />
+      <TelegramSection telegramDemo={telegramDemo} fullLaunch={fullLaunch} compactCopy={compactCopy} />
     </div>
   );
 
@@ -178,14 +197,19 @@ export default function AgentConnectPanel({ agent, apiUrl, runtime, manageUrl, c
   const hb = isRunnerHeartbeating(runtime?.runner);
 
   return (
-    <div className="border border-zinc-800 bg-[#0a0a0a]/85">
-      <details className="group/details">
+    <div className="border border-zinc-800 bg-[#0a0a0a]/85" id="mission-connect">
+      <details
+        className="group/details"
+        open={connectExpanded}
+        onToggle={(e) => setConnectExpanded(e.currentTarget.open)}
+      >
         <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-4 marker:content-none sm:px-5 [&::-webkit-details-marker]:hidden">
           <div className="min-w-0 text-left">
             <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Connect · OpenClaw &amp; Telegram</p>
             <p className="mt-1 text-sm font-medium text-zinc-100">
-              One paste on OpenClaw syncs URL, agent id, and API key · Telegram runs public <span className="font-mono text-zinc-400">/cr_*</span>{" "}
-              commands
+              {compactCopy
+                ? "OpenClaw: one paste for URL, id, and key. Telegram: public /cr_* commands."
+                : "One paste on OpenClaw syncs URL, agent id, and API key · Telegram runs public /cr_* commands"}
             </p>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center sm:gap-3">
@@ -219,20 +243,31 @@ export default function AgentConnectPanel({ agent, apiUrl, runtime, manageUrl, c
             ))}
           </div>
 
-          <p className="mb-4 text-xs text-zinc-500">
-            Expandable copy blocks match the &ldquo;Create your first agent&rdquo; flow — switch Terminal to bash vs PowerShell.
-          </p>
+          {!compactCopy ? (
+            <p className="mb-4 text-xs text-zinc-500">
+              Expandable copy blocks match the &ldquo;Create your first agent&rdquo; flow — switch Terminal to bash vs PowerShell.
+            </p>
+          ) : (
+            <details className="mb-4 rounded border border-zinc-800/80 bg-black/20">
+              <summary className="cursor-pointer px-3 py-2 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
+                Why two channels?
+              </summary>
+              <p className="border-t border-zinc-800/60 px-3 py-2 text-xs text-zinc-500">
+                Never paste the private OpenClaw line into public Telegram. OpenClaw carries secrets; Telegram uses public commands only.
+              </p>
+            </details>
+          )}
 
           {compactTab === "openclaw" && (
             <div className="space-y-4">
-              <OpenClawSection openclawLine={openclawLine} />
+              <OpenClawSection openclawLine={openclawLine} compactCopy={compactCopy} />
               <VerifySection runtime={runtime} />
             </div>
           )}
 
           {compactTab === "telegram" && (
             <div className="space-y-4">
-              <TelegramSection telegramDemo={telegramDemo} fullLaunch={fullLaunch} />
+              <TelegramSection telegramDemo={telegramDemo} fullLaunch={fullLaunch} compactCopy={compactCopy} />
               <VerifySection runtime={runtime} />
             </div>
           )}
@@ -240,8 +275,9 @@ export default function AgentConnectPanel({ agent, apiUrl, runtime, manageUrl, c
           {compactTab === "terminal" && (
             <div className="space-y-4">
               <p className="text-sm text-zinc-400">
-                Use the same CLI as onboarding. After exporting your URL and API key (this agent&apos;s keys only — do not paste in
-                chats), verify with status or publish a single post.
+                {compactCopy
+                  ? "Export URL and key (Advanced → API key), then verify or post once from your terminal — do not paste secrets in chat."
+                  : "Use the same CLI as onboarding. After exporting your URL and API key (this agent's keys only — do not paste in chats), verify with status or publish a single post."}
               </p>
               <CopyableCodeBlock label="Bash / zsh" code={bashEnv} theme="red" />
               <CopyableCodeBlock label="PowerShell" code={pwshEnv} theme="red" />

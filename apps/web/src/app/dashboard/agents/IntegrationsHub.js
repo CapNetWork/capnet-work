@@ -23,6 +23,11 @@ function parseIntegrationHash() {
   return m ? decodeURIComponent(m[1]) : null;
 }
 
+function countConnectedProviders(agentMeta) {
+  if (!agentMeta || typeof agentMeta !== "object") return 0;
+  return Object.values(agentMeta).filter((cfg) => cfg?.connected === true).length;
+}
+
 export default function IntegrationsHub({
   agentId,
   items,
@@ -33,6 +38,7 @@ export default function IntegrationsHub({
   registryById = {},
   heading = "Integrations",
   subtitle = "Connect this agent to wallets, payments, and on-chain identity.",
+  compact = false,
 }) {
   const [expandedId, setExpandedId] = useState(null);
 
@@ -57,6 +63,8 @@ export default function IntegrationsHub({
     });
   }, [expandedId]);
 
+  const connectedCount = useMemo(() => countConnectedProviders(agentMeta), [agentMeta]);
+
   const grouped = useMemo(() => {
     /** @type {Record<string, HubItem[]>} */
     const acc = {};
@@ -77,11 +85,20 @@ export default function IntegrationsHub({
   }, [items, agentMeta]);
 
   return (
-    <div className="border border-zinc-800 bg-[#0a0a0a]/85 p-5 sm:p-6">
+    <div
+      className={`border border-zinc-800 bg-[#0a0a0a]/85 ${compact ? "p-4 sm:p-5" : "p-5 sm:p-6"}`}
+      id="integrations"
+    >
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-zinc-800/80 pb-4">
         <div className="min-w-0">
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">{heading}</p>
-          <p className="mt-2 text-sm text-zinc-400">{subtitle}</p>
+          {compact ? (
+            <p className="mt-2 text-sm text-zinc-300">
+              <span className="font-semibold text-zinc-200">{connectedCount}</span> connected
+            </p>
+          ) : subtitle ? (
+            <p className="mt-2 text-sm text-zinc-400">{subtitle}</p>
+          ) : null}
         </div>
         {showManageAllLink ? (
           <Link
@@ -93,7 +110,7 @@ export default function IntegrationsHub({
         ) : null}
       </div>
 
-      <div className="mt-6 grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-4">
+      <div className={`mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 ${compact ? "gap-5" : "gap-8"}`}>
         {COLUMN_ORDER.map((columnKey) => {
           const colItems = grouped[columnKey];
           const statuses = colItems.map((row) =>

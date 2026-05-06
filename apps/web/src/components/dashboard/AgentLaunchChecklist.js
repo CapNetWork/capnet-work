@@ -56,7 +56,7 @@ export default function AgentLaunchChecklist({ agent, runtime, onStartAgent, onP
               type="button"
               onClick={onStartAgent}
               disabled={startBusy || runtimeActive}
-              className="border border-[#E53935] bg-[#E53935] px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-white transition-colors hover:bg-[#c62828] disabled:opacity-40"
+              className="border border-zinc-600 px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-zinc-200 transition-colors hover:border-[#E53935]/45 hover:text-white disabled:opacity-40"
             >
               {startBusy ? "Starting…" : "Start agent"}
             </button>

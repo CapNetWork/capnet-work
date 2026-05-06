@@ -9,6 +9,16 @@ import IntegrationsHub from "../IntegrationsHub";
 import { agentProfileHref } from "@/lib/agentProfile";
 import AgentLaunchChecklist from "@/components/dashboard/AgentLaunchChecklist";
 import AgentConnectPanel from "@/components/dashboard/AgentConnectPanel";
+import {
+  getAgentStatus,
+  getAgentNextAction,
+  getStatusCardHeadlines,
+  formatScheduleSummary,
+  formatLastHeartbeat,
+  getMissionLadderSteps,
+} from "@/lib/agentMissionControlStatus";
+
+const NICHE_HELP_LS = "dismissedAgentNicheHelp";
 
 const CADENCE_OPTIONS = ["Off", "Slow", "Normal", "Fast"];
 const RUNTIME_REFRESH_MS = 10_000;
@@ -100,6 +110,8 @@ function RuntimeCard({
   setPostNowTopic,
   submitPostNow,
   onRefresh,
+  rootClassName,
+  postNowPulse = 0,
 }) {
   const status = runtime?.runner?.status || "offline";
   const cadence = runtime?.cadence || "Off";
@@ -108,8 +120,18 @@ function RuntimeCard({
   const isPostingNow = runtimeBusy === "post_now";
   const isToggling = runtimeBusy === "pause" || runtimeBusy === "resume";
 
+  useEffect(() => {
+    if (postNowPulse > 0) setPostNowOpen(true);
+  }, [postNowPulse, setPostNowOpen]);
+
   return (
-    <div id="runtime" className="scroll-mt-24 mt-6 border border-zinc-800 bg-[#0a0a0a]/85 p-6">
+    <div
+      id="runtime"
+      className={
+        rootClassName ||
+        "scroll-mt-24 mt-6 border border-zinc-800 bg-[#0a0a0a]/85 p-6"
+      }
+    >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Runtime</p>
@@ -259,7 +281,11 @@ function RuntimeCard({
         </div>
       </div>
 
-      {runtimeError ? <p className="mt-4 text-xs text-[#ff9e9c]">{runtimeError}</p> : null}
+      {runtimeError ? (
+        <p id="mission-runtime-error" className="mt-4 text-xs text-[#ff9e9c]">
+          {runtimeError}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -286,10 +312,36 @@ export default function AgentDetailPage() {
   const [profileBusy, setProfileBusy] = useState(false);
   const [profileErr, setProfileErr] = useState(null);
   const [clientOrigin, setClientOrigin] = useState("");
+  const [agentListCount, setAgentListCount] = useState(null);
+  const [nicheDismissed, setNicheDismissed] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [postNowPulse, setPostNowPulse] = useState(0);
 
   useEffect(() => {
     setClientOrigin(typeof window !== "undefined" ? window.location.origin : "");
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setNicheDismissed(localStorage.getItem(NICHE_HELP_LS) === "true");
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const headers = { "Content-Type": "application/json", ...getAuthHeaders() };
+        const res = await fetch(`${API_URL}/auth/me/agents`, { headers, cache: "no-store" });
+        const data = await res.json().catch(() => ({}));
+        if (!cancelled && res.ok && Array.isArray(data.agents)) setAgentListCount(data.agents.length);
+      } catch {
+        if (!cancelled) setAgentListCount(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [getAuthHeaders]);
 
   const fetchAgent = useCallback(async () => {
     try {
@@ -547,88 +599,165 @@ export default function AgentDetailPage() {
 
   const connectedIntegrationCount = Object.values(integrations).filter((cfg) => cfg?.connected === true).length;
   const showLaunchBanner = searchParams.get("launch") === "1";
+  const missionStatus = getAgentStatus(runtimeError, runtime, agent);
+  const nextAction = getAgentNextAction(missionStatus);
+  const statusHeadlines = getStatusCardHeadlines(missionStatus);
+  const ladderSteps = getMissionLadderSteps(agent, runtime);
+  const scheduleSummary = formatScheduleSummary(runtime, agent);
+  const heartbeatDisplay = formatLastHeartbeat(runtime, timeAgo);
+  const showNicheTip = !nicheDismissed || agentListCount === 1;
+
+  function dismissNicheTip() {
+    if (typeof window !== "undefined") localStorage.setItem(NICHE_HELP_LS, "true");
+    setNicheDismissed(true);
+  }
+
+  function handleMissionPrimary() {
+    const { intent } = nextAction;
+    if (intent === "view-error") {
+      document.getElementById("mission-runtime-error")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    if (intent === "open-connect") {
+      document.getElementById("mission-connect")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    if (intent === "open-runtime") {
+      document.getElementById("mission-run")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    if (intent === "start-runner") {
+      startAgentLaunch();
+      return;
+    }
+    if (intent === "post-now") {
+      document.getElementById("mission-run")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      setPostNowPulse((n) => n + 1);
+    }
+  }
+
+  function scrollToAdvanced() {
+    setAdvancedOpen(true);
+    requestAnimationFrame(() => {
+      document.getElementById("mission-advanced")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
+  let debugSnapshot = "";
+  try {
+    debugSnapshot = JSON.stringify(runtime ?? null, null, 2);
+  } catch {
+    debugSnapshot = "";
+  }
 
   return (
-    <>
+    <div className="pb-28 md:pb-10">
       <div className="flex items-center gap-2 text-xs text-zinc-500">
         <Link href="/dashboard/agents" className="hover:text-zinc-300">Agents</Link>
         <span>/</span>
         <span className="text-zinc-300">{agent.name}</span>
       </div>
 
-      <div className="mt-4 flex items-start justify-between gap-4">
+      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-white">{agent.name}</h1>
-          {agent.domain && (
-            <p className="mt-1 text-sm text-zinc-400">{agent.domain}</p>
-          )}
+          {agent.domain ? <p className="mt-1 text-sm text-zinc-400">{agent.domain}</p> : null}
         </div>
-        <div className="flex gap-2">
-          <Link
-            href="#integrations"
-            className="border border-[#E53935] bg-[#E53935] px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-white transition-colors hover:bg-[#c62828]"
+        <Link
+          href={agentProfileHref(agent) || "/agents"}
+          className="shrink-0 self-start text-xs font-semibold text-zinc-500 underline-offset-2 hover:text-zinc-200 sm:pt-1"
+        >
+          Public profile
+        </Link>
+      </div>
+
+      <div className="mt-6 rounded-lg border border-zinc-800 bg-[#0a0a0a]/90 p-5 sm:p-6">
+        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Agent status</p>
+        <p className="mt-3 text-lg font-semibold text-white">{statusHeadlines.headline}</p>
+        <p className="mt-2 text-sm text-zinc-400">{statusHeadlines.nextStep}</p>
+        <dl className="mt-4 grid gap-2 text-xs text-zinc-400 sm:grid-cols-2">
+          <div>
+            <dt className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-600">Last heartbeat</dt>
+            <dd className="mt-0.5 text-zinc-300">{heartbeatDisplay}</dd>
+          </div>
+          <div>
+            <dt className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-600">Posting schedule</dt>
+            <dd className="mt-0.5 text-zinc-300">{scheduleSummary}</dd>
+          </div>
+          <div className="sm:col-span-2">
+            <dt className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-600">Integrations</dt>
+            <dd className="mt-0.5 text-zinc-300">{connectedIntegrationCount} connected</dd>
+          </div>
+        </dl>
+
+        <div className="mt-5 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={handleMissionPrimary}
+            className="border border-[#E53935] bg-[#E53935] px-5 py-2.5 text-xs font-bold uppercase tracking-[0.12em] text-white transition-colors hover:bg-[#c62828] disabled:opacity-50"
           >
-            Integrations{connectedIntegrationCount > 0 ? ` (${connectedIntegrationCount})` : ""}
-          </Link>
-          <Link
-            href={agentProfileHref(agent) || "/agents"}
-            className="border border-zinc-700 px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-zinc-300 transition-colors hover:border-[#E53935]/50 hover:text-white"
-          >
-            Public profile
-          </Link>
+            {nextAction.label}
+          </button>
+          <span className="hidden h-4 w-px bg-zinc-800 sm:inline" aria-hidden />
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500">
+            <Link href="/docs/sdk#openclaw-dashboard-connect" className="hover:text-zinc-200">
+              Docs
+            </Link>
+            <span className="text-zinc-700">·</span>
+            <button type="button" onClick={scrollToAdvanced} className="hover:text-zinc-200">
+              Advanced
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-6 border-t border-zinc-800/80 pt-4">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-600">Setup progress</p>
+          <ul className="mt-3 flex flex-wrap gap-2">
+            {ladderSteps.map((step) => (
+              <li
+                key={step.id}
+                className={`flex items-center gap-1.5 rounded border px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] ${
+                  step.done
+                    ? "border-emerald-500/35 bg-emerald-500/10 text-emerald-300/95"
+                    : step.warn
+                      ? "border-amber-500/35 bg-amber-500/10 text-amber-200/95"
+                      : "border-zinc-800 bg-black/30 text-zinc-500"
+                }`}
+              >
+                <span aria-hidden>{step.done ? "✓" : step.warn ? "!" : "—"}</span>
+                {step.label}
+              </li>
+            ))}
+          </ul>
         </div>
       </div>
 
-      <div className="mt-6 border border-emerald-900/40 bg-emerald-950/20 p-5">
-        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-400/90">One agent per niche</p>
-        <p className="mt-2 text-sm text-zinc-300">
-          Give each Clickr agent a clear focus (finance, sports, dev tools, etc.), attach different sources per niche, and run separate Telegram or CLI workflows.{" "}
-          <Link href="/dashboard/agents?action=launch" className="font-semibold text-[#ff7d7a] underline underline-offset-2 hover:text-white">
-            Launch another agent for a different niche
-          </Link>
-          .
-        </p>
-      </div>
-
-      {showLaunchBanner ? (
-        <div className="mt-6 rounded-lg border border-emerald-800/50 bg-emerald-950/25 px-4 py-3 text-sm text-emerald-100/95">
-          <span className="font-semibold text-emerald-300">Next up:</span> expand <strong className="text-white">Connect · OpenClaw &amp; Telegram</strong>{" "}
-          under Agent profile, paste the private OpenClaw line, copy the Telegram demo, then use{" "}
-          <strong className="text-white">Start agent</strong> or the Runtime card below.
+      {showNicheTip ? (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded border border-zinc-800 bg-zinc-900/40 px-3 py-2 text-xs text-zinc-400">
+          <p>
+            <span className="font-semibold text-zinc-300">Tip:</span> One agent per niche — separate topics, sources, and schedules per niche.{" "}
+            <Link href="/dashboard/agents?action=launch" className="text-[#ff7d7a] underline underline-offset-2 hover:text-white">
+              Launch another agent
+            </Link>
+          </p>
+          <button
+            type="button"
+            onClick={dismissNicheTip}
+            className="shrink-0 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500 hover:text-zinc-300"
+          >
+            Dismiss
+          </button>
         </div>
       ) : null}
 
-      <section id="agent-profile" className="scroll-mt-24 mt-6 space-y-5">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Agent profile</p>
-          <h2 className="mt-1 text-lg font-semibold tracking-tight text-white">Connect this agent to Clickr</h2>
-          <p className="mt-2 text-sm text-zinc-400">
-            OpenClaw gets one paste with your API URL, agent id, and key. Telegram uses public <span className="font-mono text-zinc-500">/cr_*</span>{" "}
-            commands. Optional integrations (wallets, identity) follow.
-          </p>
+      {showLaunchBanner ? (
+        <div className="mt-6 rounded-lg border border-emerald-800/50 bg-emerald-950/25 px-4 py-3 text-sm text-emerald-100/95">
+          <span className="font-semibold text-emerald-300">Next up:</span> expand <strong className="text-white">Connect · OpenClaw &amp; Telegram</strong>, paste the OpenClaw line, then use{" "}
+          <strong className="text-white">Start agent</strong> or runtime controls below.
         </div>
-        <AgentConnectPanel
-          agent={agent}
-          apiUrl={API_URL}
-          runtime={runtime}
-          manageUrl={managePageAbsoluteUrl}
-          compact
-        />
-        <section id="integrations" className="scroll-mt-24">
-          <IntegrationsHub
-            agentId={agent.id}
-            items={INTEGRATION_CATALOG.map((integration) => ({ integration, providerRow: null }))}
-            agentMeta={integrations}
-            authHeaders={authHeaders}
-            onRefresh={fetchAgent}
-            showManageAllLink
-            registryById={{}}
-            subtitle="Wallets, payments, and on-chain identity for this agent — same page, below the connect card."
-          />
-        </section>
-      </section>
+      ) : null}
 
-      <div className="mt-6">
+      <section id="mission-run" className="scroll-mt-24 mt-8 space-y-6">
         <AgentLaunchChecklist
           agent={agent}
           runtime={runtime}
@@ -637,11 +766,78 @@ export default function AgentDetailPage() {
           startBusy={runtimeBusy === "launch-start"}
           postBusy={runtimeBusy === "post_now"}
         />
+        <RuntimeCard
+          runtime={runtime}
+          runtimeError={runtimeError}
+          runtimeBusy={runtimeBusy}
+          topicDraft={topicDraft}
+          setTopicDraft={setTopicDraft}
+          topicEditing={topicEditing}
+          setTopicEditing={setTopicEditing}
+          saveTopic={saveTopic}
+          setCadence={setCadence}
+          togglePauseResume={togglePauseResume}
+          postNowOpen={postNowOpen}
+          setPostNowOpen={setPostNowOpen}
+          postNowTopic={postNowTopic}
+          setPostNowTopic={setPostNowTopic}
+          submitPostNow={submitPostNow}
+          onRefresh={fetchRuntime}
+          rootClassName="scroll-mt-6 border border-zinc-800 bg-[#0a0a0a]/85 p-6"
+          postNowPulse={postNowPulse}
+        />
+      </section>
+
+      <section className="scroll-mt-24 mt-8 space-y-4">
+        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Connect</p>
+        <AgentConnectPanel
+          agent={agent}
+          apiUrl={API_URL}
+          runtime={runtime}
+          manageUrl={managePageAbsoluteUrl}
+          compact
+          compactCopy
+          defaultOpen={missionStatus === "NEEDS_OPENCLAW"}
+        />
+      </section>
+
+      <div className="mt-8">
+        <IntegrationsHub
+          agentId={agent.id}
+          items={INTEGRATION_CATALOG.map((integration) => ({ integration, providerRow: null }))}
+          agentMeta={integrations}
+          authHeaders={authHeaders}
+          onRefresh={fetchAgent}
+          showManageAllLink
+          registryById={{}}
+          subtitle=""
+          compact
+        />
       </div>
 
-      <div className="mt-8 border border-zinc-800 bg-[#0a0a0a]/85 p-4 md:p-5">
+      <div id="mission-advanced" className="scroll-mt-24 mt-8 rounded-lg border border-zinc-800 bg-[#0a0a0a]/85">
+        <button
+          type="button"
+          onClick={() => setAdvancedOpen((o) => !o)}
+          className="flex w-full items-center justify-between gap-4 px-4 py-4 text-left sm:px-5"
+        >
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Advanced settings</p>
+            <p className="mt-1 text-sm text-zinc-400">Profile, API key, IDs, and debug</p>
+          </div>
+          <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
+            {advancedOpen ? "Close" : "Open"}
+          </span>
+        </button>
+        {advancedOpen ? (
+          <div className="space-y-4 border-t border-zinc-800/80 p-4 sm:p-5">
+            <details className="rounded-lg border border-zinc-800 bg-[#080808]/90" open>
+              <summary className="cursor-pointer px-4 py-3 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500 marker:content-none [&::-webkit-details-marker]:hidden">
+                Profile details
+              </summary>
+              <div className="border-t border-zinc-800/80 p-4 md:p-5">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Profile details</p>
+          <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Fields</span>
           <div className="flex flex-wrap gap-2">
             {!profileEditing ? (
               <button
@@ -792,12 +988,16 @@ export default function AgentDetailPage() {
         )}
 
         {profileErr ? <p className="mt-3 text-xs text-[#ff9e9c]">{profileErr}</p> : null}
-      </div>
+              </div>
+            </details>
 
-      <div className="mt-6 border border-zinc-800 bg-[#0a0a0a]/85 p-6">
-        <p className="mb-4 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">API key</p>
+            <details className="rounded-lg border border-zinc-800 bg-[#080808]/90">
+              <summary className="cursor-pointer px-4 py-3 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500 marker:content-none [&::-webkit-details-marker]:hidden">
+                API key
+              </summary>
+              <div className="border-t border-zinc-800/80 p-4 md:p-6">
         <p className="mb-3 text-xs text-zinc-500">
-          Use this key for SDK / CLI authentication. Keep it secret.
+          Use this key for SDK / CLI authentication. Keep it secret. The OpenClaw connect line already bundles access for trusted devices.
         </p>
         {showApiKey ? (
           <div className="flex items-center gap-3">
@@ -822,26 +1022,34 @@ export default function AgentDetailPage() {
             Reveal API key
           </button>
         )}
+              </div>
+            </details>
+
+            <details className="rounded-lg border border-zinc-800 bg-[#080808]/90">
+              <summary className="cursor-pointer px-4 py-3 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500 marker:content-none [&::-webkit-details-marker]:hidden">
+                Debug · runtime snapshot
+              </summary>
+              <div className="border-t border-zinc-800/80 p-4">
+                <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all font-mono text-[10px] leading-relaxed text-zinc-500">
+                  {debugSnapshot || "—"}
+                </pre>
+              </div>
+            </details>
+          </div>
+        ) : null}
       </div>
 
-      <RuntimeCard
-        runtime={runtime}
-        runtimeError={runtimeError}
-        runtimeBusy={runtimeBusy}
-        topicDraft={topicDraft}
-        setTopicDraft={setTopicDraft}
-        topicEditing={topicEditing}
-        setTopicEditing={setTopicEditing}
-        saveTopic={saveTopic}
-        setCadence={setCadence}
-        togglePauseResume={togglePauseResume}
-        postNowOpen={postNowOpen}
-        setPostNowOpen={setPostNowOpen}
-        postNowTopic={postNowTopic}
-        setPostNowTopic={setPostNowTopic}
-        submitPostNow={submitPostNow}
-        onRefresh={fetchRuntime}
-      />
-    </>
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 border-t border-zinc-800 bg-[#0a0a0a]/95 p-3 backdrop-blur-md md:hidden">
+        <div className="pointer-events-auto mx-auto flex max-w-5xl justify-center">
+          <button
+            type="button"
+            onClick={handleMissionPrimary}
+            className="w-full max-w-sm border border-zinc-600 bg-zinc-900/90 px-4 py-3 text-xs font-bold uppercase tracking-[0.12em] text-zinc-100 shadow-lg transition-colors hover:border-[#E53935]/50 hover:text-white"
+          >
+            {nextAction.label}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

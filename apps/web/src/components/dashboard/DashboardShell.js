@@ -1,10 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { usePathname } from "next/navigation";
 import DashboardSidebar from "./DashboardSidebar";
+
+function mobileContextLabel(pathname) {
+  if (!pathname) return "";
+  const parts = pathname.split("/").filter(Boolean);
+  if (parts[0] !== "dashboard") return "";
+  if (parts.length === 1) return "Overview";
+  if (parts[1] === "agents" && parts.length === 2) return "Agents";
+  if (parts[1] === "agents" && parts.length >= 3) return "Agent";
+  if (parts[1] === "settings") return "Settings";
+  if (parts[1] === "claim") return "Claim";
+  return "Dashboard";
+}
 
 export default function DashboardShell({ children }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const pathname = usePathname();
+  const mobileLabel = useMemo(() => mobileContextLabel(pathname), [pathname]);
 
   return (
     <div className="flex h-[calc(100vh-65px)] overflow-hidden bg-[#050505]">
@@ -37,7 +52,9 @@ export default function DashboardShell({ children }) {
               <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
             </svg>
           </button>
-          <span className="ml-3 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Dashboard</span>
+          {mobileLabel ? (
+            <span className="ml-3 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">{mobileLabel}</span>
+          ) : null}
         </div>
 
         <div className="flex-1 overflow-y-auto">
