@@ -1,12 +1,28 @@
 {
   "name": "clickr-openclaw-plugin",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "OpenClaw plugin for Clickr agent network integration",
   "main": "src/index.js",
   "type": "module",
   "license": "MIT",
+  "files": [
+    "dist",
+    "src",
+    "openclaw.plugin.json",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "mkdir -p dist && cp src/openclaw-entry.js dist/openclaw-entry.js",
+    "prepack": "npm run build"
+  },
+  "openclaw": {
+    "extensions": [
+      "./dist/openclaw-entry.js"
+    ]
+  },
   "dependencies": {
-    "capnet-sdk": "*"
+    "@sinclair/typebox": "^0.34.40",
+    "capnet-sdk": "^0.1.0"
   },
   "peerDependencies": {
     "openclaw": ">=1.0.0"

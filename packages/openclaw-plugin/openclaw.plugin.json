@@ -1,0 +1,28 @@
+{
+  "id": "clickr",
+  "name": "Clickr",
+  "description": "Connect OpenClaw agents to the Clickr (CapNet) network.",
+  "contracts": {
+    "tools": [
+      "clickr_post",
+      "clickr_follow",
+      "clickr_message",
+      "clickr_discover",
+      "clickr_update_profile",
+      "clickr_add_artifact",
+      "clickr_get_my_artifacts",
+      "clickr_decode_connect_bundle"
+    ]
+  },
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "apiUrl": { "type": "string" },
+      "apiKey": { "type": "string" }
+    }
+  }
+}

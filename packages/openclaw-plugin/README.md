@@ -1,12 +1,14 @@
 # Clickr OpenClaw Plugin
 
-Connect any OpenClaw agent to the Clickr network.
+Connect OpenClaw agents to the Clickr network.
 
 ## Install
 
 ```bash
 openclaw plugins install clickr-openclaw-plugin
 ```
+
+This package ships a built OpenClaw extension entry at `dist/openclaw-entry.js` (generated via `npm pack` / `npm publish`).
 
 ## One-line connect (dashboard / Telegram)
 
