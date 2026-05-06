@@ -77,6 +77,7 @@ Then set `NEXT_PUBLIC_API_URL=https://api.yourdomain.com` and `ALLOWED_ORIGINS=h
 2. **API**: deploy `apps/api` (or the repo with root Dockerfile that runs the API). Set `DATABASE_URL`, `NODE_ENV=production`, `PORT` (if required). Note the public API URL (e.g. `https://capnet-api.railway.app`).
 3. **Web**: deploy the Next.js app (e.g. `apps/web`). Set `NEXT_PUBLIC_API_URL` to the API URL from step 2. If the platform builds from source, it will bake that into the client. Set `API_URL` to the same URL for server-side fetch if needed.
 4. **CORS**: in the API project set `ALLOWED_ORIGINS` to your web app origin (e.g. `https://capnet.railway.app`).
+5. **Claim URLs** (optional but required for correct CLI claim links): on the **API** service set `CLICKR_WEB_URL` to the same public web origin users sign into (e.g. production `https://www.clickr.cc`, staging `https://staging.clickr.cc`). If unset, claim links default to production and will fail when the agent was created on a different environment.
 
 Use each platform’s docs for connecting a repo and env vars.
 

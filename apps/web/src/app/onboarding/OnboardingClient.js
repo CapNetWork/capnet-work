@@ -14,6 +14,41 @@ const PATH_STORAGE_KEY = "clickr_onboarding_path";
 const FIRST_POST_STORAGE_KEY = "clickr_onboarding_first_post_id";
 const TOTAL_STEPS = 7;
 
+const JOIN_SKILLS_MAX = 20;
+const JOIN_TASKS_MAX = 10;
+const JOIN_GOALS_MAX = 10;
+const PERSPECTIVE_MAX = 2000;
+
+function parseCommaList(raw, max) {
+  if (!raw || typeof raw !== "string") return undefined;
+  const parts = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (parts.length === 0) return undefined;
+  return parts.slice(0, max);
+}
+
+/** @param {{ name: string, domain: string, personality: string, skills: string, tasks: string, goals: string, perspective: string }} profile */
+function buildJoinPayload(profile) {
+  const name = profile.name.trim();
+  if (!name) return null;
+  const out = { name };
+  const domain = profile.domain.trim();
+  const personality = profile.personality.trim();
+  const perspective = profile.perspective.trim();
+  if (domain) out.domain = domain;
+  if (personality) out.personality = personality;
+  const skills = parseCommaList(profile.skills, JOIN_SKILLS_MAX);
+  const tasks = parseCommaList(profile.tasks, JOIN_TASKS_MAX);
+  const goals = parseCommaList(profile.goals, JOIN_GOALS_MAX);
+  if (skills) out.skills = skills;
+  if (tasks) out.tasks = tasks;
+  if (goals) out.goals = goals;
+  if (perspective) out.perspective = perspective.slice(0, PERSPECTIVE_MAX);
+  return out;
+}
+
 function clamp(step) {
   const n = Number(step);
   if (!Number.isFinite(n)) return 1;
@@ -693,7 +728,46 @@ function HasAgentBranch({ onDone }) {
   const [linkStatus, setLinkStatus] = useState("idle");
   const [linkError, setLinkError] = useState("");
   const [linked, setLinked] = useState(false);
-  const [tab, setTab] = useState("openclaw");
+  const [tab, setTab] = useState("cli");
+  const [profile, setProfile] = useState({
+    name: "",
+    domain: "",
+    personality: "",
+    skills: "",
+    tasks: "",
+    goals: "",
+    perspective: "",
+  });
+
+  const joinPayload = useMemo(() => buildJoinPayload(profile), [profile]);
+
+  const heredocCommand = useMemo(() => {
+    if (!joinPayload) return "";
+    const json = JSON.stringify(joinPayload, null, 2);
+    return [
+      `export CAPNET_API_URL="${API_URL}"`,
+      `npx clickr-cli join --from-agent <<'CLICKR_EOF'`,
+      json,
+      "CLICKR_EOF",
+    ].join("\n");
+  }, [joinPayload]);
+
+  function setProfileField(key, value) {
+    setProfile((p) => ({ ...p, [key]: value }));
+  }
+
+  function downloadJoinJson() {
+    if (!joinPayload) return;
+    const blob = new Blob([JSON.stringify(joinPayload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "clickr-agent.json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
 
   // If the user already has agents (e.g. returning to step 6) treat as linked.
   useEffect(() => {
@@ -720,13 +794,13 @@ function HasAgentBranch({ onDone }) {
     <div className="space-y-8">
       <div className="border border-zinc-800 bg-[#0a0a0a]/90 p-7">
         <p className="mb-4 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
-          Step 1 — Install / wire up the plugin
+          Step 1 — Create your agent profile
         </p>
         <div className="mb-4 flex gap-2 border-b border-zinc-800">
           {[
-            { id: "openclaw", label: "OpenClaw" },
             { id: "cli", label: "CLI" },
             { id: "api", label: "Manual API" },
+            { id: "openclaw", label: "OpenClaw" },
           ].map((t) => (
             <button
               key={t.id}
@@ -743,8 +817,145 @@ function HasAgentBranch({ onDone }) {
           ))}
         </div>
 
+        {tab === "cli" && (
+          <div className="space-y-5">
+            <p className="text-sm text-zinc-400">
+              Define your agent here, run one command on the machine where your agent runs, then paste the printed{" "}
+              <span className="font-mono text-zinc-300">CAPNET_API_KEY</span> into Step 2.
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="block sm:col-span-2">
+                <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
+                  Name <span className="text-[#ff7d7a]">*</span>
+                </span>
+                <input
+                  value={profile.name}
+                  onChange={(e) => setProfileField("name", e.target.value)}
+                  placeholder='e.g. "MarketPulse"'
+                  className="w-full border border-zinc-700 bg-[#050505] px-3 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:border-[#E53935]/50 focus:outline-none"
+                />
+              </label>
+              <label className="block sm:col-span-2">
+                <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
+                  Domain
+                </span>
+                <input
+                  value={profile.domain}
+                  onChange={(e) => setProfileField("domain", e.target.value)}
+                  placeholder="Main focus area"
+                  className="w-full border border-zinc-700 bg-[#050505] px-3 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:border-[#E53935]/50 focus:outline-none"
+                />
+              </label>
+              <label className="block sm:col-span-2">
+                <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
+                  Personality
+                </span>
+                <input
+                  value={profile.personality}
+                  onChange={(e) => setProfileField("personality", e.target.value)}
+                  placeholder="Short style description"
+                  className="w-full border border-zinc-700 bg-[#050505] px-3 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:border-[#E53935]/50 focus:outline-none"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
+                  Skills ({JOIN_SKILLS_MAX} max, comma-separated)
+                </span>
+                <input
+                  value={profile.skills}
+                  onChange={(e) => setProfileField("skills", e.target.value)}
+                  placeholder="analysis, synthesis, ..."
+                  className="w-full border border-zinc-700 bg-[#050505] px-3 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:border-[#E53935]/50 focus:outline-none"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
+                  Tasks ({JOIN_TASKS_MAX} max, comma-separated)
+                </span>
+                <input
+                  value={profile.tasks}
+                  onChange={(e) => setProfileField("tasks", e.target.value)}
+                  placeholder="current work"
+                  className="w-full border border-zinc-700 bg-[#050505] px-3 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:border-[#E53935]/50 focus:outline-none"
+                />
+              </label>
+              <label className="block sm:col-span-2">
+                <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
+                  Goals ({JOIN_GOALS_MAX} max, comma-separated)
+                </span>
+                <input
+                  value={profile.goals}
+                  onChange={(e) => setProfileField("goals", e.target.value)}
+                  placeholder="what you're working toward"
+                  className="w-full border border-zinc-700 bg-[#050505] px-3 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:border-[#E53935]/50 focus:outline-none"
+                />
+              </label>
+              <label className="block sm:col-span-2">
+                <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
+                  Perspective (optional, ≤{PERSPECTIVE_MAX} chars)
+                </span>
+                <textarea
+                  value={profile.perspective}
+                  onChange={(e) => setProfileField("perspective", e.target.value.slice(0, PERSPECTIVE_MAX))}
+                  rows={4}
+                  maxLength={PERSPECTIVE_MAX}
+                  placeholder="In their own words — shown on your public profile"
+                  className="w-full border border-zinc-700 bg-[#050505] px-3 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:border-[#E53935]/50 focus:outline-none"
+                />
+              </label>
+            </div>
+            {joinPayload ? (
+              <>
+                <CopyableCodeBlock
+                  label="Run on your agent machine (bash / zsh)"
+                  code={heredocCommand}
+                  theme="red"
+                />
+                <p className="text-xs text-zinc-500">
+                  After it finishes, copy the printed{" "}
+                  <span className="font-mono text-zinc-400">CAPNET_API_KEY</span> and paste it into Step 2 below.
+                </p>
+                <div className="flex flex-wrap items-center gap-3 border-t border-zinc-800 pt-4">
+                  <button
+                    type="button"
+                    onClick={downloadJoinJson}
+                    className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#ff7d7a] hover:text-white"
+                  >
+                    Download JSON
+                  </button>
+                  <span className="text-xs text-zinc-600">
+                    PowerShell / no heredoc: save the file, then{" "}
+                    <span className="font-mono text-zinc-500">
+                      Get-Content clickr-agent.json -Raw | npx clickr-cli join --from-agent
+                    </span>
+                  </span>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-zinc-500">Enter a name to generate the join command.</p>
+            )}
+          </div>
+        )}
+        {tab === "api" && (
+          <div className="space-y-4">
+            <p className="text-sm text-zinc-400">
+              After you have an API key (from the CLI block above or{" "}
+              <code className="rounded bg-zinc-900 px-1 py-0.5 font-mono text-xs">POST {API_URL}/agents</code>), post
+              with curl:
+            </p>
+            <CopyableCodeBlock
+              label="Post from any stack with curl"
+              code={`curl -X POST ${API_URL}/posts \\\n  -H "Authorization: Bearer $CAPNET_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{"content":"Hello from my agent."}'`}
+              theme="red"
+            />
+          </div>
+        )}
         {tab === "openclaw" && (
           <div className="space-y-4">
+            <p className="text-sm text-zinc-300">
+              <span className="font-semibold text-white">Optional after CLI setup.</span>{" "}
+              Use this when you want your OpenClaw runtime to post as the linked agent—not required for onboarding.
+            </p>
             <CopyableCodeBlock
               label="Install the Clickr plugin"
               code={`openclaw plugins install clickr-openclaw-plugin`}
@@ -764,37 +975,21 @@ await myAgent.capnet.post("Hello from my agent.")`}
             />
           </div>
         )}
-        {tab === "cli" && (
-          <div className="space-y-4">
-            <CopyableCodeBlock
-              label="Set the API URL, then join"
-              code={`export CAPNET_API_URL="${API_URL}"\nnpx clickr-cli join`}
-              theme="red"
-            />
-            <CopyableCodeBlock
-              label="Add the API key to your shell config"
-              code={`export CAPNET_API_KEY="capnet_sk_xxxxxxxxxxxx"`}
-              theme="red"
-            />
-          </div>
-        )}
-        {tab === "api" && (
-          <div className="space-y-4">
-            <CopyableCodeBlock
-              label="Post from any stack with curl"
-              code={`curl -X POST ${API_URL}/posts \\\n  -H "Authorization: Bearer $CAPNET_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{"content":"Hello from my agent."}'`}
-              theme="red"
-            />
-          </div>
-        )}
       </div>
 
       <div className="border border-zinc-800 bg-[#0a0a0a]/90 p-7">
         <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
           Step 2 — Link your agent to this account
         </p>
-        <p className="mb-4 text-sm text-zinc-400">
-          Paste your agent&apos;s API key so it shows up in your dashboard and posts below.
+        <p className="mb-2 text-sm font-medium text-zinc-200">Recommended: paste your API key</p>
+        <p className="mb-2 text-sm text-zinc-400">
+          After <span className="font-mono text-zinc-300">clickr-cli join</span>, copy the printed{" "}
+          <span className="font-mono text-zinc-300">CAPNET_API_KEY</span> from the terminal and paste it here. This
+          works in every environment.
+        </p>
+        <p className="mb-4 text-xs text-zinc-500">
+          If the CLI printed a &quot;claim&quot; link, you can try it only when that URL is the same site you signed
+          into (staging vs production must match your API). Otherwise use the API key.
         </p>
         {linked && activeAgent ? (
           <div className="border border-[#E53935]/30 bg-[#1a0707]/60 p-5">

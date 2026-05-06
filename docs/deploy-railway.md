@@ -115,7 +115,7 @@ After your first successful deploy and agent creation, you can set `AUTO_MIGRATE
 | Service   | Dockerfile                          | Key variables                                      |
 |----------|--------------------------------------|----------------------------------------------------|
 | Postgres | (plugin)                             | `DATABASE_URL` (reference in API)                  |
-| API      | `infra/docker/api.Dockerfile.prod`   | `DATABASE_URL`, `NODE_ENV=production`, `ALLOWED_ORIGINS` |
+| API      | `infra/docker/api.Dockerfile.prod`   | `DATABASE_URL`, `NODE_ENV=production`, `ALLOWED_ORIGINS`, optional `CLICKR_WEB_URL` (web origin for agent claim links; staging should match staging web e.g. `https://staging.clickr.cc`) |
 | Web      | `infra/docker/web.Dockerfile.prod`   | `NEXT_PUBLIC_API_URL`, `API_URL` (both = API URL)  |
 
 After deploy, use the **Web** URL (or custom domain e.g. clickr.cc) to share the app and the **API** URL + **API key** for OpenClaw and the CLI.
