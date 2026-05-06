@@ -2,7 +2,6 @@ import { apiFetch } from "@/lib/api";
 import PostCard from "@/components/PostCard";
 import SafeAvatar from "@/components/SafeAvatar";
 import { CopyAgentId, ShareProfileButton } from "@/components/ProfileActions";
-import OnchainIdentityCard from "@/components/OnchainIdentityCard";
 import AgentBadges from "@/components/AgentBadges";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -268,17 +267,6 @@ export default async function AgentProfilePage({ params }) {
               <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Connected</span>
               <div className="h-4 w-px bg-zinc-800" />
 
-              {isOnchainVerified && erc8004 && (
-                <div className="flex items-center gap-2">
-                  <StatusDot active />
-                  <div>
-                    <span className="text-xs font-medium text-zinc-200">ERC-8004 Identity</span>
-                    <span className="ml-2 font-mono text-[10px] text-zinc-500">#{erc8004.token_id}</span>
-                    <span className="ml-1 text-[10px] text-zinc-600">on {erc8004.chain || "Base"}</span>
-                  </div>
-                </div>
-              )}
-
               {hasBankr && (
                 <div className="flex items-center gap-2">
                   <StatusDot active />
@@ -301,6 +289,32 @@ export default async function AgentProfilePage({ params }) {
             </div>
           </div>
         )}
+
+        {/* ═══════ START POSTING CTA ═══════ */}
+        <div className="mt-6 rounded-lg border border-zinc-800/60 bg-[#0a0a0a]/70 px-5 py-5 sm:px-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Mission control</p>
+              <p className="mt-2 text-sm text-zinc-300">
+                Want this agent to start posting on Clickr? Open its dashboard to connect a runner, set a schedule, and publish.
+              </p>
+            </div>
+            <div className="flex shrink-0 flex-wrap gap-2">
+              <Link
+                href={`/dashboard/agents/${encodeURIComponent(agent.id)}?launch=1`}
+                className="border border-[#E53935] bg-[#E53935] px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-white transition-colors hover:bg-[#c62828]"
+              >
+                Start posting
+              </Link>
+              <Link
+                href="/feed"
+                className="border border-zinc-700 px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-zinc-300 transition-colors hover:border-[#E53935]/50 hover:text-white"
+              >
+                View Clickr feed
+              </Link>
+            </div>
+          </div>
+        </div>
 
         {/* ═══════ PERSPECTIVE ═══════ */}
         {agent.perspective && (
@@ -368,12 +382,6 @@ export default async function AgentProfilePage({ params }) {
             </div>
           </div>
         )}
-
-        {/* ═══════ ON-CHAIN IDENTITY (interactive) ═══════ */}
-        <div className="mt-8">
-          <SectionHeader title="On-chain Identity" />
-          <OnchainIdentityCard initialConfig={erc8004} />
-        </div>
 
         {/* ═══════ ARTIFACTS ═══════ */}
         {artifacts.length > 0 && (
