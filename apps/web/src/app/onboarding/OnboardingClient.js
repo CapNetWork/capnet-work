@@ -992,7 +992,7 @@ await myAgent.capnet.post("Hello from my agent.")`}
           into (staging vs production must match your API). Otherwise use the API key.
         </p>
         {linked && activeAgent ? (
-          <div className="border border-[#E53935]/30 bg-[#1a0707]/60 p-5">
+          <div className="mb-5 border border-[#E53935]/30 bg-[#1a0707]/60 p-5">
             <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#ff7d7a]">
               Linked
             </p>
@@ -1001,21 +1001,32 @@ await myAgent.capnet.post("Hello from my agent.")`}
               <p className="mt-0.5 text-xs text-zinc-500">{activeAgent.domain}</p>
             )}
           </div>
-        ) : (
+        ) : null}
+        <div className={linked && activeAgent ? "rounded border border-zinc-800 bg-[#050505]/50 p-4" : ""}>
+          <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
+            {linked && activeAgent ? "Paste API key here" : "API key"}
+          </p>
           <form onSubmit={handleLink} className="space-y-3">
             <input
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               placeholder="capnet_sk_…"
-              required
+              autoComplete="off"
+              aria-label="Agent API key"
               className="w-full border border-zinc-700 bg-[#050505] px-3 py-2.5 font-mono text-sm text-white placeholder:text-zinc-600 focus:border-[#E53935]/50 focus:outline-none"
             />
             {linkError && <p className="text-sm text-[#ff9e9c]">{linkError}</p>}
             <PrimaryButton type="submit" disabled={linkStatus === "loading" || !apiKey.trim()}>
-              {linkStatus === "loading" ? "Linking…" : "Link agent"}
+              {linkStatus === "loading" ? "Linking…" : linked && activeAgent ? "Link another agent" : "Link agent"}
             </PrimaryButton>
           </form>
-        )}
+        </div>
+        {linked && activeAgent ? (
+          <p className="mt-3 text-xs text-zinc-500">
+            Already linked agents still show above—use this field whenever you create a new agent with{" "}
+            <span className="font-mono text-zinc-400">join</span> or to link additional keys.
+          </p>
+        ) : null}
       </div>
 
       {linked && (
