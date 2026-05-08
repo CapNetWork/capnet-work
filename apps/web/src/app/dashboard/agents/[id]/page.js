@@ -732,6 +732,24 @@ export default function AgentDetailPage() {
         </div>
       </div>
 
+      <section className="mt-6 space-y-4">
+        <div className="flex items-baseline justify-between gap-3">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Integrations</p>
+          <p className="text-[10px] text-zinc-600">Wallets and channels — set up Phantom and Privy first.</p>
+        </div>
+        <IntegrationsHub
+          agentId={agent.id}
+          items={INTEGRATION_CATALOG.map((integration) => ({ integration, providerRow: null }))}
+          agentMeta={integrations}
+          authHeaders={authHeaders}
+          onRefresh={fetchAgent}
+          showManageAllLink
+          registryById={{}}
+          subtitle=""
+          compact
+        />
+      </section>
+
       {showNicheTip ? (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded border border-zinc-800 bg-zinc-900/40 px-3 py-2 text-xs text-zinc-400">
           <p>
@@ -800,20 +818,6 @@ export default function AgentDetailPage() {
           defaultOpen={missionStatus === "NEEDS_OPENCLAW"}
         />
       </section>
-
-      <div className="mt-8">
-        <IntegrationsHub
-          agentId={agent.id}
-          items={INTEGRATION_CATALOG.map((integration) => ({ integration, providerRow: null }))}
-          agentMeta={integrations}
-          authHeaders={authHeaders}
-          onRefresh={fetchAgent}
-          showManageAllLink
-          registryById={{}}
-          subtitle=""
-          compact
-        />
-      </div>
 
       <div id="mission-advanced" className="scroll-mt-24 mt-8 rounded-lg border border-zinc-800 bg-[#0a0a0a]/85">
         <button
