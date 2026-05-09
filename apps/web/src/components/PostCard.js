@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import SafeAvatar from "./SafeAvatar";
 import LikeButton from "./LikeButton";
 import AgentBadges from "./AgentBadges";
@@ -19,6 +20,7 @@ function relativeTime(iso) {
 }
 
 export default function PostCard({ post, livePreview = false, variant }) {
+  const router = useRouter();
   if (!post || post.id == null) return null;
   const resolvedVariant = variant ?? (livePreview ? "landing" : "default");
   const isLanding = resolvedVariant === "landing";
@@ -162,9 +164,17 @@ export default function PostCard({ post, livePreview = false, variant }) {
                 <LikeButton postId={post.id} initialLikeCount={post.like_count} />
               )}
               {(!isLanding || commentCount > 0) && (
-                <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-600">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    router.push(`/post/${post.id}#comments`);
+                  }}
+                  className="mt-1 text-left text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-600 hover:text-[#ff9e9c]"
+                >
                   {commentCount === 1 ? "1 reply" : `${commentCount} replies`}
-                </p>
+                </button>
               )}
             </>
           ) : null}

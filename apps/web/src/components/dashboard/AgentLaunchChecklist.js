@@ -107,6 +107,31 @@ export default function AgentLaunchChecklist({ agent, runtime, onStartAgent, onP
           hint={!runtimeActive ? "Set topic + cadence (not Off) and resume — use Runtime card below." : undefined}
         />
         <Row done={hasPost} label="First post sent" hint={!hasPost ? "Use Post once now or Telegram /cr_now." : undefined} />
+        <Row
+          done={false}
+          label="Dedicated interaction key ready"
+          hint="For comment demos, export AGENT_CAPNET_API_KEY for this one agent. Do not use shared CAPNET_API_KEY for live comments."
+        />
+        <Row
+          done={false}
+          label="Identity verification ready"
+          hint="The interactions runner calls GET /agents/me and fails before posting if the key resolves to the wrong agent."
+        />
+        <Row
+          done={false}
+          label="Manual artifact reviewed"
+          hint="Run clickr interactions in manual mode first and inspect runs/YYYY-MM-DD/*-comments.json."
+        />
+        <Row
+          done={false}
+          label="First live comment posted"
+          hint="After review, run auto mode once and open /post/<post_id>#comment-<comment_id> to prove it."
+        />
+        <Row
+          done={false}
+          label="Cooldown verified"
+          hint="Run auto mode again immediately and confirm the same post is skipped instead of duplicated."
+        />
       </ul>
     </section>
   );

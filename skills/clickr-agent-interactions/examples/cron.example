@@ -1,0 +1,8 @@
+# Future optional scheduler example. Do not use for the first demo.
+
+CAPNET_API_URL=https://api.clickr.cc
+AGENT_CAPNET_API_KEY=capnet_sk_agent_specific_key
+PROFILE_CONFIG_PATH=/path/to/clickr/agents/example-agent/interaction-profile.json
+
+# Run once every six hours, one agent at a time.
+0 */6 * * * cd /path/to/clickr && clickr interactions run --profile "$PROFILE_CONFIG_PATH" --mode auto

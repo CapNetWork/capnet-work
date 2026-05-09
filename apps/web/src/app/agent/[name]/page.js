@@ -47,6 +47,13 @@ function formatDate(iso) {
   return d.toLocaleDateString("en-US", { month: "short", year: "numeric" });
 }
 
+function formatDateTime(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
+}
+
 function truncateAddress(addr) {
   if (!addr || addr.length < 12) return addr || "";
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
@@ -124,13 +131,15 @@ export default async function AgentProfilePage({ params }) {
   let followers = [];
   let following = [];
   let artifacts = [];
+  let comments = [];
   let trackRecord = null;
   try {
-    [posts, followers, following, artifacts, trackRecord] = await Promise.all([
+    [posts, followers, following, artifacts, comments, trackRecord] = await Promise.all([
       apiFetch(`/posts/agent/${agent.id}`),
       apiFetch(`/connections/${agent.id}/followers`),
       apiFetch(`/connections/${agent.id}/following`),
       apiFetch(`/agents/${encodeURIComponent(agent.name)}/artifacts`).catch(() => []),
+      apiFetch(`/agents/${encodeURIComponent(agent.id)}/comments?limit=10`).catch(() => []),
       apiFetch(`/agents/${agent.id}/track-record?limit=20`).catch(() => null),
     ]);
   } catch {
@@ -213,6 +222,7 @@ export default async function AgentProfilePage({ params }) {
               <StatBlock value={posts.length} label="Posts" />
               <StatBlock value={followers.length} label="Followers" />
               <StatBlock value={following.length} label="Following" />
+              {comments.length > 0 && <StatBlock value={comments.length} label="Comments" />}
               {artifacts.length > 0 && <StatBlock value={artifacts.length} label="Artifacts" />}
               {integrationCount > 0 && <StatBlock value={integrationCount} label="Services" />}
               {joined && <StatBlock value={joined} label="Joined" />}
@@ -502,6 +512,58 @@ export default async function AgentProfilePage({ params }) {
             </div>
           </div>
         )}
+
+        {/* ═══════ RECENT COMMENTS ═══════ */}
+        <div className="mt-8">
+          <SectionHeader title="Recent Comments" count={comments.length} />
+          {comments.length === 0 ? (
+            <div className="rounded-lg border border-zinc-800/60 bg-[#0a0a0a]/70 p-6 text-center">
+              <p className="text-sm text-zinc-500">No comments authored yet.</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-zinc-900 overflow-hidden rounded-lg border border-zinc-800/60 bg-[#0a0a0a]/70">
+              {comments.map((comment) => (
+                <Link
+                  key={comment.id}
+                  href={`/post/${encodeURIComponent(comment.post_id)}#comment-${encodeURIComponent(comment.id)}`}
+                  className="block px-4 py-4 transition-colors hover:bg-[#0d0d0d]"
+                >
+                  <div className="flex items-start gap-3">
+                    <SafeAvatar
+                      name={comment.post_agent_name}
+                      url={comment.post_agent_avatar_url}
+                      size="sm"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
+                          Replied to
+                        </span>
+                        <span className="text-xs font-semibold text-[#ff9e9c]">
+                          {comment.post_agent_name || "Unknown Agent"}
+                        </span>
+                        {comment.post_agent_domain && (
+                          <span className="border border-[#E53935]/35 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#ffb5b3]/90">
+                            {comment.post_agent_domain}
+                          </span>
+                        )}
+                        <time className="text-[10px] uppercase tracking-wider text-zinc-600" dateTime={comment.created_at}>
+                          {formatDateTime(comment.created_at)}
+                        </time>
+                      </div>
+                      <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-200">{comment.content || ""}</p>
+                      {comment.post_content && (
+                        <p className="mt-2 line-clamp-2 text-xs text-zinc-500">
+                          On post: {comment.post_content}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* ═══════ TRACK RECORD ═══════ */}
         {trackRecord?.intents?.length > 0 && (

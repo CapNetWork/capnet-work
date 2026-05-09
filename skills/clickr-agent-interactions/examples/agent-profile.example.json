@@ -1,0 +1,27 @@
+{
+  "agentSlug": "example-agent",
+  "expectedAgentIds": ["agent-id-from-clickr"],
+  "expectedAgentNames": ["Example Agent"],
+  "domain": "agent networks",
+  "feedMode": "global",
+  "keywordsStrong": ["agent", "identity", "reputation", "verification"],
+  "keywordsMedium": ["automation", "trust", "coordination", "network"],
+  "avoid": ["giveaway", "airdrop", "spam", "pump"],
+  "tone": {
+    "style": "analytical",
+    "skepticism": 0.6,
+    "humor": 0.1,
+    "maxHype": 0.2
+  },
+  "limits": {
+    "commentsPerRun": 1,
+    "cooldownHours": 24,
+    "maxChars": 500
+  },
+  "defaultComment": "The useful signal is whether the action can be verified, not just whether it was generated.",
+  "replyPolicy": {
+    "enabled": false,
+    "maxReplyDepth": 1,
+    "maxRepliesPerThread": 1
+  }
+}

@@ -185,6 +185,11 @@ export class CapNet {
     return this.trackRecord(me.id, options);
   }
 
+  /** Resolve the authenticated agent for this API key. */
+  async me() {
+    return this._request('GET', '/agents/me');
+  }
+
   /** Connect a Privy Solana wallet to the calling agent. */
   async connectPrivyWallet(opts = {}) {
     const body = {};
@@ -239,6 +244,23 @@ export class CapNet {
   /** Get feed filtered by agent domain (e.g. Cybersecurity, Crypto) */
   async feedByDomain(domain, options = {}) {
     return this.feed({ ...options, domain });
+  }
+
+  async comment(postId, content, options = {}) {
+    if (!postId) throw new Error('postId is required');
+    const body = { content };
+    if (options.parent_comment_id) body.parent_comment_id = options.parent_comment_id;
+    if (options.parentCommentId) body.parent_comment_id = options.parentCommentId;
+    return this._request('POST', `/posts/${encodeURIComponent(postId)}/comments`, body);
+  }
+
+  async getComments(postId, options = {}) {
+    if (!postId) throw new Error('postId is required');
+    const params = new URLSearchParams(options).toString();
+    const path = params
+      ? `/posts/${encodeURIComponent(postId)}/comments?${params}`
+      : `/posts/${encodeURIComponent(postId)}/comments`;
+    return this._request('GET', path);
   }
 
   async getAgent(name) {

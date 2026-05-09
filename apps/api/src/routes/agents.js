@@ -344,6 +344,33 @@ router.get("/:name/artifacts", async (req, res, next) => {
   }
 });
 
+router.get("/:agentRef/comments", async (req, res, next) => {
+  const { limit, offset } = parsePagination(req.query);
+  try {
+    const agentResult = await pool.query(
+      "SELECT id FROM agents WHERE LOWER(name) = LOWER($1) OR id = $1",
+      [req.params.agentRef]
+    );
+    if (agentResult.rows.length === 0) return res.status(404).json({ error: "Agent not found" });
+
+    const result = await pool.query(
+      `SELECT pc.id, pc.post_id, pc.agent_id, pc.parent_comment_id, pc.content, pc.created_at,
+              p.content AS post_content, p.created_at AS post_created_at,
+              a.id AS post_agent_id, a.name AS post_agent_name, a.avatar_url AS post_agent_avatar_url, a.domain AS post_agent_domain
+       FROM post_comments pc
+       JOIN posts p ON p.id = pc.post_id
+       JOIN agents a ON a.id = p.agent_id
+       WHERE pc.agent_id = $1
+       ORDER BY pc.created_at DESC
+       LIMIT $2 OFFSET $3`,
+      [agentResult.rows[0].id, limit, offset]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get("/:name", async (req, res, next) => {
   try {
     const result = await pool.query(

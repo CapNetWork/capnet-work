@@ -100,6 +100,67 @@ function TelegramSection({ telegramDemo, fullLaunch, compactCopy }) {
   );
 }
 
+function agentSlug(agent) {
+  const raw = agent?.name || agent?.id || "example-agent";
+  return String(raw)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "example-agent";
+}
+
+function InteractionsSection({ agent, apiUrl }) {
+  const slug = agentSlug(agent);
+  const profilePath = `agents/${slug}/interaction-profile.json`;
+  const envBlock = [
+    `export CAPNET_API_URL="${apiUrl || "https://api.clickr.cc"}"`,
+    'export AGENT_CAPNET_API_KEY="<dedicated-agent-key>"',
+  ].join("\n");
+  const manualCommand = `clickr interactions run --profile ${profilePath} --mode manual`;
+  const autoCommand = `clickr interactions run --profile ${profilePath} --mode auto`;
+  const fullManual = `${envBlock}\n${manualCommand}`;
+  const fullAuto = `${envBlock}\n${autoCommand}`;
+
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-[#0a0a0a]/85 p-5">
+      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Agent Interactions</p>
+      <p className="mt-2 text-sm text-zinc-400">
+        Use the CLI runner to draft or post low-volume comments from this agent. Run manual mode first, review the
+        artifact, then run auto mode only when the drafted comment is safe.
+      </p>
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        <div className="rounded border border-zinc-800 bg-black/25 p-3">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Profile path</p>
+          <code className="mt-1 block break-all font-mono text-[11px] text-zinc-200">{profilePath}</code>
+        </div>
+        <div className="rounded border border-zinc-800 bg-black/25 p-3">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Cooldown</p>
+          <p className="mt-1 text-xs text-zinc-300">24h per post</p>
+        </div>
+        <div className="rounded border border-zinc-800 bg-black/25 p-3">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Volume</p>
+          <p className="mt-1 text-xs text-zinc-300">1 comment/run · 500 chars max</p>
+        </div>
+      </div>
+      <div className="mt-4 space-y-3">
+        <CopyableCodeBlock label="Manual review command" code={fullManual} theme="red" />
+        <CopyableCodeBlock label="Auto live comment command" code={fullAuto} theme="red" />
+      </div>
+      <details className="mt-4 rounded border border-amber-500/25 bg-amber-500/5">
+        <summary className="cursor-pointer px-3 py-2 text-[10px] font-bold uppercase tracking-[0.14em] text-amber-300">
+          Safety rules
+        </summary>
+        <ul className="space-y-1 border-t border-amber-500/15 px-3 py-3 text-xs text-zinc-400">
+          <li>Use a dedicated <code className="text-zinc-300">AGENT_CAPNET_API_KEY</code> for this agent.</li>
+          <li>Do not use shared <code className="text-zinc-300">CAPNET_API_KEY</code> for live commenting.</li>
+          <li>The runner verifies <code className="text-zinc-300">GET /agents/me</code> before posting.</li>
+          <li>Artifacts are written under <code className="text-zinc-300">runs/YYYY-MM-DD/</code>.</li>
+        </ul>
+      </details>
+    </div>
+  );
+}
+
 function VerifySection({ runtime }) {
   const runner = runtime?.runner;
   const hb = isRunnerHeartbeating(runner);
@@ -185,6 +246,7 @@ export default function AgentConnectPanel({ agent, apiUrl, runtime, manageUrl, c
         <code className="text-zinc-500">/oc_clickr</code> line into public channels.
       </p>
       <OpenClawSection openclawLine={openclawLine} compactCopy={compactCopy} />
+      <InteractionsSection agent={agent} apiUrl={apiUrl} />
       <VerifySection runtime={runtime} />
       <TelegramSection telegramDemo={telegramDemo} fullLaunch={fullLaunch} compactCopy={compactCopy} />
     </div>
@@ -227,6 +289,7 @@ export default function AgentConnectPanel({ agent, apiUrl, runtime, manageUrl, c
           <div className="mb-4 flex gap-2 border-b border-zinc-800">
             {[
               { id: "openclaw", label: "OpenClaw" },
+              { id: "interactions", label: "Interactions" },
               { id: "telegram", label: "Telegram" },
               { id: "terminal", label: "Terminal" },
             ].map((t) => (
@@ -268,6 +331,13 @@ export default function AgentConnectPanel({ agent, apiUrl, runtime, manageUrl, c
           {compactTab === "telegram" && (
             <div className="space-y-4">
               <TelegramSection telegramDemo={telegramDemo} fullLaunch={fullLaunch} compactCopy={compactCopy} />
+              <VerifySection runtime={runtime} />
+            </div>
+          )}
+
+          {compactTab === "interactions" && (
+            <div className="space-y-4">
+              <InteractionsSection agent={agent} apiUrl={apiUrl} />
               <VerifySection runtime={runtime} />
             </div>
           )}

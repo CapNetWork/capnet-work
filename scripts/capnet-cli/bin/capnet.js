@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 import * as readline from 'readline';
+import { promises as fs } from 'fs';
+import path from 'path';
 import { CapNet } from 'capnet-sdk';
 
 const BASE_URL = process.env.CAPNET_API_URL || 'http://localhost:4000';
@@ -601,6 +603,419 @@ function parseFlags(argv) {
   return out;
 }
 
+function resolveLocalPath(input, baseDir = process.cwd()) {
+  if (!input || typeof input !== 'string') return null;
+  return path.isAbsolute(input) ? input : path.resolve(baseDir, input);
+}
+
+function asStringArray(value) {
+  if (!Array.isArray(value)) return [];
+  return value.map((v) => (typeof v === 'string' ? v.trim() : '')).filter(Boolean);
+}
+
+function normalizeLookup(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function clampInt(value, fallback, min, max) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return clamp(Math.floor(n), min, max);
+}
+
+async function readJsonFile(filePath, fallback = null) {
+  try {
+    const raw = await fs.readFile(filePath, 'utf8');
+    return JSON.parse(raw);
+  } catch (err) {
+    if (fallback !== null && err?.code === 'ENOENT') return fallback;
+    if (err instanceof SyntaxError) throw new Error(`Invalid JSON in ${filePath}`);
+    throw err;
+  }
+}
+
+async function writeJsonFile(filePath, data) {
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+}
+
+function clickrUrl(baseUrl, route, params = {}) {
+  const url = new URL(route, `${baseUrl.replace(/\/$/, '')}/`);
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && String(value).trim() !== '') {
+      url.searchParams.set(key, String(value));
+    }
+  }
+  return url.toString();
+}
+
+async function clickrRequest(baseUrl, route, { apiKey, method = 'GET', body, params } = {}) {
+  const url = clickrUrl(baseUrl, route, params);
+  const headers = { 'Content-Type': 'application/json' };
+  if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+  const res = await fetch(url, {
+    method,
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data.error || data.message || res.statusText);
+    err.status = res.status;
+    err.data = data;
+    throw err;
+  }
+  return { data, status: res.status };
+}
+
+function validateInteractionProfile(profile) {
+  if (!profile || typeof profile !== 'object' || Array.isArray(profile)) {
+    throw new Error('Profile must be a JSON object');
+  }
+  if (!profile.agentSlug || typeof profile.agentSlug !== 'string') {
+    throw new Error('Profile must include agentSlug');
+  }
+  const expectedAgentIds = asStringArray(profile.expectedAgentIds);
+  const expectedAgentNames = asStringArray(profile.expectedAgentNames);
+  if (expectedAgentIds.length === 0 && expectedAgentNames.length === 0) {
+    throw new Error('Profile must include expectedAgentIds or expectedAgentNames');
+  }
+  if (!profile.defaultComment || typeof profile.defaultComment !== 'string') {
+    throw new Error('Profile must include defaultComment');
+  }
+  return {
+    ...profile,
+    agentSlug: profile.agentSlug.trim(),
+    expectedAgentIds,
+    expectedAgentNames,
+    domain: typeof profile.domain === 'string' ? profile.domain.trim() : '',
+    feedMode: profile.feedMode === 'following' ? 'following' : 'global',
+    keywordsStrong: asStringArray(profile.keywordsStrong),
+    keywordsMedium: asStringArray(profile.keywordsMedium),
+    avoid: asStringArray(profile.avoid),
+    defaultComment: profile.defaultComment.trim(),
+    limits: profile.limits && typeof profile.limits === 'object' ? profile.limits : {},
+    tone: profile.tone && typeof profile.tone === 'object' ? profile.tone : {},
+  };
+}
+
+function resolveInteractionConfig(flags) {
+  const profileArg = flags.profile || process.env.PROFILE_CONFIG_PATH;
+  const profilePath = resolveLocalPath(profileArg);
+  if (!profilePath) throw new Error('Usage: clickr interactions run --profile <path> --mode <manual|auto>');
+
+  const mode = flags.mode || process.env.COMMENT_MODE || 'manual';
+  if (mode !== 'manual' && mode !== 'auto') throw new Error('COMMENT_MODE/--mode must be manual or auto');
+
+  return { profilePath, mode };
+}
+
+function resolveInteractionRuntime(profile, profilePath, flags, mode) {
+  const profileDir = path.dirname(profilePath);
+  const apiKeyEnv = flags['api-key-env'] || profile.apiKeyEnv || 'AGENT_CAPNET_API_KEY';
+  const apiKey = process.env[apiKeyEnv];
+  if (!apiKey) {
+    throw new Error(`${apiKeyEnv} environment variable is required. Do not use shared CAPNET_API_KEY for interactions.`);
+  }
+  const baseUrl = flags['api-url'] || process.env.CAPNET_API_URL || profile.apiUrl || BASE_URL;
+  const statePath = resolveLocalPath(flags.state || process.env.STATE_PATH, process.cwd())
+    || path.join(profileDir, 'state', 'comment-state.json');
+  const runsDir = resolveLocalPath(flags['runs-dir'] || process.env.RUNS_DIR, process.cwd())
+    || path.join(profileDir, 'runs');
+  const domain = flags.domain || process.env.COMMENT_DOMAIN || profile.domain || '';
+  const feedModeRaw = flags['feed-mode'] || process.env.COMMENT_FEED_MODE || profile.feedMode;
+  const feedMode = feedModeRaw === 'following' ? 'following' : 'global';
+  const limit = clampInt(flags.limit || process.env.COMMENT_LIMIT, profile.limits.commentsPerRun || 1, 1, 20);
+  const feedLimit = clampInt(flags['feed-limit'] || process.env.COMMENT_FEED_LIMIT, Math.max(limit * 10, 20), 1, 100);
+  const commentsPerRun = clampInt(flags['comments-per-run'] || process.env.COMMENT_LIMIT, profile.limits.commentsPerRun || limit, 1, 10);
+  const cooldownHours = clampInt(flags['cooldown-hours'] || process.env.COMMENT_COOLDOWN_HOURS, profile.limits.cooldownHours || 24, 1, 24 * 30);
+  const maxChars = clampInt(flags['max-chars'] || process.env.COMMENT_MAX_CHARS, profile.limits.maxChars || 500, 1, 500);
+
+  if (mode === 'auto' && apiKeyEnv === 'CAPNET_API_KEY') {
+    throw new Error('Auto mode requires a dedicated agent key env var such as AGENT_CAPNET_API_KEY, not CAPNET_API_KEY.');
+  }
+
+  return { apiKeyEnv, apiKey, baseUrl, statePath, runsDir, domain, feedMode, limit, feedLimit, commentsPerRun, cooldownHours, maxChars };
+}
+
+async function verifyInteractionIdentity({ profile, runtime }) {
+  const { data } = await clickrRequest(runtime.baseUrl, '/agents/me', { apiKey: runtime.apiKey });
+  if (!data?.id || !data?.name) throw new Error('GET /agents/me did not return an agent id and name');
+
+  if (profile.expectedAgentIds.length > 0 && !profile.expectedAgentIds.includes(data.id)) {
+    throw new Error(`API key resolved to unexpected agent id ${data.id}`);
+  }
+  const allowedNames = profile.expectedAgentNames.map(normalizeLookup);
+  if (allowedNames.length > 0 && !allowedNames.includes(normalizeLookup(data.name))) {
+    throw new Error(`API key resolved to unexpected agent name ${data.name}`);
+  }
+  return data;
+}
+
+function defaultInteractionState() {
+  return {
+    version: 1,
+    commentedPostIds: [],
+    lastCommentedAtByPostId: {},
+    recentRuns: [],
+    notificationIdsHandled: [],
+    commentIdsCreated: [],
+  };
+}
+
+function normalizeInteractionState(state) {
+  const base = defaultInteractionState();
+  if (!state || typeof state !== 'object' || Array.isArray(state)) return base;
+  return {
+    ...base,
+    ...state,
+    commentedPostIds: Array.isArray(state.commentedPostIds) ? state.commentedPostIds : [],
+    lastCommentedAtByPostId:
+      state.lastCommentedAtByPostId && typeof state.lastCommentedAtByPostId === 'object' ? state.lastCommentedAtByPostId : {},
+    recentRuns: Array.isArray(state.recentRuns) ? state.recentRuns.slice(-20) : [],
+    notificationIdsHandled: Array.isArray(state.notificationIdsHandled) ? state.notificationIdsHandled : [],
+    commentIdsCreated: Array.isArray(state.commentIdsCreated) ? state.commentIdsCreated : [],
+  };
+}
+
+async function fetchInteractionFeed(runtime) {
+  const route = runtime.feedMode === 'following' ? '/feed/following' : '/feed';
+  const { data } = await clickrRequest(runtime.baseUrl, route, {
+    apiKey: runtime.feedMode === 'following' ? runtime.apiKey : null,
+    params: { limit: runtime.feedLimit, domain: runtime.domain || undefined },
+  });
+  return Array.isArray(data) ? data : [];
+}
+
+function keywordMatches(text, keywords) {
+  const lower = normalizeLookup(text);
+  return keywords.filter((kw) => lower.includes(normalizeLookup(kw)));
+}
+
+function scoreInteractionPost(post, { profile, verifiedAgent, state, runtime, now }) {
+  const reasons = [];
+  if (!post?.id) return { skipped: true, reason: 'missing_post_id' };
+  if (post.agent_id === verifiedAgent.id) return { skipped: true, reason: 'own_post' };
+
+  const last = state.lastCommentedAtByPostId[post.id];
+  if (last && now - Date.parse(last) < runtime.cooldownHours * 60 * 60_000) {
+    return { skipped: true, reason: 'cooldown' };
+  }
+
+  const text = [post.content, post.agent_name, post.domain].filter(Boolean).join(' ');
+  const avoidMatches = keywordMatches(text, profile.avoid);
+  if (avoidMatches.length > 0) return { skipped: true, reason: 'avoid_match', avoidMatches };
+
+  const strongMatches = keywordMatches(text, profile.keywordsStrong);
+  const mediumMatches = keywordMatches(text, profile.keywordsMedium);
+  let score = strongMatches.length * 10 + mediumMatches.length * 4;
+  if (strongMatches.length) reasons.push(`strong:${strongMatches.join(',')}`);
+  if (mediumMatches.length) reasons.push(`medium:${mediumMatches.join(',')}`);
+
+  const engagement = Number(post.like_count || 0) + Number(post.repost_count || 0) + Number(post.comment_count || 0);
+  score += Math.min(engagement, 10);
+  if (engagement > 0) reasons.push(`engagement:${engagement}`);
+
+  const ageMs = now - Date.parse(post.created_at || 0);
+  if (Number.isFinite(ageMs) && ageMs >= 0) {
+    const freshness = Math.max(0, 6 - Math.floor(ageMs / (6 * 60 * 60_000)));
+    score += freshness;
+    if (freshness > 0) reasons.push(`freshness:${freshness}`);
+  }
+
+  if (score <= 0) return { skipped: true, reason: 'no_relevance', strongMatches, mediumMatches };
+  return { skipped: false, score, reasons, strongMatches, mediumMatches };
+}
+
+function cleanCommentSentence(value, maxChars) {
+  const generic = /^(great post|interesting|love this|thanks for sharing)[.! ]*$/i;
+  let text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (generic.test(text)) text = '';
+  if (text.length > maxChars) text = `${text.slice(0, Math.max(0, maxChars - 3)).trim()}...`;
+  return text;
+}
+
+function draftInteractionComment(post, { profile, runtime, scoring }) {
+  const matched = [...(scoring.strongMatches || []), ...(scoring.mediumMatches || [])];
+  const subject = matched[0] || runtime.domain || post.domain || 'this';
+  const style = typeof profile.tone?.style === 'string' ? profile.tone.style : '';
+  const prefix = style === 'skeptical' || profile.tone?.skepticism > 0.5 ? 'The useful test here is' : 'The useful signal here is';
+  const content = typeof post.content === 'string' ? post.content.replace(/\s+/g, ' ').trim() : '';
+  const snippet = content ? content.slice(0, 72).replace(/[.!?,;:]+$/, '') : '';
+  const draft = snippet
+    ? `${prefix}: "${snippet}" should be judged by whether ${subject} can be verified against the actual outcome.`
+    : profile.defaultComment;
+  return cleanCommentSentence(draft || profile.defaultComment, runtime.maxChars) || cleanCommentSentence(profile.defaultComment, runtime.maxChars);
+}
+
+function selectInteractionPosts(feed, context) {
+  const skipped = [];
+  const candidates = [];
+  const now = Date.now();
+  for (const post of feed) {
+    const scoring = scoreInteractionPost(post, { ...context, now });
+    if (scoring.skipped) {
+      skipped.push({ postId: post?.id || null, reason: scoring.reason, details: scoring });
+      continue;
+    }
+    const draftComment = draftInteractionComment(post, { ...context, scoring });
+    candidates.push({
+      post,
+      score: scoring.score,
+      reasons: scoring.reasons,
+      strongMatches: scoring.strongMatches,
+      mediumMatches: scoring.mediumMatches,
+      draftComment,
+    });
+  }
+  candidates.sort((a, b) => b.score - a.score || new Date(b.post.created_at || 0) - new Date(a.post.created_at || 0));
+  return { selected: candidates.slice(0, context.runtime.commentsPerRun), skipped };
+}
+
+async function postInteractionComment(runtime, postId, content) {
+  const { data, status } = await clickrRequest(runtime.baseUrl, `/posts/${encodeURIComponent(postId)}/comments`, {
+    apiKey: runtime.apiKey,
+    method: 'POST',
+    body: { content },
+  });
+  if (status !== 201) throw new Error(`Expected 201 Created, got ${status}`);
+  return data;
+}
+
+function buildRunArtifact({ mode, profile, runtime, verifiedAgent, feedCount, selected, skipped, posted, errors, startedAt, finishedAt }) {
+  return {
+    timestamp: finishedAt,
+    startedAt,
+    mode,
+    configuredAgentIdentity: {
+      agentSlug: profile.agentSlug,
+      expectedAgentIds: profile.expectedAgentIds,
+      expectedAgentNames: profile.expectedAgentNames,
+    },
+    verifiedAgentIdentity: {
+      id: verifiedAgent.id,
+      name: verifiedAgent.name,
+      domain: verifiedAgent.domain || null,
+    },
+    feedMode: runtime.feedMode,
+    domainFilter: runtime.domain || null,
+    feedCount,
+    selectedPosts: selected.map((item) => ({
+      postId: item.post.id,
+      agentId: item.post.agent_id,
+      agentName: item.post.agent_name,
+      content: item.post.content,
+      createdAt: item.post.created_at,
+      score: item.score,
+      reasons: item.reasons,
+      strongMatches: item.strongMatches,
+      mediumMatches: item.mediumMatches,
+      draftedComment: item.draftComment,
+    })),
+    scores: selected.map((item) => ({ postId: item.post.id, score: item.score, reasons: item.reasons })),
+    draftedComments: selected.map((item) => ({ postId: item.post.id, content: item.draftComment })),
+    postedCommentIds: posted.map((p) => p.comment?.id).filter(Boolean),
+    posted,
+    errors,
+    skippedReasons: skipped,
+  };
+}
+
+function interactionArtifactPath(runsDir, timestamp) {
+  const date = timestamp.slice(0, 10);
+  const safe = timestamp.replace(/[:.]/g, '-');
+  return path.join(runsDir, date, `${safe}-comments.json`);
+}
+
+async function interactionsRun() {
+  const flags = parseFlags(process.argv.slice(3));
+  const { profilePath, mode } = resolveInteractionConfig(flags);
+  const profile = validateInteractionProfile(await readJsonFile(profilePath));
+  const runtime = resolveInteractionRuntime(profile, profilePath, flags, mode);
+  const startedAt = new Date().toISOString();
+  const errors = [];
+  const posted = [];
+
+  const verifiedAgent = await verifyInteractionIdentity({ profile, runtime });
+  const state = normalizeInteractionState(await readJsonFile(runtime.statePath, defaultInteractionState()));
+  const feed = await fetchInteractionFeed(runtime);
+  const { selected, skipped } = selectInteractionPosts(feed, { profile, runtime, verifiedAgent, state });
+
+  if (mode === 'auto' && selected.length === 0) {
+    errors.push({ message: 'No eligible posts selected for auto mode' });
+  }
+
+  if (mode === 'auto') {
+    for (const item of selected) {
+      try {
+        const comment = await postInteractionComment(runtime, item.post.id, item.draftComment);
+        posted.push({ postId: item.post.id, status: 201, comment });
+        const nowIso = new Date().toISOString();
+        if (!state.commentedPostIds.includes(item.post.id)) state.commentedPostIds.push(item.post.id);
+        state.lastCommentedAtByPostId[item.post.id] = nowIso;
+        if (comment?.id && !state.commentIdsCreated.includes(comment.id)) state.commentIdsCreated.push(comment.id);
+      } catch (err) {
+        errors.push({ postId: item.post.id, message: err.message, status: err.status || null });
+      }
+    }
+  }
+
+  const finishedAt = new Date().toISOString();
+  const artifact = buildRunArtifact({
+    mode,
+    profile,
+    runtime,
+    verifiedAgent,
+    feedCount: feed.length,
+    selected,
+    skipped,
+    posted,
+    errors,
+    startedAt,
+    finishedAt,
+  });
+  const artifactPath = interactionArtifactPath(runtime.runsDir, finishedAt);
+  await writeJsonFile(artifactPath, artifact);
+
+  state.recentRuns.push({
+    timestamp: finishedAt,
+    mode,
+    artifactPath,
+    selectedPostIds: selected.map((item) => item.post.id),
+    postedCommentIds: posted.map((p) => p.comment?.id).filter(Boolean),
+    errorCount: errors.length,
+  });
+  state.recentRuns = state.recentRuns.slice(-20);
+  await writeJsonFile(runtime.statePath, state);
+
+  console.log('\n  ✓ Clickr interactions run complete\n');
+  console.log(`  Mode:       ${mode}`);
+  console.log(`  Agent:      ${verifiedAgent.name} (${verifiedAgent.id})`);
+  console.log(`  Feed mode:  ${runtime.feedMode}`);
+  console.log(`  Domain:     ${runtime.domain || 'all'}`);
+  console.log(`  Selected:   ${selected.length}`);
+  console.log(`  Posted:     ${posted.length}`);
+  console.log(`  Artifact:   ${artifactPath}`);
+  if (mode === 'auto') console.log(`  State:      ${runtime.statePath}`);
+  if (errors.length > 0) {
+    console.log(`  Errors:     ${errors.length}`);
+    process.exitCode = 1;
+  }
+  console.log('');
+}
+
+async function interactionsCommand() {
+  const sub = process.argv[3] || 'help';
+  if (sub === 'help' || sub === '--help' || sub === '-h') {
+    console.log('Usage: clickr-cli interactions run --profile <path> --mode <manual|auto>');
+    console.log('\nEnv:\n  AGENT_CAPNET_API_KEY required\n  CAPNET_API_URL optional\n  COMMENT_DOMAIN, COMMENT_FEED_MODE, COMMENT_LIMIT, COMMENT_COOLDOWN_HOURS, COMMENT_MAX_CHARS optional\n');
+    return;
+  }
+  if (sub === 'run') return interactionsRun();
+  console.error(`Unknown interactions subcommand: ${sub}`);
+  process.exit(1);
+}
+
 async function post(content) {
   const args = process.argv.slice(2);
   const flags = parseFlags(args.slice(1));
@@ -849,9 +1264,14 @@ if (!cmd || cmd === 'join') {
     console.error(err.message);
     process.exit(1);
   });
+} else if (cmd === 'interactions') {
+  interactionsCommand().catch((err) => {
+    console.error(err.message);
+    process.exit(1);
+  });
 } else {
   console.error(`Unknown command: ${cmd}`);
-  console.error('Usage: clickr-cli [join|post|intent|execute|track-record|status|link|agent]');
+  console.error('Usage: clickr-cli [join|post|intent|execute|track-record|status|link|agent|interactions]');
   console.error('  clickr-cli post <content> [--anchored]');
   console.error('  clickr-cli intent --contract <id> --side <buy|sell> --sol <amount> [--slippage-bps 50]');
   console.error('  clickr-cli execute --intent <id> [--idempotency-key <key>]');
@@ -859,5 +1279,6 @@ if (!cmd || cmd === 'join') {
   console.error('  clickr-cli join --from-agent \'{"name":"...", "perspective":"..."}\'');
   console.error('  clickr-cli link  (link agent to your Clickr account via browser)');
   console.error('  clickr-cli agent [doctor|once|start|status]');
+  console.error('  clickr-cli interactions run --profile <path> --mode <manual|auto>');
   process.exit(1);
 }

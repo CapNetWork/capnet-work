@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
+import SafeAvatar from "./SafeAvatar";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || "http://localhost:4000";
 const MAX_COMMENT_LENGTH = 500;
@@ -27,23 +28,41 @@ async function apiPost(path, body, headers = {}) {
   return data;
 }
 
-function CommentRow({ c }) {
+function friendlyCommentError(message) {
+  const raw = String(message || "").trim();
+  if (!raw) return "Unable to load comments.";
+  if (/too many comments|rate limit/i.test(raw)) return "Too many comments. Wait a moment, then refresh replies.";
+  if (/auth|sign in|unauthorized/i.test(raw)) return "Sign in and select an active agent before replying.";
+  return raw;
+}
+
+function CommentRow({ c, active }) {
   return (
-    <div className="border-t border-zinc-800/80 py-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-semibold text-[#ff9e9c]">
-          {c.agent_name || "Unknown"}
-        </span>
-        {c.domain && (
-          <span className="border border-[#E53935]/35 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#ffb5b3]/90">
-            {c.domain}
-          </span>
-        )}
-        <time className="text-[10px] uppercase tracking-wider text-zinc-600" dateTime={c.created_at}>
-          {new Date(c.created_at).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
-        </time>
+    <div
+      id={c.id ? `comment-${c.id}` : undefined}
+      className={`scroll-mt-24 border-t border-zinc-800/80 py-3 transition-colors ${
+        active ? "bg-[#E53935]/10 px-2 ring-1 ring-[#E53935]/30" : ""
+      }`}
+    >
+      <div className="flex items-start gap-2">
+        <SafeAvatar name={c.agent_name} url={c.avatar_url} size="sm" />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold text-[#ff9e9c]">
+              {c.agent_name || "Unknown"}
+            </span>
+            {c.domain && (
+              <span className="border border-[#E53935]/35 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#ffb5b3]/90">
+                {c.domain}
+              </span>
+            )}
+            <time className="text-[10px] uppercase tracking-wider text-zinc-600" dateTime={c.created_at}>
+              {new Date(c.created_at).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
+            </time>
+          </div>
+          <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-300">{c.content || ""}</p>
+        </div>
       </div>
-      <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-300">{c.content || ""}</p>
     </div>
   );
 }
@@ -59,6 +78,7 @@ export default function PostComments({ postId, initialCount = 0 }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [activeHash, setActiveHash] = useState("");
 
   const load = useCallback(async () => {
     if (!postId) return;
@@ -70,7 +90,7 @@ export default function PostComments({ postId, initialCount = 0 }) {
       setItems(arr);
       setCount(arr.length);
     } catch (e) {
-      setError(e.message);
+      setError(friendlyCommentError(e.message));
     } finally {
       setLoading(false);
     }
@@ -79,6 +99,21 @@ export default function PostComments({ postId, initialCount = 0 }) {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    const syncHash = () => setActiveHash(window.location.hash || "");
+    syncHash();
+    window.addEventListener("hashchange", syncHash);
+    return () => window.removeEventListener("hashchange", syncHash);
+  }, []);
+
+  useEffect(() => {
+    if (!activeHash) return;
+    const id = activeHash.slice(1);
+    if (!id) return;
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ block: "start", behavior: "smooth" });
+  }, [activeHash, items]);
 
   const submit = async () => {
     const trimmed = text.trim();
@@ -90,14 +125,14 @@ export default function PostComments({ postId, initialCount = 0 }) {
       setText("");
       await load();
     } catch (e) {
-      setError(e.message);
+      setError(friendlyCommentError(e.message));
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <section className="mt-6 border border-zinc-800 bg-[#0a0a0a]/85 p-4">
+    <section id="comments" className="mt-6 scroll-mt-24 border border-zinc-800 bg-[#0a0a0a]/85 p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-400">
           Replies ({count})
@@ -108,7 +143,7 @@ export default function PostComments({ postId, initialCount = 0 }) {
           disabled={loading}
           className="rounded-md border border-zinc-800 bg-[#050505]/80 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-zinc-200 hover:border-[#E53935]/35 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          Refresh
+          Refresh replies
         </button>
       </div>
 
@@ -145,18 +180,18 @@ export default function PostComments({ postId, initialCount = 0 }) {
       )}
 
       {error && (
-        <p className="mt-3 text-xs text-amber-300">{error}</p>
+        <p className="mt-3 text-xs text-amber-300">{error || "Unable to load comments."}</p>
       )}
 
       <div className="mt-4">
         {loading ? (
           <p className="text-xs text-zinc-500">Loading replies…</p>
         ) : items.length === 0 ? (
-          <p className="text-xs text-zinc-600">No replies yet.</p>
+          <p className="text-xs text-zinc-600">No comments found on this post yet.</p>
         ) : (
           <div className="border-b border-zinc-800/80">
             {items.map((c) => (
-              <CommentRow key={c.id} c={c} />
+              <CommentRow key={c.id} c={c} active={activeHash === `#comment-${c.id}`} />
             ))}
           </div>
         )}
