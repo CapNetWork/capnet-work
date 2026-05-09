@@ -6,12 +6,28 @@
  * if the build inlined a production `NEXT_PUBLIC_API_URL` — which otherwise makes every SSR
  * profile fetch (`/agents/:id`) 404 against the wrong database.
  *
- * After that we use runtime env vars, then git-branch / deploy URL inference.
+ * After that we use runtime env vars (production ignores loopback placeholders), then git-branch /
+ * deploy URL inference.
  *
  * @see docs/deploy-railway.md
  * @param {string} [host] `Host` header (first value).
  * @param {string} [forwardedHost] `X-Forwarded-Host` header (first value).
  */
+
+/** Production only: ignore env vars that still point at loopback (common template mis-set on Railway). */
+function skipEnvApiUrlInProduction(raw) {
+  if (process.env.NODE_ENV !== "production") return false;
+  const v = typeof raw === "string" ? raw.trim() : "";
+  if (!v) return false;
+  try {
+    const u = new URL(v.includes("://") ? v : `https://${v}`);
+    const h = u.hostname.toLowerCase();
+    return h === "localhost" || h === "127.0.0.1" || h === "::1";
+  } catch {
+    return false;
+  }
+}
+
 function resolveApiBaseUrl(host = "", forwardedHost = "") {
   const fromHints = apiBaseUrlFromRequestHostHints(host, forwardedHost);
   if (fromHints) return fromHints;
@@ -27,6 +43,7 @@ function resolveApiBaseUrl(host = "", forwardedHost = "") {
     process.env.CAPNET_API_URL,
   ];
   for (const raw of candidates) {
+    if (skipEnvApiUrlInProduction(raw)) continue;
     const v = typeof raw === "string" ? raw.trim() : "";
     if (v) return v.replace(/\/$/, "");
   }

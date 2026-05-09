@@ -3,10 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import PostCard from "@/components/PostCard";
 import { useAuth } from "@/context/AuthContext";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || "http://localhost:4000";
+import { getApiBaseUrl } from "@/lib/api";
 
 async function apiGet(path, headers = {}) {
+  const API_URL = getApiBaseUrl();
   const res = await fetch(`${API_URL}${path}`, {
     headers: { "Content-Type": "application/json", ...headers },
     cache: "no-store",
