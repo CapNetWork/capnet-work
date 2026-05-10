@@ -30,7 +30,7 @@ function CopyBtn({ text, label, variant = "default", disabled }) {
   );
 }
 
-function RunnerSection({ runnerCommand, compactCopy }) {
+function RunnerSection({ runnerSnippet, compactCopy }) {
   return (
     <div className="rounded-lg border border-[#E53935]/35 bg-[#120808]/90 p-5">
       <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#ffb5b3]">Connect runtime (Runner)</p>
@@ -46,10 +46,12 @@ function RunnerSection({ runnerCommand, compactCopy }) {
       <div className="mt-4 space-y-3">
         <div className="rounded border border-zinc-800 bg-black/30 p-3">
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Start runner</p>
-          <code className="mt-1 block break-all font-mono text-[11px] text-zinc-200">{runnerCommand}</code>
+          <pre className="mt-1 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] text-zinc-200">
+            {runnerSnippet}
+          </pre>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <CopyBtn text={runnerCommand} label="Copy runner command" variant="primary" disabled={!runnerCommand} />
+          <CopyBtn text={runnerSnippet} label="Copy runner command" variant="primary" disabled={!runnerSnippet} />
           <Link href="/docs/sdk#runner" className="text-xs font-semibold text-[#ff7d7a] underline underline-offset-2 hover:text-white">
             Docs
           </Link>
@@ -59,7 +61,7 @@ function RunnerSection({ runnerCommand, compactCopy }) {
             Where should I run this?
           </summary>
           <p className="border-t border-zinc-800/60 px-3 py-3 text-xs leading-relaxed text-zinc-400">
-            Run the runner on a machine you control (server, workstation, or your OpenClaw host). It uses your agent API key via environment variables—treat that key like a password.
+            Run the runner on a machine you control (server, workstation, or your OpenClaw host). This snippet includes your agent API key—treat it like a password.
           </p>
         </details>
       </div>
@@ -166,6 +168,11 @@ export default function AgentConnectPanel({ agent, apiUrl, runtime, manageUrl, c
     [apiUrl, agent?.api_key]
   );
 
+  const runnerSnippet = useMemo(() => {
+    const env = buildCliEnvSnippet(apiUrl, agent?.api_key || "", "bash").trim();
+    return `${env}\n\n${runnerCommand}`;
+  }, [apiUrl, agent?.api_key, runnerCommand]);
+
   const [compactTab, setCompactTab] = useState("openclaw");
   const [connectExpanded, setConnectExpanded] = useState(Boolean(defaultOpen));
 
@@ -179,7 +186,7 @@ export default function AgentConnectPanel({ agent, apiUrl, runtime, manageUrl, c
         Connect infrastructure (runner) and control (Telegram) are separate: runner uses API keys in env; Telegram uses public-safe{" "}
         <code className="text-zinc-500">/cr_*</code> commands.
       </p>
-      <RunnerSection runnerCommand={runnerCommand} compactCopy={compactCopy} />
+      <RunnerSection runnerSnippet={runnerSnippet} compactCopy={compactCopy} />
       <VerifySection runtime={runtime} />
       <TelegramSection telegramDemo={telegramDemo} fullLaunch={fullLaunch} compactCopy={compactCopy} />
     </div>
@@ -255,7 +262,7 @@ export default function AgentConnectPanel({ agent, apiUrl, runtime, manageUrl, c
 
           {compactTab === "openclaw" && (
             <div className="space-y-4">
-              <RunnerSection runnerCommand={runnerCommand} compactCopy={compactCopy} />
+              <RunnerSection runnerSnippet={runnerSnippet} compactCopy={compactCopy} />
               <VerifySection runtime={runtime} />
             </div>
           )}
