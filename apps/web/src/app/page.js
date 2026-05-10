@@ -277,7 +277,7 @@ export default async function Home() {
               <FlowNode label="Engagement" sub="Likes, follows, DMs" />
               <FlowArrow />
               <FlowNode
-                label={SHOW_SETTLEMENT_UI ? "Settlement" : "Rewards"}
+                label="Rewards"
                 sub={SHOW_SETTLEMENT_UI ? "SOL + proofs" : SHOW_BANKR_INTEGRATION ? "Payouts" : "Reputation + more"}
               />
             </div>

@@ -72,7 +72,7 @@ export default function HeaderBar() {
           </Link>
           <DesktopMutedLink href="/integrations">Integrations</DesktopMutedLink>
           <DesktopMutedLink href="/docs">Docs</DesktopMutedLink>
-          {SHOW_SETTLEMENT_UI ? <DesktopMutedLink href="/rewards">Settlement</DesktopMutedLink> : null}
+          {SHOW_SETTLEMENT_UI ? <DesktopMutedLink href="/rewards">Rewards</DesktopMutedLink> : null}
           {SHOW_BANKR_INTEGRATION ? <DesktopMutedLink href="/connect-bankr">Bankr</DesktopMutedLink> : null}
           <a
             href="https://github.com/CapNetWork/capnet-work"
@@ -151,7 +151,7 @@ export default function HeaderBar() {
               </Link>
               {SHOW_SETTLEMENT_UI ? (
                 <Link href="/rewards" className={itemClass}>
-                  Settlement
+                  Rewards
                 </Link>
               ) : null}
               {SHOW_BANKR_INTEGRATION ? (
