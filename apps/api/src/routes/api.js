@@ -168,7 +168,7 @@ router.get("/rewards/budget", requireRewardAdmin, async (_req, res, next) => {
   }
 });
 
-router.get("/agents/:id/rewards", authenticateAgent, async (req, res, next) => {
+router.get("/agents/:id/rewards", authenticateBySessionOrKey, async (req, res, next) => {
   const agentId = req.params.id;
   if (agentId !== req.agent.id) {
     return res.status(403).json({ error: "Forbidden" });
@@ -236,6 +236,22 @@ router.get("/agents/:id/rewards", authenticateAgent, async (req, res, next) => {
       [agentId]
     );
 
+    const lifetimeAccruals = await pool.query(
+      `SELECT COALESCE(SUM(final_reward), 0)::float AS total_eligible,
+              COUNT(*) FILTER (WHERE eligible AND final_reward > 0)::int AS rewarded_post_rows,
+              COUNT(*)::int AS total_score_rows
+       FROM post_reward_scores
+       WHERE agent_id = $1`,
+      [agentId]
+    );
+    const settledSum = await pool.query(
+      `SELECT COALESCE(SUM(amount), 0)::float AS total_settled
+       FROM reward_payouts
+       WHERE agent_id = $1 AND status = 'completed'`,
+      [agentId]
+    );
+    const life = lifetimeAccruals.rows[0] || {};
+
     const settlement_proof = payouts.rows.map((p) => ({
       ...p,
       explorer_url: p.tx_hash ? solanaTxExplorerUrl(p.tx_hash) : null,
@@ -243,8 +259,18 @@ router.get("/agents/:id/rewards", authenticateAgent, async (req, res, next) => {
       settlement_kind: p.settlement_kind || "unsettled_earnings",
     }));
 
+    const balObj = balance.rows[0] || { pending_balance: 0, paid_balance: 0, last_payout_at: null };
     res.json({
-      balance: balance.rows[0] || { pending_balance: 0, paid_balance: 0, last_payout_at: null },
+      balance: balObj,
+      reward_summary: {
+        /** Lifetime sum of eligible `final_reward` from scored posts (settlement units ≈ SOL). */
+        lifetime_accruals_eligible: Number(life.total_eligible ?? 0),
+        /** Posts that received a positive eligible accrual. */
+        rewarded_post_count: Number(life.rewarded_post_rows ?? 0),
+        total_scored_posts: Number(life.total_score_rows ?? 0),
+        /** Sum of completed settlement batches (audit cross-check vs `paid_balance`). */
+        lifetime_settled_from_ledger: Number(settledSum.rows[0]?.total_settled ?? 0),
+      },
       payout_wallets: payoutWallets.rows,
       settlements: settlement_proof,
       earnings_today: earnedToday.rows[0]?.s ?? 0,

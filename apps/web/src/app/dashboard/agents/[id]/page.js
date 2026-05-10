@@ -17,6 +17,7 @@ import {
   formatLastHeartbeat,
   getMissionLadderSteps,
 } from "@/lib/agentMissionControlStatus";
+import { SHOW_SETTLEMENT_UI } from "@/lib/feature-flags";
 
 const NICHE_HELP_LS = "dismissedAgentNicheHelp";
 
@@ -24,6 +25,12 @@ const CADENCE_OPTIONS = ["Off", "Slow", "Normal", "Fast"];
 const RUNTIME_REFRESH_MS = 10_000;
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || "http://localhost:4000";
+
+function rewardUnitsFmt(n, digits = 6) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return Number(0).toFixed(digits);
+  return x.toFixed(digits);
+}
 
 function CopyButton({ text, label, variant = "default", disabled }) {
   const [copied, setCopied] = useState(false);
@@ -316,6 +323,9 @@ export default function AgentDetailPage() {
   const [nicheDismissed, setNicheDismissed] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [postNowPulse, setPostNowPulse] = useState(0);
+  const [rewardSnapshot, setRewardSnapshot] = useState(null);
+  const [rewardErr, setRewardErr] = useState("");
+  const [rewardBusy, setRewardBusy] = useState(false);
 
   useEffect(() => {
     setClientOrigin(typeof window !== "undefined" ? window.location.origin : "");
@@ -380,6 +390,29 @@ export default function AgentDetailPage() {
     }
   }, [id, getAuthHeaders]);
 
+  const fetchRewardsSummary = useCallback(async () => {
+    if (!id || !SHOW_SETTLEMENT_UI) return;
+    const base = getAuthHeaders();
+    if (!base.Authorization) return;
+    setRewardBusy(true);
+    setRewardErr("");
+    try {
+      const headers = { "Content-Type": "application/json", ...base, "X-Agent-Id": id };
+      const res = await fetch(`${API_URL}/api/agents/${encodeURIComponent(id)}/rewards`, {
+        headers,
+        cache: "no-store",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      setRewardSnapshot(data);
+    } catch (e) {
+      setRewardSnapshot(null);
+      setRewardErr(e.message || "Could not load rewards");
+    } finally {
+      setRewardBusy(false);
+    }
+  }, [getAuthHeaders, id]);
+
   const fetchRuntime = useCallback(async () => {
     const headers = { "Content-Type": "application/json", ...getAuthHeaders(), "X-Agent-Id": id };
     try {
@@ -396,6 +429,10 @@ export default function AgentDetailPage() {
   useEffect(() => {
     fetchAgent();
   }, [fetchAgent]);
+
+  useEffect(() => {
+    void fetchRewardsSummary();
+  }, [fetchRewardsSummary]);
 
   useEffect(() => {
     fetchRuntime();
@@ -731,6 +768,63 @@ export default function AgentDetailPage() {
           </ul>
         </div>
       </div>
+
+      {SHOW_SETTLEMENT_UI ? (
+        <section className="mt-6 rounded-lg border border-zinc-800 bg-[#0a0a0a]/90 p-5 sm:p-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Rewards & settlement</p>
+              <p className="mt-2 text-sm text-zinc-400">
+                Lifetime accrual from eligible posts (settlement units ≈ SOL). Open the full page for payout address and
+                on-chain receipts.
+              </p>
+            </div>
+            <Link
+              href={`/rewards?agent=${encodeURIComponent(id)}`}
+              className="shrink-0 border border-[#E53935]/80 bg-[#E53935]/10 px-4 py-2 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#ffb5b3] transition-colors hover:border-[#E53935] hover:bg-[#E53935]/20"
+            >
+              Open rewards
+            </Link>
+          </div>
+          {rewardErr ? (
+            <p className="mt-4 text-xs text-[#ff9e9c]">{rewardErr}</p>
+          ) : rewardBusy && !rewardSnapshot ? (
+            <p className="mt-4 text-xs text-zinc-500">Loading reward totals…</p>
+          ) : rewardSnapshot ? (
+            <dl className="mt-4 grid gap-3 text-xs sm:grid-cols-3">
+              <div className="rounded border border-zinc-800/90 bg-black/25 px-3 py-2.5">
+                <dt className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-600">Lifetime rewarded</dt>
+                <dd className="mt-1 font-mono text-base text-white">
+                  {rewardUnitsFmt(rewardSnapshot.reward_summary?.lifetime_accruals_eligible, 8)}
+                </dd>
+                <dd className="mt-0.5 text-[10px] text-zinc-600">
+                  {rewardSnapshot.reward_summary?.rewarded_post_count ?? 0} posts with accrual
+                </dd>
+              </div>
+              <div className="rounded border border-zinc-800/90 bg-black/25 px-3 py-2.5">
+                <dt className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-600">Unsettled</dt>
+                <dd className="mt-1 font-mono text-base text-emerald-200/90">
+                  {rewardUnitsFmt(rewardSnapshot.balance?.pending_balance, 8)}
+                </dd>
+              </div>
+              <div className="rounded border border-zinc-800/90 bg-black/25 px-3 py-2.5">
+                <dt className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-600">Settled on-chain</dt>
+                <dd className="mt-1 font-mono text-base text-zinc-200">
+                  {rewardUnitsFmt(rewardSnapshot.balance?.paid_balance, 8)}
+                </dd>
+                {rewardSnapshot.leaderboard_rank != null ? (
+                  <dd className="mt-0.5 text-[10px] text-zinc-600">
+                    Rank #{rewardSnapshot.leaderboard_rank}{" "}
+                    <Link href="/leaderboard?type=agents" className="text-[#ff7d7a] underline underline-offset-2">
+                      leaderboard
+                    </Link>
+                  </dd>
+                ) : null}
+              </div>
+            </dl>
+          ) : null}
+        </section>
+      ) : null}
 
       <section className="mt-6 space-y-4">
         <div className="flex items-baseline justify-between gap-3">

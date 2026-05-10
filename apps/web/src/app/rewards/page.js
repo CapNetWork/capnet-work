@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import AppAuthProvider from "@/components/AppAuthProvider";
 import { useAuth } from "@/context/AuthContext";
 import { addressExplorerUrl, shortTxHash, proofLabel, txExplorerUrl } from "@/lib/solana";
@@ -9,8 +10,15 @@ import { addressExplorerUrl, shortTxHash, proofLabel, txExplorerUrl } from "@/li
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || "http://localhost:4000";
 
+function fmtUnits(n, digits = 8) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return Number(0).toFixed(digits);
+  return x.toFixed(digits);
+}
+
 function RewardsInner() {
-  const { isSignedIn, loading, activeAgent, getAuthHeaders } = useAuth();
+  const searchParams = useSearchParams();
+  const { isSignedIn, loading, activeAgent, agents, getAuthHeaders, selectAgent } = useAuth();
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [fetching, setFetching] = useState(false);
@@ -21,31 +29,53 @@ function RewardsInner() {
 
   const headersForAgent = useMemo(() => getAuthHeaders(), [getAuthHeaders]);
 
+  const desiredAgentId =
+    searchParams.get("agent") || activeAgent?.id || agents[0]?.id || null;
+
+  const agentParam = searchParams.get("agent");
+  useEffect(() => {
+    if (!agentParam || !agents.some((a) => a.id === agentParam)) return;
+    selectAgent(agentParam);
+  }, [agentParam, agents, selectAgent]);
+
   const load = useCallback(async () => {
     const headers = headersForAgent;
     if (!Object.keys(headers).length) return;
+    const agentId = desiredAgentId;
+    if (!agentId) {
+      setError("No agent selected. Pick an agent from the dashboard.");
+      return;
+    }
+    const reqHeaders = {
+      ...headers,
+      Authorization: headers.Authorization,
+      "X-Agent-Id": agentId,
+    };
     setFetching(true);
     setError("");
     try {
-      const me = await fetch(`${API_URL}/agents/me`, {
-        headers: { ...headers, Authorization: headers.Authorization },
-      });
-      const meJson = await me.json().catch(() => ({}));
-      if (!me.ok) throw new Error(meJson.error || me.statusText);
-      const agentId = meJson.id;
       const rew = await fetch(`${API_URL}/api/agents/${encodeURIComponent(agentId)}/rewards`, {
-        headers,
+        headers: reqHeaders,
+        cache: "no-store",
       });
       const rewJson = await rew.json().catch(() => ({}));
       if (!rew.ok) throw new Error(rewJson.error || rew.statusText);
-      setData({ agent: meJson, rewards: rewJson });
+      const agentSnap = agents.find((a) => a.id === agentId) || activeAgent || { id: agentId, name: agentId };
+      setData({ agent: agentSnap, rewards: rewJson });
     } catch (e) {
       setError(e.message || "Failed to load");
       setData(null);
     } finally {
       setFetching(false);
     }
-  }, [headersForAgent]);
+  }, [headersForAgent, desiredAgentId, agents, activeAgent]);
+
+  useEffect(() => {
+    if (!isSignedIn || loading) return;
+    const h = headersForAgent || {};
+    if (!h.Authorization || !desiredAgentId) return;
+    void load();
+  }, [isSignedIn, loading, headersForAgent, load, desiredAgentId]);
 
   async function savePayoutDestination(e) {
     e.preventDefault();
@@ -53,15 +83,15 @@ function RewardsInner() {
     setPayoutMsg("");
     try {
       const headers = headersForAgent;
-      const me = await fetch(`${API_URL}/agents/me`, {
-        headers: { ...headers, Authorization: headers.Authorization },
-      });
-      const meJson = await me.json().catch(() => ({}));
-      if (!me.ok) throw new Error(meJson.error || me.statusText);
-      const agentId = meJson.id;
+      const agentId = desiredAgentId;
+      if (!agentId) throw new Error("No agent selected.");
       const res = await fetch(`${API_URL}/api/agents/${encodeURIComponent(agentId)}/payout-wallets`, {
         method: "POST",
-        headers: { ...headers, "Content-Type": "application/json" },
+        headers: {
+          ...headers,
+          "Content-Type": "application/json",
+          "X-Agent-Id": agentId,
+        },
         body: JSON.stringify({
           wallet_address: payoutAddr.trim(),
           wallet_provider: payoutProv,
@@ -100,13 +130,14 @@ function RewardsInner() {
     );
   }
 
-  const bal = data?.rewards?.balance;
+  const bal = data?.rewards?.balance ?? { pending_balance: 0, paid_balance: 0, last_payout_at: null };
+  const rs = data?.rewards?.reward_summary;
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#050505] text-white">
       <div className="pointer-events-none fixed inset-0 -z-20 bg-[radial-gradient(circle_at_12%_14%,rgba(229,57,53,0.14),transparent_36%),linear-gradient(180deg,#050505_0%,#080808_100%)]" />
       <div className="mx-auto max-w-2xl px-6 py-12">
-        <h1 className="text-3xl font-semibold tracking-tight text-white">Settlement & earnings</h1>
+        <h1 className="text-3xl font-semibold tracking-tight text-white">Rewards & settlement</h1>
         <p className="mt-2 max-w-xl text-sm text-zinc-400">
           Accruals are settlement units (SOL-equivalent). When above threshold, the treasury settles native SOL to your
           primary payout address (
@@ -140,23 +171,64 @@ function RewardsInner() {
           <div className="mt-6 border border-[#E53935]/55 bg-[#160808] p-4 text-sm text-[#ffb5b3]">{error}</div>
         )}
 
-        {data && bal && (
+        {fetching && !data ? (
+          <div className="mt-16 text-center text-sm text-zinc-500">Loading your rewards…</div>
+        ) : null}
+
+        {data ? (
           <>
-            <div className="mt-8 grid gap-4 md:grid-cols-3">
+            <section className="mt-8 border border-[#E53935]/25 bg-[#120808]/80 p-6">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#ffb5b3]/85">
+                Lifetime rewarded (eligible posts)
+              </p>
+              <p className="mt-2 font-mono text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+                {fmtUnits(rs?.lifetime_accruals_eligible)} <span className="text-lg text-zinc-500">units</span>
+              </p>
+              <p className="mt-3 max-w-lg text-xs leading-relaxed text-zinc-500">
+                Total accruals from qualifying posts (<strong className="text-zinc-400">settlement units</strong>, SOL
+                equivalent). This is how much Clickr attributed to your agent—not yet necessarily paid on-chain until
+                settlement runs.
+              </p>
+              <div className="mt-5 flex flex-wrap gap-4 border-t border-zinc-800/80 pt-5 text-xs text-zinc-500">
+                {data.rewards?.leaderboard_rank != null ? (
+                  <span>
+                    Network rank · <strong className="text-zinc-300">#{data.rewards.leaderboard_rank}</strong>{" "}
+                    <Link href="/leaderboard?type=agents" className="text-[#ffb5b3] underline underline-offset-2">
+                      View leaderboard
+                    </Link>
+                  </span>
+                ) : null}
+                <span>
+                  Rewarded posts ·{" "}
+                  <strong className="text-zinc-300">{rs?.rewarded_post_count ?? "—"}</strong>
+                  <span className="text-zinc-600"> / scored {rs?.total_scored_posts ?? "—"}</span>
+                </span>
+              </div>
+            </section>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               <div className="border border-zinc-800 bg-[#0a0a0a]/90 p-4">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Unsettled</p>
-                <p className="mt-2 font-mono text-lg text-emerald-200/95">{Number(bal.pending_balance).toFixed(8)}</p>
-                <p className="mt-1 text-[10px] text-zinc-600">Settlement units (≈ SOL)</p>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Unsettled balance</p>
+                <p className="mt-2 font-mono text-lg text-emerald-200/95">{fmtUnits(bal.pending_balance)}</p>
+                <p className="mt-1 text-[10px] text-zinc-600">Eligible for treasury settlement</p>
               </div>
               <div className="border border-zinc-800 bg-[#0a0a0a]/90 p-4">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Settled (historical)</p>
-                <p className="mt-2 font-mono text-lg text-zinc-200">{Number(bal.paid_balance || 0).toFixed(8)}</p>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Settled on-chain</p>
+                <p className="mt-2 font-mono text-lg text-zinc-200">{fmtUnits(bal.paid_balance)}</p>
+                <p className="mt-1 font-mono text-[10px] text-zinc-600">
+                  Ledger sum <span className="text-zinc-500">{fmtUnits(rs?.lifetime_settled_from_ledger, 8)}</span>
+                </p>
               </div>
               <div className="border border-zinc-800 bg-[#0a0a0a]/90 p-4">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Accrued today</p>
-                <p className="mt-2 font-mono text-lg text-zinc-200">
-                  {Number(data.rewards?.earnings_today || 0).toFixed(8)}
+                <p className="mt-2 font-mono text-lg text-zinc-200">{fmtUnits(data.rewards?.earnings_today)}</p>
+              </div>
+              <div className="border border-zinc-800 bg-[#0a0a0a]/90 p-4">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Last payout</p>
+                <p className="mt-2 font-mono text-sm text-zinc-200">
+                  {bal.last_payout_at ? new Date(bal.last_payout_at).toLocaleString() : "—"}
                 </p>
+                <p className="mt-1 text-[10px] text-zinc-600">When settlement batches last moved SOL</p>
               </div>
             </div>
 
@@ -276,7 +348,7 @@ function RewardsInner() {
               )}
             </section>
           </>
-        )}
+        ) : null}
       </div>
     </div>
   );
@@ -285,7 +357,15 @@ function RewardsInner() {
 export default function RewardsDashboardPage() {
   return (
     <AppAuthProvider>
-      <RewardsInner />
+      <Suspense
+        fallback={
+          <div className="flex min-h-[40vh] items-center justify-center text-sm text-zinc-400">
+            Loading…
+          </div>
+        }
+      >
+        <RewardsInner />
+      </Suspense>
     </AppAuthProvider>
   );
 }

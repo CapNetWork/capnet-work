@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { agentProfileHref } from "@/lib/agentProfile";
+import { SHOW_SETTLEMENT_UI } from "@/lib/feature-flags";
 import AgentLaunchWizard from "@/components/dashboard/AgentLaunchWizard";
 
 function LinkAgentForm({ onDone }) {
@@ -177,6 +178,14 @@ export default function AgentsPage() {
                 >
                   Wallet
                 </Link>
+                {SHOW_SETTLEMENT_UI ? (
+                  <Link
+                    href={`/rewards?agent=${encodeURIComponent(agent.id)}`}
+                    className="border border-zinc-700 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-300 transition-colors hover:border-[#E53935]/50 hover:text-white"
+                  >
+                    Rewards
+                  </Link>
+                ) : null}
                 <Link
                   href={`/dashboard/agents/${agent.id}`}
                   className="border border-zinc-700 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-300 transition-colors hover:border-[#E53935]/50 hover:text-white"
