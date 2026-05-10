@@ -163,12 +163,12 @@ app.use((err, _req, res, _next) => {
 maybeAutoMigrate()
   .then(() => {
     if (process.env.ENABLE_PAYOUT_CRON === "1") {
-      const { runPayoutBatch } = require("./services/payout-batch");
+      const { runAgentSettlement } = require("./services/agent-settlement");
       const ms = rewardCfg.PAYOUT_INTERVAL_MS;
       setInterval(() => {
-        runPayoutBatch().catch((err) => console.error("[payout-cron]", err.message));
+        runAgentSettlement().catch((err) => console.error("[settlement-cron]", err.message));
       }, ms);
-      console.log(`ENABLE_PAYOUT_CRON=1 — interval ${ms}ms`);
+      console.log(`ENABLE_PAYOUT_CRON=1 — agent settlement interval ${ms}ms`);
     }
     app.listen(PORT, () => {
       console.log(`CapNet API running on http://localhost:${PORT}`);

@@ -21,12 +21,22 @@ function hasStructuredMetadata(meta, contentLen) {
   return contentLen >= cfg.MIN_CONTENT_LENGTH;
 }
 
+function solanaProofSignature(meta) {
+  const h = typeof meta?.solana_tx_hash === "string" ? meta.solana_tx_hash.trim() : "";
+  if (!h || h.length < 64 || h.length > 128) return null;
+  if (!/^[1-9A-HJ-NP-Za-km-z]+$/.test(h)) return null;
+  return h;
+}
+
 function hasProof(meta) {
   return Boolean(
-    (meta?.tx_hash && typeof meta.tx_hash === "string") ||
+    solanaProofSignature(meta) ||
+      (meta?.tx_hash && typeof meta.tx_hash === "string") ||
       (Array.isArray(meta?.source_urls) && meta.source_urls.length > 0) ||
       (Array.isArray(meta?.sources) && meta.sources.length > 0) ||
-      (meta?.source_type && String(meta.source_type).trim())
+      (meta?.source_type && String(meta.source_type).trim()) ||
+      meta?.x402_monetized === true ||
+      meta?.x402_monetized === "true"
   );
 }
 
@@ -48,18 +58,29 @@ function qualitySignals(content) {
   return { wordCount: words.length, uniqueRatio: ratio, maxRepeatRun: maxRun };
 }
 
+/**
+ * Proof tier for settlement-unit accrual — prefers execution proofs over bare `source_type`.
+ * Set `metadata.x402_monetized: true` when the post is tied to x402 commerce (machine payments).
+ */
 function proofWeight(meta) {
-  if (meta?.tx_hash && typeof meta.tx_hash === "string") return cfg.PROOF_WEIGHTS.txHash;
-  const ext =
-    (Array.isArray(meta?.source_urls) && meta.source_urls.length > 0) ||
-    (Array.isArray(meta?.sources) && meta.sources.length > 0) ||
-    (meta?.source_type && String(meta.source_type).trim());
-  if (ext) return cfg.PROOF_WEIGHTS.external;
+  if (!meta || typeof meta !== "object") return cfg.PROOF_WEIGHTS.plain;
+  const x402 = meta.x402_monetized === true || meta.x402_monetized === "true";
+  if (x402) return cfg.PROOF_WEIGHTS.x402Commerce;
+  if (solanaProofSignature(meta)) return cfg.PROOF_WEIGHTS.solanaAnchored;
+  const evm = meta.tx_hash && /^0x[a-fA-F0-9]{64}$/.test(String(meta.tx_hash).trim());
+  if (evm) return cfg.PROOF_WEIGHTS.txHash;
+  const hasUrls =
+    (Array.isArray(meta.source_urls) && meta.source_urls.length > 0) ||
+    (Array.isArray(meta.sources) && meta.sources.length > 0);
+  if (hasUrls) return cfg.PROOF_WEIGHTS.external;
+  const st = meta.source_type && String(meta.source_type).trim();
+  if (st) return cfg.PROOF_WEIGHTS.sourceTypeOnly;
   return cfg.PROOF_WEIGHTS.plain;
 }
 
 function verifiedTxFlag(meta) {
-  return meta?.tx_hash && /^0x[a-fA-F0-9]{64}$/.test(String(meta.tx_hash).trim()) ? 1 : 0;
+  const evm = meta?.tx_hash && /^0x[a-fA-F0-9]{64}$/.test(String(meta.tx_hash).trim()) ? 1 : 0;
+  return evm;
 }
 
 function rawEngagementScore(post) {
@@ -68,17 +89,19 @@ function rawEngagementScore(post) {
   const l = post.like_count || 0;
   const r = post.repost_count || 0;
   const tx = verifiedTxFlag(post.metadata);
-  return v * w.views + l * w.likes + r * w.reposts + tx * w.verifiedTx;
+  const solA = solanaProofSignature(post.metadata) ? Number(w.solanaAnchored ?? 8) || 8 : 0;
+  return v * w.views + l * w.likes + r * w.reposts + tx * w.verifiedTx + solA;
 }
 
-function identityWeight(agent, hasBankr) {
-  let w = 1;
+function identityWeight(agent, flags) {
+  let wgt = 1;
   const created = agent.created_at ? new Date(agent.created_at).getTime() : Date.now();
   const days = (Date.now() - created) / (86400 * 1000);
-  w += Math.min(days / 365, cfg.IDENTITY.maxAgeBonus);
-  if (hasBankr) w += cfg.IDENTITY.bankrConnectedBonus;
-  if (agent.metadata?.verification_level) w += cfg.IDENTITY.verifiedMetadataBonus;
-  return w;
+  wgt += Math.min(days / 365, cfg.IDENTITY.maxAgeBonus);
+  if (flags?.hasSettlementDestination) wgt += cfg.IDENTITY.settlementDestinationBonus;
+  if (flags?.hasPrivyWallet) wgt += cfg.IDENTITY.privyLinkedBonus;
+  if (agent.metadata?.verification_level) wgt += cfg.IDENTITY.verifiedMetadataBonus;
+  return wgt;
 }
 
 async function duplicateExists(agentId, hash, excludePostId) {
@@ -189,13 +212,27 @@ async function processPostRewards(postId) {
   const agent = agentRes.rows[0];
   if (!agent) return { ok: false, error: "agent not found" };
 
-  const bankrRes = await pool.query(
-    `SELECT 1 FROM agent_bankr_accounts
-     WHERE agent_id = $1 AND connection_status IN ('connected_active', 'connected_readonly')
+  const privyRes = await pool.query(
+    `SELECT 1 FROM agent_wallets
+     WHERE agent_id = $1 AND chain_type = 'solana' AND custody_type = 'privy'
      LIMIT 1`,
     [post.agent_id]
   );
-  const hasBankr = bankrRes.rows.length > 0;
+  let payoutDestRes = { rows: [] };
+  try {
+    payoutDestRes = await pool.query(
+      `SELECT 1 FROM agent_payout_wallets
+       WHERE agent_id = $1 AND is_primary = TRUE AND chain = 'solana'
+       LIMIT 1`,
+      [post.agent_id]
+    );
+  } catch (e) {
+    if (e.code !== "42P01") throw e;
+  }
+  const identityFlags = {
+    hasSettlementDestination: payoutDestRes.rows.length > 0,
+    hasPrivyWallet: privyRes.rows.length > 0,
+  };
 
   const hash = contentHash(post.content);
   const contentLen = normalizeContent(post.content).length;
@@ -237,7 +274,7 @@ async function processPostRewards(postId) {
 
   const raw = rawEngagementScore(post);
   const pw = proofWeight(post.metadata);
-  const iw = identityWeight(agent, hasBankr);
+  const iw = identityWeight(agent, identityFlags);
   const score = raw * pw * iw;
   const multAdd = Math.min(score / cfg.SCORE_NORMALIZER, cfg.MAX_MULTIPLIER_ADD);
   const base = cfg.BASE_REWARD;

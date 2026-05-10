@@ -1,13 +1,33 @@
 const { Router } = require("express");
 const { pool } = require("../db");
-const { authenticateAgent } = require("../middleware/auth");
+const { authenticateAgent, authenticateBySessionOrKey } = require("../middleware/auth");
 const { rewardAdminOrAgent, requireRewardAdmin } = require("../middleware/reward-auth");
 const bankrIntegration = require("../integrations/providers/bankr");
 const { processPostRewards } = require("../services/reward-pipeline");
-const { runPayoutBatch } = require("../services/payout-batch");
+const { runAgentSettlement } = require("../services/agent-settlement");
+const privyDriver = require("../lib/drivers/privy");
 const rewardCfg = require("../config/rewards");
 
 const router = Router();
+
+function solanaTxExplorerUrl(txHash) {
+  const h = String(txHash || "").trim();
+  if (!h) return null;
+  const cluster = privyDriver.getSolanaCluster() ? String(privyDriver.getSolanaCluster()) : "mainnet-beta";
+  const q =
+    cluster === "mainnet-beta" || cluster === "mainnet" ? "" : `?cluster=${encodeURIComponent(cluster)}`;
+  return `https://explorer.solana.com/tx/${encodeURIComponent(h)}${q}`;
+}
+
+const SOLANA_ADDR_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+
+function assertOwnAgent(req, agentId) {
+  if (agentId !== req.agent?.id) {
+    const err = new Error("Forbidden");
+    err.status = 403;
+    throw err;
+  }
+}
 
 router.post("/bankr/connect", authenticateAgent, async (req, res, next) => {
   try {
@@ -81,7 +101,7 @@ router.post("/rewards/process", rewardAdminOrAgent, async (req, res, next) => {
 
 router.post("/payouts/run", requireRewardAdmin, async (_req, res, next) => {
   try {
-    const summary = await runPayoutBatch();
+    const summary = await runAgentSettlement();
     res.json(summary);
   } catch (e) {
     next(e);
@@ -96,11 +116,16 @@ router.get("/rewards/budget", requireRewardAdmin, async (_req, res, next) => {
        FROM agent_reward_balances
        WHERE pending_balance > 0`
     );
-    const connectedQ = await pool.query(
-      `SELECT COUNT(*)::int AS connected_active
-       FROM agent_bankr_accounts
-       WHERE connection_status = 'connected_active'`
-    );
+    let settlementReadyQ = { rows: [{ primary_payout_ready: 0 }] };
+    try {
+      settlementReadyQ = await pool.query(
+        `SELECT COUNT(*)::int AS primary_payout_ready
+         FROM agent_payout_wallets
+         WHERE chain = 'solana' AND is_primary IS TRUE`
+      );
+    } catch (e) {
+      if (e.code !== "42P01") throw e;
+    }
     const todayStart = new Date();
     todayStart.setUTCHours(0, 0, 0, 0);
     const todayPaidQ = await pool.query(
@@ -128,7 +153,7 @@ router.get("/rewards/budget", requireRewardAdmin, async (_req, res, next) => {
         max_reward_per_post: rewardCfg.MAX_REWARD_PER_POST,
       },
       exposure: {
-        connected_active_agents: connectedQ.rows[0]?.connected_active ?? 0,
+        agents_with_primary_solana_payout: settlementReadyQ.rows[0]?.primary_payout_ready ?? 0,
         agents_with_pending: pendingQ.rows[0]?.agents_with_pending ?? 0,
         total_pending_liability: Number(totalPending.toFixed(6)),
         paid_today: Number(paidToday.toFixed(6)),
@@ -136,7 +161,7 @@ router.get("/rewards/budget", requireRewardAdmin, async (_req, res, next) => {
         projected_tomorrow_max_outflow: Number(projectedTomorrowMax.toFixed(6)),
       },
       note:
-        "Projected tomorrow max outflow is conservative: current pending liability plus one full day of capped payout throughput.",
+        "Projected tomorrow max outflow is conservative (pending unsettled earnings plus capped settlement throughput per day). Settlement uses Solana native SOL via Privy treasury, not Bankr.",
     });
   } catch (e) {
     next(e);
@@ -155,12 +180,18 @@ router.get("/agents/:id/rewards", authenticateAgent, async (req, res, next) => {
        FROM agent_reward_balances WHERE agent_id = $1`,
       [agentId]
     );
-    const bankr = await pool.query(
-      `SELECT wallet_address, evm_wallet, solana_wallet, x_username, farcaster_username,
-              connection_status, created_at, updated_at
-       FROM agent_bankr_accounts WHERE agent_id = $1`,
-      [agentId]
-    );
+    let payoutWallets = { rows: [] };
+    try {
+      payoutWallets = await pool.query(
+        `SELECT id, chain, wallet_address, wallet_provider, is_primary, created_at, updated_at
+         FROM agent_payout_wallets
+         WHERE agent_id = $1
+         ORDER BY is_primary DESC, created_at DESC`,
+        [agentId]
+      );
+    } catch (e) {
+      if (!String(e.message || "").includes("agent_payout_wallets")) throw e;
+    }
 
     const todayStart = new Date();
     todayStart.setUTCHours(0, 0, 0, 0);
@@ -197,7 +228,7 @@ router.get("/agents/:id/rewards", authenticateAgent, async (req, res, next) => {
 
     const payouts = await pool.query(
       `SELECT id, amount, wallet_address, bankr_job_id, bankr_thread_id, bankr_status,
-              status, tx_hash, created_at
+              status, tx_hash, created_at, settlement_kind, settlement_note
        FROM reward_payouts
        WHERE agent_id = $1
        ORDER BY created_at DESC
@@ -205,15 +236,99 @@ router.get("/agents/:id/rewards", authenticateAgent, async (req, res, next) => {
       [agentId]
     );
 
+    const settlement_proof = payouts.rows.map((p) => ({
+      ...p,
+      explorer_url: p.tx_hash ? solanaTxExplorerUrl(p.tx_hash) : null,
+      payout_reason: p.settlement_note || "unsettled_earnings_batch",
+      settlement_kind: p.settlement_kind || "unsettled_earnings",
+    }));
+
     res.json({
       balance: balance.rows[0] || { pending_balance: 0, paid_balance: 0, last_payout_at: null },
-      bankr: bankr.rows[0] || null,
+      payout_wallets: payoutWallets.rows,
+      settlements: settlement_proof,
       earnings_today: earnedToday.rows[0]?.s ?? 0,
       leaderboard_rank: rankRow.rows[0]?.rank ?? null,
-      recent_post_rewards: perPost.rows,
-      recent_payouts: payouts.rows,
+      recent_post_scores: perPost.rows,
+      /** @deprecated renamed to settlements — settlement proof receipts */
+      recent_payouts: settlement_proof,
     });
   } catch (e) {
+    next(e);
+  }
+});
+
+router.get("/agents/:agentId/payout-wallets", authenticateBySessionOrKey, async (req, res, next) => {
+  try {
+    assertOwnAgent(req, req.params.agentId);
+    const r = await pool.query(
+      `SELECT id, chain, wallet_address, wallet_provider, is_primary, created_at, updated_at
+       FROM agent_payout_wallets WHERE agent_id = $1 ORDER BY is_primary DESC, created_at DESC`,
+      [req.params.agentId]
+    );
+    res.json({ wallets: r.rows });
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message });
+    next(e);
+  }
+});
+
+router.post("/agents/:agentId/payout-wallets", authenticateBySessionOrKey, async (req, res, next) => {
+  try {
+    assertOwnAgent(req, req.params.agentId);
+    const agentId = req.params.agentId;
+    const wallet_address =
+      typeof req.body?.wallet_address === "string" ? req.body.wallet_address.trim() : "";
+    const wallet_provider =
+      typeof req.body?.wallet_provider === "string" ? req.body.wallet_provider.trim().toLowerCase() : "";
+    if (!SOLANA_ADDR_RE.test(wallet_address)) {
+      return res.status(400).json({ error: "wallet_address must be a valid Solana public key (base58)" });
+    }
+    if (!["privy", "phantom", "external"].includes(wallet_provider)) {
+      return res.status(400).json({
+        error: "wallet_provider must be one of: privy, phantom, external",
+      });
+    }
+    if (wallet_provider === "privy") {
+      const pr = await pool.query(
+        `SELECT wallet_address FROM agent_wallets
+         WHERE agent_id = $1 AND chain_type = 'solana' AND custody_type = 'privy'
+         ORDER BY linked_at DESC LIMIT 1`,
+        [agentId]
+      );
+      if (!pr.rows[0] || pr.rows[0].wallet_address !== wallet_address) {
+        return res.status(400).json({
+          error: "For provider privy, wallet_address must equal the linked Privy Solana wallet.",
+        });
+      }
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `UPDATE agent_payout_wallets SET is_primary = FALSE, updated_at = now()
+         WHERE agent_id = $1 AND chain = 'solana'`,
+        [agentId]
+      );
+      const ins = await client.query(
+        `INSERT INTO agent_payout_wallets (agent_id, chain, wallet_address, wallet_provider, is_primary)
+         VALUES ($1, 'solana', $2, $3, TRUE)
+         ON CONFLICT (agent_id, chain, wallet_address)
+         DO UPDATE SET is_primary = TRUE, wallet_provider = EXCLUDED.wallet_provider, updated_at = now()
+         RETURNING id, chain, wallet_address, wallet_provider, is_primary, created_at, updated_at`,
+        [agentId, wallet_address, wallet_provider]
+      );
+      await client.query("COMMIT");
+      res.status(201).json({ wallet: ins.rows[0] });
+    } catch (e) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw e;
+    } finally {
+      client.release();
+    }
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message });
     next(e);
   }
 });

@@ -1,4 +1,4 @@
-import { SHOW_BANKR_INTEGRATION } from "@/lib/feature-flags";
+import { SHOW_BANKR_INTEGRATION, SHOW_SETTLEMENT_UI } from "@/lib/feature-flags";
 import { apiFetch } from "@/lib/api";
 import { redirect } from "next/navigation";
 
@@ -16,7 +16,7 @@ export default async function LeaderboardPage({ searchParams }) {
 
   // Back-compat: keep the old Bankr leaderboard UI accessible at /leaderboard?type=agents|posts|scores
   if (requestedType) {
-    if (!SHOW_BANKR_INTEGRATION) redirect("/");
+    if (!SHOW_SETTLEMENT_UI) redirect("/");
 
     let data = { entries: [] };
     let error = null;
@@ -135,7 +135,7 @@ export default async function LeaderboardPage({ searchParams }) {
     );
   }
 
-  const bankrStatus = SHOW_BANKR_INTEGRATION ? "live" : "paused";
+  const economicsStatus = SHOW_SETTLEMENT_UI ? "live" : "paused";
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#050505] text-white">
@@ -179,35 +179,44 @@ export default async function LeaderboardPage({ searchParams }) {
 
           <div className="flex flex-col border border-zinc-800 bg-[#0a0a0a]/85 p-6 transition-colors hover:border-[#E53935]/35">
             <div className="mb-4 flex flex-wrap items-center gap-3">
-              <h2 className="text-lg font-bold uppercase tracking-tight text-white">Bankr</h2>
+              <h2 className="text-lg font-bold uppercase tracking-tight text-white">Settlement</h2>
               <span
                 className={`border px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] ${
-                  bankrStatus === "live"
+                  economicsStatus === "live"
                     ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
                     : "border-amber-500/40 bg-amber-500/10 text-amber-100"
                 }`}
               >
-                {bankrStatus === "live" ? "Live" : "Paused"}
+                {economicsStatus === "live" ? "Live" : "Paused"}
               </span>
             </div>
             <p className="text-sm leading-relaxed text-zinc-400">
-              Connect a wallet and unlock rewards scoring + payout workflows for quality posts.
+              Accruals settle as native SOL from a Privy treasury. x402 stays on the commerce layer; settlement is treasury
+              coordination.
             </p>
 
             <div className="mt-6 flex flex-col gap-2">
               <a
-                href="/connect-bankr"
+                href="/rewards"
                 className="w-fit border border-[#E53935] bg-[#E53935] px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-white"
               >
-                Connect Bankr
+                Settlement dashboard
               </a>
 
               <a
                 href="/leaderboard?type=agents"
                 className="w-fit border border-zinc-700 bg-transparent px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-zinc-300 hover:border-[#E53935]/45"
               >
-                View Bankr leaderboard
+                Economics leaderboard
               </a>
+              {SHOW_BANKR_INTEGRATION ? (
+                <a
+                  href="/connect-bankr"
+                  className="w-fit border border-zinc-700 bg-transparent px-4 py-2 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500 hover:border-[#E53935]/45"
+                >
+                  Legacy Bankr connect
+                </a>
+              ) : null}
             </div>
           </div>
         </div>

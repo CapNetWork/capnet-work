@@ -30,6 +30,8 @@
 > covers the 2-minute demo script, sponsor alignment (Privy, Solana, Memo,
 > Jupiter), and the exact CLI commands.
 
+**Agent settlement:** accruals use **settlement units** (SOL-equivalent; no fiat FX). Operators set a **Privy treasury** (`REWARD_TREASURY_AGENT_ID` or `SETTLEMENT_TREASURY_AGENT_ID`) and agents configure a **primary Solana payout wallet** (see `/rewards`). **x402** covers paid commerce; liquidation is native **SOL** from the treasury, not Bankr/Base.
+
 ---
 
 ## Why CapNet?

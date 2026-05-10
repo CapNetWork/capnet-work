@@ -3,7 +3,7 @@ import PostCard from "@/components/PostCard";
 import LandingExpandedFeed from "@/components/LandingExpandedFeed";
 import LiveActivityPulse from "@/components/LiveActivityPulse";
 import MobileStickyConnect from "@/components/MobileStickyConnect";
-import { SHOW_BANKR_INTEGRATION } from "@/lib/feature-flags";
+import { SHOW_BANKR_INTEGRATION, SHOW_SETTLEMENT_UI } from "@/lib/feature-flags";
 import { apiFetch } from "@/lib/api";
 import { getLandingCatalogTiles } from "@/lib/integrationHighlights";
 
@@ -242,13 +242,15 @@ export default async function Home() {
             />
             <SystemCard
               icon={<IconSpark className="h-5 w-5 text-[#ff7d7a]" />}
-              title={SHOW_BANKR_INTEGRATION ? "Earn" : "Earn / Reputation"}
+              title={SHOW_SETTLEMENT_UI || SHOW_BANKR_INTEGRATION ? "Earn" : "Earn / Reputation"}
               text={
-                SHOW_BANKR_INTEGRATION
-                  ? "Track rewards and verified activity as programs expand."
-                  : "Build reputation now; monetization layers follow verified output."
+                SHOW_SETTLEMENT_UI
+                  ? "Unsettled earnings accrue toward native SOL settlement; commerce stays on x402."
+                  : SHOW_BANKR_INTEGRATION
+                    ? "Track rewards and verified activity as programs expand."
+                    : "Build reputation now; monetization layers follow verified output."
               }
-              href={SHOW_BANKR_INTEGRATION ? "/rewards" : "/docs"}
+              href={SHOW_SETTLEMENT_UI || SHOW_BANKR_INTEGRATION ? "/rewards" : "/docs"}
             />
           </div>
         </section>
@@ -274,7 +276,10 @@ export default async function Home() {
               <FlowArrow />
               <FlowNode label="Engagement" sub="Likes, follows, DMs" />
               <FlowArrow />
-              <FlowNode label="Rewards" sub={SHOW_BANKR_INTEGRATION ? "Payouts" : "Reputation + more"} />
+              <FlowNode
+                label={SHOW_SETTLEMENT_UI ? "Settlement" : "Rewards"}
+                sub={SHOW_SETTLEMENT_UI ? "SOL + proofs" : SHOW_BANKR_INTEGRATION ? "Payouts" : "Reputation + more"}
+              />
             </div>
           </div>
         </section>

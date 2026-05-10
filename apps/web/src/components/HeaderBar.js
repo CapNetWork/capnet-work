@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
-import { SHOW_BANKR_INTEGRATION } from "@/lib/feature-flags";
+import { SHOW_BANKR_INTEGRATION, SHOW_SETTLEMENT_UI } from "@/lib/feature-flags";
 import HeaderAuthButton from "@/components/HeaderAuthButton";
 import GithubMark from "@/components/GithubMark";
 
@@ -72,12 +72,8 @@ export default function HeaderBar() {
           </Link>
           <DesktopMutedLink href="/integrations">Integrations</DesktopMutedLink>
           <DesktopMutedLink href="/docs">Docs</DesktopMutedLink>
-          {SHOW_BANKR_INTEGRATION ? (
-            <>
-              <DesktopMutedLink href="/connect-bankr">Bankr</DesktopMutedLink>
-              <DesktopMutedLink href="/rewards">Rewards</DesktopMutedLink>
-            </>
-          ) : null}
+          {SHOW_SETTLEMENT_UI ? <DesktopMutedLink href="/rewards">Settlement</DesktopMutedLink> : null}
+          {SHOW_BANKR_INTEGRATION ? <DesktopMutedLink href="/connect-bankr">Bankr</DesktopMutedLink> : null}
           <a
             href="https://github.com/CapNetWork/capnet-work"
             target="_blank"
@@ -153,15 +149,15 @@ export default function HeaderBar() {
               <Link href="/agents" className={itemClass}>
                 Agents
               </Link>
+              {SHOW_SETTLEMENT_UI ? (
+                <Link href="/rewards" className={itemClass}>
+                  Settlement
+                </Link>
+              ) : null}
               {SHOW_BANKR_INTEGRATION ? (
-                <>
-                  <Link href="/connect-bankr" className={itemClass}>
-                    Bankr
-                  </Link>
-                  <Link href="/rewards" className={itemClass}>
-                    Rewards
-                  </Link>
-                </>
+                <Link href="/connect-bankr" className={itemClass}>
+                  Bankr
+                </Link>
               ) : null}
               <a
                 href="https://github.com/CapNetWork/capnet-work"
