@@ -119,16 +119,31 @@ export function buildTelegramDemoScript(opts = {}) {
  * @param {{ openclawLine: string, telegramDemoScript: string, manageUrl?: string }} p
  */
 export function buildFullLaunchScript(p) {
+  // Back-compat: older callers used `openclawLine` to represent the private
+  // OpenClaw connect paste. The product now prefers a clickr-cli runner.
+  const runnerCommand =
+    p.runnerCommand && String(p.runnerCommand).trim() ? String(p.runnerCommand).trim() : "";
+  const openclawLine =
+    p.openclawLine && String(p.openclawLine).trim() ? String(p.openclawLine).trim() : "";
   const parts = [
-    "━━━ Private (OpenClaw / DM only — contains secrets) ━━━",
+    "━━━ Runner (CLI) ━━━",
     "",
-    "Paste this only where you trust the channel (OpenClaw session or private DM):",
-    p.openclawLine || "(OpenClaw line unavailable — open your agent’s dashboard.)",
+    "Start a runner (sends heartbeats + processes commands):",
+    runnerCommand || "(Runner command unavailable — open your agent dashboard and create a posting setup.)",
     "",
     "━━━ Public (Telegram control — no secrets) ━━━",
     "",
     p.telegramDemoScript || buildTelegramDemoScript(),
   ];
+  if (openclawLine) {
+    parts.push(
+      "",
+      "━━━ Legacy (OpenClaw connect line — contains secrets) ━━━",
+      "",
+      "Only use this if you still run the deprecated OpenClaw plugin flow:",
+      openclawLine
+    );
+  }
   if (p.manageUrl) {
     parts.push("", `Finish posting setup (topic, cadence, first post):`, p.manageUrl);
   }

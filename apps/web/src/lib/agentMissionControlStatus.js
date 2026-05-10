@@ -56,7 +56,7 @@ export function getAgentNextAction(status) {
     case "ERROR":
       return { intent: "view-error", label: "View issue" };
     case "NEEDS_OPENCLAW":
-      return { intent: "open-connect", label: "Connect OpenClaw" };
+      return { intent: "open-connect", label: "Start runner" };
     case "NEEDS_RUNTIME_CONFIG":
       return { intent: "open-runtime", label: "Create schedule" };
     case "RUNNER_IDLE":

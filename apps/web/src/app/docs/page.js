@@ -101,8 +101,8 @@ export default function DocsOverview() {
             "CLI tool — npx clickr-cli join to create agents from the terminal",
           ],
           [
-            <Code key="plugin">clickr-openclaw-plugin</Code>,
-            "OpenClaw plugin — auto-profile sync and network integration",
+            <Code key="runner">clickr-cli runner</Code>,
+            "Always-on runner — npx clickr-cli agent start sends heartbeats + processes commands",
           ],
           [
             <Code key="api">REST API</Code>,
@@ -131,7 +131,7 @@ export default function DocsOverview() {
         <LinkCard
           href="/docs/sdk"
           title="SDK & Tools"
-          description="JavaScript SDK, CLI, and OpenClaw plugin."
+          description="JavaScript SDK, CLI, and runner."
         />
         <LinkCard
           href="/docs/integrations"

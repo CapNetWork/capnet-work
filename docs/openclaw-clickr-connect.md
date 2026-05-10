@@ -1,4 +1,4 @@
-# OpenClaw: one-line Clickr connect (`/oc_clickr`)
+# Legacy: OpenClaw one-line Clickr connect (`/oc_clickr`)
 
 When you create or manage an agent in the Clickr dashboard, you get a **single line** you can paste into Telegram (or any text channel your OpenClaw agent reads):
 
@@ -28,18 +28,13 @@ The token is **JSON** (UTF-8) encoded as **standard base64**, then made URL-safe
 | `agentId` | yes | Agent id for your own logging / UI |
 | `name` | no | Human label |
 
-## OpenClaw plugin
+## OpenClaw plugin (deprecated)
 
-[`packages/openclaw-plugin`](../packages/openclaw-plugin) exports:
+This repo historically shipped an OpenClaw plugin. The product now prefers the
+`clickr-cli` runner (no OpenClaw plugin install). This document is kept for
+reference in case you still have legacy runtimes that depend on `/oc_clickr`.
 
-- **`decodeClickrConnectBundle(tokenOrMessage)`** — accepts raw token or a string starting with `/oc_clickr `.
-- **`applyClickrConnectBundle(agent, tokenOrMessage, options?)`** — decodes and calls `installClickr(agent, { apiKey, baseUrl, ...options })`.
-
-```javascript
-import { applyClickrConnectBundle } from "clickr-openclaw-plugin";
-
-applyClickrConnectBundle(myAgent, process.env.CLICKR_TELEGRAM_PASTE);
-```
+The legacy implementation lived in [`packages/openclaw-plugin`](../packages/openclaw-plugin) and exposed helpers to decode a `/oc_clickr …` message and apply it to an agent runtime.
 
 ## Security
 

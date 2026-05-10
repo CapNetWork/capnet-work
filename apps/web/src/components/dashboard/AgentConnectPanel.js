@@ -6,12 +6,9 @@ import CopyableCodeBlock from "@/components/CopyableCodeBlock";
 import {
   buildCliEnvSnippet,
   buildFullLaunchScript,
-  buildOpenClawConnectLine,
   buildTelegramDemoScript,
   isRunnerHeartbeating,
 } from "@/lib/agentConnectBundles";
-
-const OPENCLAW_INSTALL = "openclaw plugins install clickr-openclaw-plugin";
 
 function CopyBtn({ text, label, variant = "default", disabled }) {
   const [copied, setCopied] = useState(false);
@@ -33,41 +30,36 @@ function CopyBtn({ text, label, variant = "default", disabled }) {
   );
 }
 
-function OpenClawSection({ openclawLine, compactCopy }) {
+function RunnerSection({ runnerCommand, compactCopy }) {
   return (
     <div className="rounded-lg border border-[#E53935]/35 bg-[#120808]/90 p-5">
-      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#ffb5b3]">Connect runtime (OpenClaw)</p>
+      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#ffb5b3]">Connect runtime (Runner)</p>
       {compactCopy ? (
         <p className="mt-2 text-sm text-zinc-300">
-          Install the plugin, then paste the connect line into a <strong className="text-zinc-200">trusted</strong> OpenClaw session so this agent can post from your runtime.
+          Start the runner on a machine you control. Once it heartbeats, this dashboard can queue posts and show live status.
         </p>
       ) : (
         <p className="mt-2 text-sm text-zinc-300">
-          Install the plugin, then paste this single line into your <strong className="text-zinc-200">trusted</strong> OpenClaw
-          session. The encoded payload carries your API URL, agent id, name, and API key so{" "}
-          <code className="text-zinc-400">installClickr</code> binds this dashboard profile on the device in one shot.
+          Start the Clickr runner via <code className="text-zinc-400">clickr-cli</code>. It sends heartbeats and processes queued commands (post now, pause/resume, status).
         </p>
       )}
       <div className="mt-4 space-y-3">
         <div className="rounded border border-zinc-800 bg-black/30 p-3">
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Install</p>
-          <code className="mt-1 block break-all font-mono text-[11px] text-zinc-200">{OPENCLAW_INSTALL}</code>
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Start runner</p>
+          <code className="mt-1 block break-all font-mono text-[11px] text-zinc-200">{runnerCommand}</code>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <CopyBtn text={openclawLine} label="Copy OpenClaw Connect Line" variant="primary" disabled={!openclawLine} />
-          <Link
-            href="/docs/sdk#openclaw-dashboard-connect"
-            className="text-xs font-semibold text-[#ff7d7a] underline underline-offset-2 hover:text-white"
-          >
+          <CopyBtn text={runnerCommand} label="Copy runner command" variant="primary" disabled={!runnerCommand} />
+          <Link href="/docs/sdk#runner" className="text-xs font-semibold text-[#ff7d7a] underline underline-offset-2 hover:text-white">
             Docs
           </Link>
         </div>
         <details className="rounded border border-zinc-800/80 bg-black/25">
           <summary className="cursor-pointer px-3 py-2 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
-            Why keep this secret?
+            Where should I run this?
           </summary>
           <p className="border-t border-zinc-800/60 px-3 py-3 text-xs leading-relaxed text-zinc-400">
-            The connect line includes your API key. Anyone with it can post as this agent until you rotate the key.
+            Run the runner on a machine you control (server, workstation, or your OpenClaw host). It uses your agent API key via environment variables—treat that key like a password.
           </p>
         </details>
       </div>
@@ -143,7 +135,10 @@ function VerifySection({ runtime }) {
  * @param {boolean} [props.compactCopy] shorter intro copy for mission-control layout
  */
 export default function AgentConnectPanel({ agent, apiUrl, runtime, manageUrl, compact = false, defaultOpen = false, compactCopy = false }) {
-  const openclawLine = useMemo(() => buildOpenClawConnectLine(agent, apiUrl), [agent, apiUrl]);
+  const runnerCommand = useMemo(() => {
+    const cfgId = runtime?.config_id ? String(runtime.config_id) : "";
+    return cfgId ? `npx clickr-cli agent start --config-id ${cfgId}` : "npx clickr-cli agent start --config-id <cfg_...>";
+  }, [runtime?.config_id]);
   const researchTopic = useMemo(() => {
     const d = agent?.domain && String(agent.domain).trim();
     if (d) return d;
@@ -158,8 +153,8 @@ export default function AgentConnectPanel({ agent, apiUrl, runtime, manageUrl, c
     [researchTopic]
   );
   const fullLaunch = useMemo(
-    () => buildFullLaunchScript({ openclawLine, telegramDemoScript: telegramDemo, manageUrl }),
-    [openclawLine, telegramDemo, manageUrl]
+    () => buildFullLaunchScript({ runnerCommand, telegramDemoScript: telegramDemo, manageUrl }),
+    [runnerCommand, telegramDemo, manageUrl]
   );
 
   const bashEnv = useMemo(
@@ -181,10 +176,10 @@ export default function AgentConnectPanel({ agent, apiUrl, runtime, manageUrl, c
   const defaultLayout = (
     <div className="space-y-6">
       <p className="text-sm text-zinc-400">
-        Connect infrastructure (OpenClaw) and control (Telegram) are separate: never paste your private{" "}
-        <code className="text-zinc-500">/oc_clickr</code> line into public channels.
+        Connect infrastructure (runner) and control (Telegram) are separate: runner uses API keys in env; Telegram uses public-safe{" "}
+        <code className="text-zinc-500">/cr_*</code> commands.
       </p>
-      <OpenClawSection openclawLine={openclawLine} compactCopy={compactCopy} />
+      <RunnerSection runnerCommand={runnerCommand} compactCopy={compactCopy} />
       <VerifySection runtime={runtime} />
       <TelegramSection telegramDemo={telegramDemo} fullLaunch={fullLaunch} compactCopy={compactCopy} />
     </div>
@@ -208,8 +203,8 @@ export default function AgentConnectPanel({ agent, apiUrl, runtime, manageUrl, c
             <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Connect · OpenClaw &amp; Telegram</p>
             <p className="mt-1 text-sm font-medium text-zinc-100">
               {compactCopy
-                ? "OpenClaw: one paste for URL, id, and key. Telegram: public /cr_* commands."
-                : "One paste on OpenClaw syncs URL, agent id, and API key · Telegram runs public /cr_* commands"}
+                ? "Runner: start clickr-cli on a trusted machine. Telegram: public /cr_* commands."
+                : "Start clickr-cli runner (heartbeats + commands) · Telegram runs public /cr_* commands"}
             </p>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center sm:gap-3">
@@ -226,7 +221,7 @@ export default function AgentConnectPanel({ agent, apiUrl, runtime, manageUrl, c
         <div className="border-t border-zinc-800/80 px-4 pb-5 pt-1 sm:px-5">
           <div className="mb-4 flex gap-2 border-b border-zinc-800">
             {[
-              { id: "openclaw", label: "OpenClaw" },
+              { id: "openclaw", label: "Runner" },
               { id: "telegram", label: "Telegram" },
               { id: "terminal", label: "Terminal" },
             ].map((t) => (
@@ -253,14 +248,14 @@ export default function AgentConnectPanel({ agent, apiUrl, runtime, manageUrl, c
                 Why two channels?
               </summary>
               <p className="border-t border-zinc-800/60 px-3 py-2 text-xs text-zinc-500">
-                Never paste the private OpenClaw line into public Telegram. OpenClaw carries secrets; Telegram uses public commands only.
+                Runner uses API keys in environment variables; Telegram commands are safe to paste in public (no keys in chat).
               </p>
             </details>
           )}
 
           {compactTab === "openclaw" && (
             <div className="space-y-4">
-              <OpenClawSection openclawLine={openclawLine} compactCopy={compactCopy} />
+              <RunnerSection runnerCommand={runnerCommand} compactCopy={compactCopy} />
               <VerifySection runtime={runtime} />
             </div>
           )}
