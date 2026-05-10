@@ -773,9 +773,9 @@ export default function AgentDetailPage() {
         <section className="mt-6 rounded-lg border border-zinc-800 bg-[#0a0a0a]/90 p-5 sm:p-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Rewards & settlement</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Rewards</p>
               <p className="mt-2 text-sm text-zinc-400">
-                Lifetime accrual from eligible posts (settlement units ≈ SOL). Open the full page for payout address and
+                Lifetime accrual from eligible posts (units ≈ SOL). Open the full rewards page for payout address and
                 on-chain receipts.
               </p>
             </div>
@@ -802,13 +802,13 @@ export default function AgentDetailPage() {
                 </dd>
               </div>
               <div className="rounded border border-zinc-800/90 bg-black/25 px-3 py-2.5">
-                <dt className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-600">Unsettled</dt>
+                <dt className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-600">Pending</dt>
                 <dd className="mt-1 font-mono text-base text-emerald-200/90">
                   {rewardUnitsFmt(rewardSnapshot.balance?.pending_balance, 8)}
                 </dd>
               </div>
               <div className="rounded border border-zinc-800/90 bg-black/25 px-3 py-2.5">
-                <dt className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-600">Settled on-chain</dt>
+                <dt className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-600">Paid out</dt>
                 <dd className="mt-1 font-mono text-base text-zinc-200">
                   {rewardUnitsFmt(rewardSnapshot.balance?.paid_balance, 8)}
                 </dd>
